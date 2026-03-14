@@ -1,0 +1,11 @@
+id,short_name,long_name,tx,scan
+100,DISP,Dispatch,N,Y
+200,TAC1,Tactical 1,Y,Y
+300,TAC2,Tactical 2,Y,Y
+400,FIRE,Fire Dispatch,N,Y
+500,EMS,EMS Dispatch,N,Y
+600,OPS,Operations,Y,Y
+700,ADMIN,Administration,N,N
+800,TEST,Test Channel,N,N
+900,MUTUAL,Mutual Aid,Y,Y
+1000,EMRG,Emergency,N,Y

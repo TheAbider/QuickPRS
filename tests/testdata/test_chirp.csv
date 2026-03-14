@@ -1,0 +1,6 @@
+Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Skip,Comment
+0,RPT IN,146.8400,-,0.600000,Tone,100.0,88.5,023,NN,FM,5.00,,Repeater Input
+1,RPT OUT,146.2400,+,0.600000,,88.5,88.5,023,NN,FM,5.00,,Repeater Output
+2,SIMPLEX,146.5200,,0.600000,TSQL,88.5,100.0,023,NN,FM,5.00,,Simplex Channel
+3,DTCS CH,462.5625,,0.000000,DTCS,88.5,88.5,023,NN,FM,5.00,,DTCS Test
+4,NOAA,162.5500,,0.000000,,88.5,88.5,023,NN,FM,5.00,,Weather

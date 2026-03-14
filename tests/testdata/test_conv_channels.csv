@@ -1,0 +1,6 @@
+short_name,tx_freq,rx_freq,tx_tone,rx_tone,long_name
+MURS1,151.820,151.820,,,MURS Channel 1
+MURS2,151.880,151.880,,,MURS Channel 2
+MURS3,151.940,151.940,,,MURS Channel 3
+MURS4,154.570,154.570,,,MURS Channel 4
+MURS5,154.600,154.600,,,MURS Channel 5

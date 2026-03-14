@@ -1,0 +1,6 @@
+System,Department,Channel,Frequency,Modulation,Tone
+County PD,Dispatch,PD DISP,460.0500,NFM,100.0
+County PD,Dispatch,PD TAC1,460.1250,NFM,
+County FD,Dispatch,FD DISP,460.5500,NFM,131.8
+County FD,Tactical,FD TAC1,460.5750,NFM,131.8
+State,Highway,HP CH1,155.4700,NFM,

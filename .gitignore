@@ -1,0 +1,33 @@
+# Build artifacts
+dist/
+build/
+*.spec
+*.exe
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude
+.claude/
+
+# Test data (personal PRS files - not distributed)
+tests/testdata/*.PRS
+tests/testdata/*.PRS.bak
+tests/testdata/every option/
+tests/testdata/screens/
+tests/testdata/csv/
+tests/testdata/sample_report.html
+
+# OS
+Thumbs.db
+.DS_Store

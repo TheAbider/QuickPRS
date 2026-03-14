@@ -1,0 +1,7 @@
+requests>=2.28
+beautifulsoup4>=4.12
+zeep>=4.2
+sv-ttk>=2.5
+darkdetect>=0.8
+windnd>=1.0.7
+pyinstaller>=6.0
