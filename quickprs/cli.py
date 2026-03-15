@@ -3856,6 +3856,10 @@ def run_cli(args=None):
         "  cleanup           Find and fix duplicates and unused sets\n"
         "  search            Search across PRS files for freqs/TGs/names\n"
         "  backup            Create, list, or restore timestamped backups\n"
+        "  watch             Watch a PRS file and auto-validate on changes\n"
+        "\n"
+        "Reference:\n"
+        "  cheat-sheet       Print comprehensive CLI command cheat sheet\n"
         "\n"
         "Use 'quickprs <command> --help' for details on any command."
     )
@@ -4920,6 +4924,23 @@ def run_cli(args=None):
     p_diffrpt.add_argument("-o", "--output", default=None,
                             help="Output file path (default: print to stdout)")
 
+    # watch
+    p_watch = sub.add_parser("watch",
+                              help="Watch a PRS file and auto-validate "
+                                   "on changes",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs watch radio.PRS\n"
+               "  quickprs watch radio.PRS --interval 5")
+    p_watch.add_argument("file", help="PRS file to watch")
+    p_watch.add_argument("-i", "--interval", type=float, default=2.0,
+                          help="Check interval in seconds (default: 2)")
+
+    # cheat-sheet
+    sub.add_parser("cheat-sheet",
+                    help="Print comprehensive CLI command cheat sheet",
+        formatter_class=fmt)
+
     # Suppress the auto-generated subparser listing since we have a
     # curated categorized listing in the description above
     for action_group in parser._action_groups:
@@ -5352,6 +5373,14 @@ def run_cli(args=None):
                 parsed.file_b,
                 output=parsed.output,
             )
+        elif parsed.command == "watch":
+            from .watcher import watch_file
+            watch_file(parsed.file, interval=parsed.interval)
+            return 0
+        elif parsed.command == "cheat-sheet":
+            from .cheat_sheet import generate_cheat_sheet
+            print(generate_cheat_sheet())
+            return 0
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
