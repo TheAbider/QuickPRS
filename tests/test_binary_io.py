@@ -177,10 +177,11 @@ class TestLPS:
         result, _ = read_lps(raw, 0)
         assert result == s
 
-    def test_lps_non_ascii_raises(self):
-        """Non-ASCII characters should raise UnicodeEncodeError."""
-        with pytest.raises(UnicodeEncodeError):
-            write_lps("Système")
+    def test_lps_non_ascii_replaces(self):
+        """Non-ASCII characters should be replaced with '?' instead of crashing."""
+        raw = write_lps("Syst\u00e8me")
+        result, _ = read_lps(raw, 0)
+        assert result == "Syst?me"
 
     def test_read_lps_truncated_data(self):
         """If length prefix says 10 but only 5 bytes remain, read what's there."""

@@ -2387,10 +2387,10 @@ def build_personality_section(personality):
 
     # Build KV block
     kv_parts = [
-        b'Name', p.filename.encode('ascii'),
-        b'LastSaved', p.last_saved.encode('ascii'),
-        b'SavedBy', p.saved_by.encode('ascii'),
-        b'Version', p.version.encode('ascii'),
+        b'Name', p.filename.encode('ascii', errors='replace'),
+        b'LastSaved', p.last_saved.encode('ascii', errors='replace'),
+        b'SavedBy', p.saved_by.encode('ascii', errors='replace'),
+        b'Version', p.version.encode('ascii', errors='replace'),
     ]
     kv_block = b''
     for i, part in enumerate(kv_parts):

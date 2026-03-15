@@ -15,11 +15,29 @@ import sys
 
 def main():
     # Check if any CLI subcommand is being used
-    # CLI subcommands: info, validate, export-csv, compare, --version
-    cli_commands = {"info", "validate", "export-csv", "compare", "dump",
-                    "rename", "sort", "freq-tools", "export-config",
-                    "profiles"}
-    cli_flags = {"--version", "-V"}
+    cli_commands = {
+        # Create & Build
+        "create", "build", "profiles", "wizard", "fleet",
+        # Modify
+        "inject", "remove", "edit", "merge", "clone", "clone-personality",
+        "rename", "sort", "renumber", "auto-name", "bulk-edit",
+        # Import
+        "import-rr", "import-paste", "import-scanner", "import-json",
+        "auto-setup", "systems", "template-csv",
+        # Export
+        "export", "export-csv", "export-json", "export-config",
+        "report", "card",
+        # Inspect & Validate
+        "info", "validate", "compare", "diff-report", "diff-options",
+        "stats", "capacity", "list", "dump",
+        # Radio Options
+        "set-option", "encrypt", "set-nac",
+        # Planning & Tools
+        "zones", "freq-tools", "iden-templates",
+        # Maintenance
+        "repair", "cleanup", "search", "backup",
+    }
+    cli_flags = {"--version", "-V", "--completion"}
 
     has_cli = (len(sys.argv) > 1 and
                (sys.argv[1] in cli_commands or sys.argv[1] in cli_flags))

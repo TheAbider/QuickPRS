@@ -3619,69 +3619,6 @@ def cmd_backup(filepath, list_backups=False, restore=False,
     return 0
 
 
-def cmd_rename(filepath, set_name, pattern, replacement,
-               set_type="group", field="short_name", output=None):
-    """Batch rename items in a set using regex substitution.
-
-    Args:
-        filepath: PRS file path
-        set_name: name of the target set
-        pattern: regex pattern to match in names
-        replacement: replacement string (supports backreferences)
-        set_type: "group" or "conv"
-        field: "short_name" or "long_name"
-        output: output file path (default: overwrite input)
-    """
-    from .injector import batch_rename
-    from .prs_writer import write_prs
-
-    prs = parse_prs(filepath)
-    count = batch_rename(prs, set_name, pattern, replacement,
-                         set_type=set_type, field=field)
-
-    if count == 0:
-        print("No items matched the pattern.")
-        return 0
-
-    out = Path(output) if output else Path(filepath)
-    write_prs(prs, out)
-    print(f"Renamed {count} item(s) in {set_type} set '{set_name}'")
-    print(f"Written to {out}")
-    return 0
-
-
-def cmd_sort(filepath, set_name, set_type="conv", key="name",
-             reverse=False, output=None):
-    """Sort channels or talkgroups within a set.
-
-    Args:
-        filepath: PRS file path
-        set_name: name of the target set
-        set_type: "conv" or "group"
-        key: sort key — "frequency", "name", "id", "tone"
-        reverse: if True, reverse sort order
-        output: output file path (default: overwrite input)
-    """
-    from .injector import sort_channels
-    from .prs_writer import write_prs
-
-    prs = parse_prs(filepath)
-    result = sort_channels(prs, set_name, set_type=set_type,
-                           key=key, reverse=reverse)
-
-    if not result:
-        print(f"Error: {set_type} set '{set_name}' not found",
-              file=sys.stderr)
-        return 1
-
-    out = Path(output) if output else Path(filepath)
-    write_prs(prs, out)
-    order = "descending" if reverse else "ascending"
-    print(f"Sorted {set_type} set '{set_name}' by {key} ({order})")
-    print(f"Written to {out}")
-    return 0
-
-
 def cmd_diff_report(filepath_a, filepath_b, output=None):
     """Generate a personality change report between two PRS files.
 

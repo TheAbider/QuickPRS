@@ -68,9 +68,10 @@ def write_double_le(value):
 def write_lps(s):
     """Write a length-prefixed string (1-byte length prefix + ASCII).
 
+    Non-ASCII characters are replaced with '?' to avoid crashes.
     Raises ValueError if string exceeds 255 bytes (1-byte length limit).
     """
-    encoded = s.encode('ascii')
+    encoded = s.encode('ascii', errors='replace')
     if len(encoded) > 255:
         raise ValueError(
             f"LPS string too long ({len(encoded)} bytes, max 255): "
