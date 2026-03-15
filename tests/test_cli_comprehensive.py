@@ -161,7 +161,7 @@ def test_no_args_exits_cleanly():
     r = subprocess.run(
         [sys.executable, '-m', 'quickprs'],
         capture_output=True, timeout=10,
-        env={**os.environ, 'DISPLAY': ''},  # prevent GUI launch attempt
+        env={**os.environ, 'DISPLAY': '', 'QUICKPRS_NO_GUI': '1'},
     )
     # May return 0 or 1 depending on whether GUI is available
     # Just verify it doesn't crash with a traceback
