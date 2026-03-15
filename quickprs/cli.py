@@ -78,6 +78,7 @@ Non-GUI operations for scripting and batch processing:
 """
 
 import csv
+import json
 import logging
 import sys
 from pathlib import Path
@@ -1885,6 +1886,80 @@ def cmd_fleet(config_path, units_csv, output_dir=None):
             print(f"  [{unit_id}] FAILED: {err}", file=sys.stderr)
 
     return 1 if failed > 0 else 0
+
+
+def cmd_fleet_check(files):
+    """Compare multiple PRS files for fleet consistency.
+
+    Args:
+        files: list of PRS file paths
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    from .fleet_check import check_fleet_consistency, format_fleet_report
+
+    for fp in files:
+        if not Path(fp).exists():
+            print(f"Error: file not found: {fp}", file=sys.stderr)
+            return 1
+
+    try:
+        results = check_fleet_consistency(files)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print(format_fleet_report(results))
+    return 0
+
+
+def cmd_snapshot(filepath, output=None, compare=None):
+    """Save or compare a configuration snapshot.
+
+    Args:
+        filepath: path to the PRS file
+        output: output path for snapshot JSON (save mode)
+        compare: path to existing snapshot JSON (compare mode)
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    from .prs_parser import parse_prs
+    from .fleet_check import (
+        save_snapshot, compare_to_snapshot, format_snapshot_comparison,
+    )
+
+    if not Path(filepath).exists():
+        print(f"Error: file not found: {filepath}", file=sys.stderr)
+        return 1
+
+    prs = parse_prs(filepath)
+
+    if compare:
+        # Compare mode
+        if not Path(compare).exists():
+            print(f"Error: snapshot not found: {compare}", file=sys.stderr)
+            return 1
+
+        try:
+            diff = compare_to_snapshot(prs, compare)
+        except (ValueError, json.JSONDecodeError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        print(format_snapshot_comparison(diff))
+        return 0
+    else:
+        # Save mode
+        try:
+            snap_path = save_snapshot(prs, filepath, snapshot_path=output)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        print(f"Snapshot saved: {snap_path}")
+        return 0
 
 
 def cmd_create(output_path, name=None, author=""):
@@ -3719,6 +3794,8 @@ def run_cli(args=None):
         "  profiles          Build from pre-built profile templates\n"
         "  wizard            Interactive guided setup\n"
         "  fleet             Batch-build for radio fleet\n"
+        "  fleet-check       Compare fleet for consistency\n"
+        "  snapshot          Save/compare configuration snapshots\n"
         "\n"
         "Modify:\n"
         "  inject            Add systems/channels/talkgroups\n"
@@ -4009,6 +4086,31 @@ def run_cli(args=None):
                           help="CSV file with unit_id,name,password columns")
     p_fleet.add_argument("-o", "--output", default=None,
                           help="Output directory (default: fleet_output/)")
+
+    # fleet-check
+    p_fcheck = sub.add_parser("fleet-check",
+                               help="Compare fleet radios for consistency",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs fleet-check radio1.PRS radio2.PRS radio3.PRS\n"
+               "  quickprs fleet-check fleet_dir/*.PRS")
+    p_fcheck.add_argument("files", nargs='+',
+                           help="PRS files to compare (2 or more)")
+
+    # snapshot
+    p_snap = sub.add_parser("snapshot",
+                             help="Save or compare configuration snapshots",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs snapshot radio.PRS\n"
+               "  quickprs snapshot radio.PRS -o baseline.json\n"
+               "  quickprs snapshot radio.PRS --compare baseline.json")
+    p_snap.add_argument("file", help="PRS file path")
+    p_snap.add_argument("-o", "--output", default=None,
+                         help="Snapshot output path "
+                              "(default: <file>.snapshot.json)")
+    p_snap.add_argument("--compare", default=None, metavar="SNAPSHOT",
+                         help="Compare against a saved snapshot JSON file")
 
     # remove
     p_remove = sub.add_parser("remove",
@@ -4948,6 +5050,11 @@ def run_cli(args=None):
         elif parsed.command == "fleet":
             return cmd_fleet(parsed.config, parsed.units,
                              output_dir=parsed.output)
+        elif parsed.command == "fleet-check":
+            return cmd_fleet_check(parsed.files)
+        elif parsed.command == "snapshot":
+            return cmd_snapshot(parsed.file, output=parsed.output,
+                                compare=parsed.compare)
         elif parsed.command == "remove":
             return cmd_remove(parsed.file, parsed.type, parsed.name,
                               output=parsed.output)

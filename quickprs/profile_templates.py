@@ -5,10 +5,14 @@ personality), profile templates create complete personalities with
 systems, channels, and options configured for a specific use case.
 
 Available profiles:
-    scanner_basic  - Basic scanner with NOAA and Marine channels
-    public_safety  - Public safety interoperability setup
-    ham_portable   - Amateur radio portable with calling freqs
-    gmrs_family    - GMRS/FRS family radio setup
+    scanner_basic    - Basic scanner with NOAA and Marine channels
+    public_safety    - Public safety interoperability setup
+    ham_portable     - Amateur radio portable with calling freqs
+    gmrs_family      - GMRS/FRS family radio setup
+    fire_department  - Fire department base configuration
+    law_enforcement  - Law enforcement base configuration
+    ems              - Emergency Medical Services configuration
+    search_rescue    - Search and Rescue configuration
 """
 
 import logging
@@ -47,6 +51,64 @@ PROFILE_TEMPLATES = {
         'templates': ['gmrs', 'frs', 'noaa'],
         'custom_channels': [],
         'options': {},
+    },
+    'fire_department': {
+        'description': 'Fire department base configuration',
+        'templates': ['interop', 'noaa'],
+        'custom_channels': [
+            {'short_name': 'FG 1', 'tx_freq': 154.280,
+             'long_name': 'Fireground 1'},
+            {'short_name': 'FG 2', 'tx_freq': 154.265,
+             'long_name': 'Fireground 2'},
+            {'short_name': 'FG 3', 'tx_freq': 154.295,
+             'long_name': 'Fireground 3'},
+            {'short_name': 'FG 4', 'tx_freq': 154.310,
+             'long_name': 'Fireground 4'},
+            {'short_name': 'CMD', 'tx_freq': 154.340,
+             'long_name': 'Command'},
+            {'short_name': 'HAZCHEM', 'tx_freq': 155.175,
+             'long_name': 'HazMat/Chemical'},
+        ],
+        'options': {'gps.gpsMode': 'ON', 'gps.reportInterval': '30'},
+    },
+    'law_enforcement': {
+        'description': 'Law enforcement base configuration',
+        'templates': ['interop'],
+        'custom_channels': [
+            {'short_name': 'CAR2CAR', 'tx_freq': 155.475,
+             'long_name': 'Car to Car'},
+            {'short_name': 'SURVEIL', 'tx_freq': 155.505,
+             'long_name': 'Surveillance'},
+            {'short_name': 'DET', 'tx_freq': 155.715,
+             'long_name': 'Detectives'},
+            {'short_name': 'TAC', 'tx_freq': 155.475,
+             'long_name': 'Tactical'},
+        ],
+        'options': {'gps.gpsMode': 'ON'},
+    },
+    'ems': {
+        'description': 'Emergency Medical Services configuration',
+        'templates': ['interop', 'noaa'],
+        'custom_channels': [
+            {'short_name': 'MED 1', 'tx_freq': 155.340,
+             'long_name': 'Med Channel 1'},
+            {'short_name': 'MED 9', 'tx_freq': 155.400,
+             'long_name': 'Med Channel 9'},
+            {'short_name': 'CLEMARS', 'tx_freq': 155.205,
+             'long_name': 'CLEMARS'},
+        ],
+        'options': {'gps.gpsMode': 'ON', 'gps.reportInterval': '15'},
+    },
+    'search_rescue': {
+        'description': 'Search and Rescue configuration',
+        'templates': ['interop', 'noaa', 'marine'],
+        'custom_channels': [
+            {'short_name': 'SAR 1', 'tx_freq': 155.160,
+             'long_name': 'SAR Primary'},
+            {'short_name': 'SAR CMD', 'tx_freq': 155.205,
+             'long_name': 'SAR Command'},
+        ],
+        'options': {'gps.gpsMode': 'ON', 'gps.reportInterval': '60'},
     },
 }
 
