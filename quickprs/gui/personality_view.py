@@ -237,6 +237,13 @@ class PersonalityView(ttk.Frame):
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
+        # Status indicator tags
+        self.tree.tag_configure("status_error", foreground="#cc3333")
+        self.tree.tag_configure("status_warning", foreground="#cc8800")
+        self.tree.tag_configure("status_near_capacity", foreground="#dd6600")
+        self.tree.tag_configure("status_empty", foreground="#999999")
+        self.tree.tag_configure("status_encrypted", foreground="#7744aa")
+
         # Double-click to show details
         self.tree.bind("<Double-1>", self._on_double_click)
 
@@ -323,6 +330,123 @@ class PersonalityView(ttk.Frame):
 
         if opened:
             self._restore_expand_state(opened)
+
+        # Apply status indicators after tree is built
+        self._apply_status_indicators()
+
+    def _apply_status_indicators(self):
+        """Apply visual indicators to tree items based on validation results.
+
+        Tags items with colored foreground text:
+        - Systems/sets with validation errors: red
+        - Systems/sets with validation warnings: orange
+        - Group sets near capacity (>100 TGs): orange
+        - Empty sets (0 items): gray
+        - Encrypted talkgroups: purple
+        """
+        prs = self.app.prs
+        if not prs:
+            return
+
+        try:
+            from ..validation import validate_prs_detailed, ERROR, WARNING
+            detailed = validate_prs_detailed(prs)
+        except Exception:
+            detailed = {}
+
+        try:
+            from ..health_check import run_health_check, CRITICAL, WARN
+            health = run_health_check(prs)
+        except Exception:
+            health = []
+
+        # Build lookup: category name -> worst severity
+        # Categories look like "Group Set: PSERN PD", "Trunk Set: PSERN", etc.
+        category_severity = {}
+        for cat_name, issues in detailed.items():
+            for severity, _msg in issues:
+                prev = category_severity.get(cat_name, "")
+                if severity == ERROR or prev != ERROR:
+                    category_severity[cat_name] = severity
+
+        # Health check items: (severity, category, message, suggestion)
+        for item in health:
+            sev, cat, _msg, _sug = item
+            if sev == CRITICAL:
+                mapped = ERROR
+            elif sev == WARN:
+                mapped = WARNING
+            else:
+                continue
+            prev = category_severity.get(cat, "")
+            if mapped == ERROR or prev != ERROR:
+                category_severity[cat] = mapped
+
+        # Walk all tree items and apply tags
+        stack = list(self.tree.get_children())
+        while stack:
+            iid = stack.pop()
+            meta = self._item_meta.get(iid, {})
+            item_type = meta.get("type", "")
+            name = meta.get("name", "")
+            tags = list(self.tree.item(iid, "tags") or ())
+
+            # Check group sets for capacity and emptiness
+            if item_type == "group_set":
+                set_data = meta.get("set_data")
+                if set_data:
+                    n_groups = len(set_data.groups)
+                    if n_groups == 0 and "status_empty" not in tags:
+                        tags.append("status_empty")
+                    elif n_groups > 100 and "status_near_capacity" not in tags:
+                        tags.append("status_near_capacity")
+                # Check validation issues
+                cat_key = f"Group Set: {name}"
+                sev = category_severity.get(cat_key)
+                if sev == ERROR and "status_error" not in tags:
+                    tags.append("status_error")
+                elif sev == WARNING and "status_warning" not in tags:
+                    tags.append("status_warning")
+
+            elif item_type in ("trunk_set", "conv_set", "iden_set",
+                               "p25_conv_set"):
+                set_data = meta.get("set_data")
+                prefix_map = {
+                    "trunk_set": "Trunk Set",
+                    "conv_set": "Conv Set",
+                    "iden_set": "IDEN Set",
+                    "p25_conv_set": "P25 Conv Set",
+                }
+                prefix = prefix_map.get(item_type, "")
+                cat_key = f"{prefix}: {name}"
+                sev = category_severity.get(cat_key)
+                if sev == ERROR and "status_error" not in tags:
+                    tags.append("status_error")
+                elif sev == WARNING and "status_warning" not in tags:
+                    tags.append("status_warning")
+                # Check empty sets
+                if set_data:
+                    items_attr = getattr(set_data, 'channels',
+                                         getattr(set_data, 'groups',
+                                                 getattr(set_data,
+                                                         'elements',
+                                                         None)))
+                    if items_attr is not None and len(items_attr) == 0:
+                        if "status_empty" not in tags:
+                            tags.append("status_empty")
+
+            elif item_type == "talkgroup":
+                # Encrypted TGs get purple text
+                long_name = meta.get("long_name", "")
+                tree_values = self.tree.item(iid, "values")
+                detail_str = tree_values[0] if tree_values else ""
+                if "ENC" in detail_str and "status_encrypted" not in tags:
+                    tags.append("status_encrypted")
+
+            if tags:
+                self.tree.item(iid, tags=tags)
+
+            stack.extend(self.tree.get_children(iid))
 
     def _insert(self, parent, index, text="", values=(), open=False,
                 meta=None, **kw):

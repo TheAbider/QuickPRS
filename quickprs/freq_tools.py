@@ -812,3 +812,76 @@ def generate_freq_map(prs, band=None):
     lines.append("Legend: ==== simplex  #### repeater  //// trunked")
 
     return lines
+
+
+# ─── P25 Channel Calculator ──────────────────────────────────────
+
+def calculate_p25_channel(base_freq_mhz, spacing_khz, lcn):
+    """Calculate the actual RF frequency for a P25 logical channel number.
+
+    Uses the standard P25 IDEN formula:
+        freq_mhz = base_freq_mhz + (lcn * spacing_khz / 1000)
+
+    Args:
+        base_freq_mhz: IDEN base frequency in MHz
+        spacing_khz: channel spacing in kHz (e.g. 6.25, 12.5, 25.0)
+        lcn: logical channel number (integer)
+
+    Returns:
+        Calculated frequency in MHz (float)
+    """
+    return base_freq_mhz + (lcn * spacing_khz / 1000.0)
+
+
+def p25_channel_range(base_freq_mhz, spacing_khz, lcn_start, lcn_end):
+    """Calculate frequencies for a range of P25 logical channel numbers.
+
+    Args:
+        base_freq_mhz: IDEN base frequency in MHz
+        spacing_khz: channel spacing in kHz
+        lcn_start: first LCN (inclusive)
+        lcn_end: last LCN (inclusive)
+
+    Returns:
+        List of (lcn, freq_mhz) tuples
+    """
+    results = []
+    for lcn in range(lcn_start, lcn_end + 1):
+        freq = calculate_p25_channel(base_freq_mhz, spacing_khz, lcn)
+        results.append((lcn, freq))
+    return results
+
+
+# ─── Channel Spacing Calculator ──────────────────────────────────
+
+def calculate_channel_spacing(freq1_mhz, freq2_mhz):
+    """Calculate the spacing between two frequencies and analyze fit.
+
+    Args:
+        freq1_mhz: first frequency in MHz
+        freq2_mhz: second frequency in MHz
+
+    Returns:
+        dict with:
+            spacing_khz: absolute spacing in kHz
+            channels_12_5: how many 12.5 kHz channels fit between them
+            channels_25: how many 25 kHz channels fit between them
+            would_interfere_nb: True if spacing < 12.5 kHz (narrowband)
+            would_interfere_wb: True if spacing < 25 kHz (wideband)
+    """
+    spacing_mhz = abs(freq2_mhz - freq1_mhz)
+    spacing_khz = round(spacing_mhz * 1000.0, 4)
+
+    # Number of channels that fit between the two frequencies (exclusive)
+    channels_12_5 = max(0, int(spacing_khz / 12.5) - 1) if spacing_khz > 0 else 0
+    channels_25 = max(0, int(spacing_khz / 25.0) - 1) if spacing_khz > 0 else 0
+
+    # Use small tolerance for float comparison (0.01 kHz = 10 Hz)
+    eps = 0.01
+    return {
+        'spacing_khz': round(spacing_khz, 3),
+        'channels_12_5': channels_12_5,
+        'channels_25': channels_25,
+        'would_interfere_nb': spacing_khz < 12.5 - eps,
+        'would_interfere_wb': spacing_khz < 25.0 - eps,
+    }

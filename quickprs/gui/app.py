@@ -254,6 +254,8 @@ class QuickPRSApp:
         tools_menu.add_separator()
         tools_menu.add_command(label="Frequency Reference...",
                                 command=self._show_freq_reference)
+        tools_menu.add_command(label="Radio Calculator...",
+                                command=self._show_calculator)
         tools_menu.add_separator()
         tools_menu.add_command(label="Cleanup...",
                                 command=self._show_cleanup_dialog)
@@ -303,6 +305,14 @@ class QuickPRSApp:
         ttk.Button(toolbar, text="Templates", command=self.add_template_channels,
                     width=10).pack(side=tk.LEFT, padx=2)
 
+        # Context-aware dynamic button (changes based on tree selection)
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(
+            side=tk.LEFT, fill=tk.Y, padx=4)
+        self._ctx_button_frame = ttk.Frame(toolbar)
+        self._ctx_button_frame.pack(side=tk.LEFT, padx=2)
+        self._ctx_button = None
+        self._ctx_button_text = tk.StringVar(value="")
+
         # Import section
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(
             side=tk.LEFT, fill=tk.Y, padx=4)
@@ -325,6 +335,51 @@ class QuickPRSApp:
         # Right side - capacity indicator
         self._capacity_label = ttk.Label(toolbar, text="")
         self._capacity_label.pack(side=tk.RIGHT, padx=8)
+
+    def _on_tree_selection_changed(self, _event=None):
+        """Update the context-aware toolbar button based on tree selection."""
+        if not hasattr(self, 'personality_view'):
+            return
+        pv = self.personality_view
+        sel = pv.tree.selection()
+        if not sel:
+            self._set_context_button(None, None, None)
+            return
+
+        meta = pv._item_meta.get(sel[0], {})
+        item_type = meta.get("type", "")
+        name = meta.get("name", "")
+
+        if item_type == "group_set":
+            label = f"+ TG to {name}" if name else "+ TG"
+            self._set_context_button(
+                label, lambda n=name: pv._add_talkgroup_dialog(n), 14)
+        elif item_type == "conv_set":
+            label = f"+ CH to {name}" if name else "+ CH"
+            self._set_context_button(
+                label, lambda n=name: pv._add_channel_dialog(n), 14)
+        elif item_type == "p25_conv_set":
+            label = f"+ CH to {name}" if name else "+ CH"
+            self._set_context_button(
+                label, lambda n=name: pv._add_channel_dialog(n), 14)
+        elif item_type == "trunk_set":
+            label = f"+ Freq to {name}" if name else "+ Freq"
+            self._set_context_button(
+                label, lambda n=name: pv._add_frequency_dialog(n), 16)
+        else:
+            self._set_context_button(None, None, None)
+
+    def _set_context_button(self, label, command, width):
+        """Update or remove the context-aware toolbar button."""
+        if self._ctx_button is not None:
+            self._ctx_button.destroy()
+            self._ctx_button = None
+
+        if label and command:
+            self._ctx_button = ttk.Button(
+                self._ctx_button_frame, text=label,
+                command=command, width=width)
+            self._ctx_button.pack(side=tk.LEFT)
 
     # ─── Welcome screen ─────────────────────────────────────────────
 
@@ -416,6 +471,10 @@ class QuickPRSApp:
         self.personality_view = PersonalityView(left_frame, self)
         self.personality_view.pack(fill=tk.BOTH, expand=True)
         paned.add(left_frame, weight=1)
+
+        # Bind tree selection to update context-aware toolbar button
+        self.personality_view.tree.bind(
+            "<<TreeviewSelect>>", self._on_tree_selection_changed)
 
         # Right: notebook with tabs
         right_frame = ttk.Frame(paned)
@@ -3006,6 +3065,11 @@ class QuickPRSApp:
         btn_frame.pack(fill=tk.X, padx=6, pady=6)
         ttk.Button(btn_frame, text="Close", width=10,
                    command=win.destroy).pack(side=tk.RIGHT)
+
+    def _show_calculator(self):
+        """Show the standalone radio calculator dialog."""
+        from .calculator import RadioCalculator
+        RadioCalculator(self.root, app=self)
 
     # ─── Theme ─────────────────────────────────────────────────────
 
