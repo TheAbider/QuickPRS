@@ -1,8 +1,11 @@
-"""Config-file-based PRS builder.
+"""Config-file-based PRS builder and exporter.
 
 Builds a complete PRS personality from a single INI-style configuration
 file. This is the "define everything in one place" approach — one config
 file specifies systems, channels, talkgroups, and radio options.
+
+Also exports existing PRS files back to INI config format, enabling a
+round-trip workflow: export -> edit in text editor -> rebuild.
 
 Config format uses configparser (stdlib) with the following sections:
 
@@ -15,11 +18,13 @@ Config format uses configparser (stdlib) with the following sections:
 
 Usage:
     prs = build_from_config("config.ini")
+    export_config(prs, "exported.ini")
 """
 
 import configparser
 import logging
 import re
+from pathlib import Path
 
 logger = logging.getLogger("quickprs")
 
@@ -427,3 +432,229 @@ def _apply_options(cfg, prs):
     # Write back
     xml_str = config_to_xml(config)
     write_platform_config(prs, xml_str)
+
+
+# ─── Export: PRS → INI config ──────────────────────────────────────
+
+
+def export_config(prs, filepath, source_path=None):
+    """Export a PRS file as an INI config file.
+
+    The exported config can be edited and rebuilt with ``quickprs build``.
+
+    Sections:
+    - [personality] with name, author
+    - [system.X] for each P25 trunked system
+    - [system.X.frequencies] with trunk freqs
+    - [system.X.talkgroups] with TG data
+    - [channels.X] for each conv set (with template detection or inline channels)
+    - [options] for radio options from platformConfig XML
+
+    Args:
+        prs: PRSFile object
+        filepath: output .ini file path
+        source_path: optional path to the source PRS (for comment header)
+
+    Returns:
+        str: path written to
+    """
+    from .json_io import prs_to_dict
+    from .templates import get_template_names, get_template_channels
+
+    d = prs_to_dict(prs)
+    lines = []
+
+    # Header comment
+    lines.append("# QuickPRS configuration file")
+    if source_path:
+        lines.append(f"# Exported from: {Path(source_path).name}")
+    lines.append("# Edit and rebuild with: quickprs build <this_file>")
+    lines.append("")
+
+    # [personality]
+    pers = d.get("personality", {})
+    lines.append("[personality]")
+    lines.append(f"name = {pers.get('filename', 'New Personality.PRS')}")
+    saved_by = pers.get("saved_by", "")
+    if saved_by:
+        lines.append(f"author = {saved_by}")
+    lines.append("")
+
+    # Systems — P25 trunked
+    systems = d.get("systems", [])
+    trunk_sets = d.get("trunk_sets", [])
+    group_sets = d.get("group_sets", [])
+    wan_entries = d.get("wan_entries", [])
+
+    # Index trunk/group sets by name for lookup
+    trunk_by_name = {ts["name"].strip(): ts for ts in trunk_sets}
+    group_by_name = {gs["name"].strip(): gs for gs in group_sets}
+    wan_by_name = {we["wan_name"].strip(): we for we in wan_entries}
+
+    sys_index = 0
+    for sys_d in systems:
+        sys_type = sys_d.get("type", "")
+        if sys_type != "P25Trunked":
+            continue
+
+        sys_name = sys_d.get("name", f"SYS{sys_index}").strip()
+        # Sanitize for INI section names (no dots)
+        safe_name = sys_name.replace(".", "_")
+        sys_index += 1
+
+        lines.append(f"[system.{safe_name}]")
+        lines.append("type = p25_trunked")
+
+        long_name = sys_d.get("long_name", "").strip()
+        if long_name and long_name != sys_name:
+            lines.append(f"long_name = {long_name}")
+
+        # Get system_id and wacn from WAN entries
+        wan_name = sys_d.get("wan_name", sys_name).strip()
+        wan_entry = wan_by_name.get(wan_name)
+        system_id = 0
+        wacn = 0
+        if wan_entry:
+            system_id = wan_entry.get("system_id", 0)
+            wacn = wan_entry.get("wacn", 0)
+
+        lines.append(f"system_id = {system_id}")
+        if wacn:
+            lines.append(f"wacn = {wacn}")
+
+        lines.append("")
+
+        # Trunk frequencies
+        trunk_ref = sys_d.get("trunk_set", sys_name).strip()
+        tset = trunk_by_name.get(trunk_ref)
+        if tset and tset.get("channels"):
+            lines.append(f"[system.{safe_name}.frequencies]")
+            for i, ch in enumerate(tset["channels"], 1):
+                tx = ch["tx_freq"]
+                rx = ch["rx_freq"]
+                if abs(tx - rx) < 0.0001:
+                    lines.append(f"{i} = {tx}")
+                else:
+                    lines.append(f"{i} = {tx},{rx}")
+            lines.append("")
+
+        # Talkgroups
+        group_ref = sys_d.get("group_set", sys_name).strip()
+        gset = group_by_name.get(group_ref)
+        if gset and gset.get("groups"):
+            lines.append(f"[system.{safe_name}.talkgroups]")
+            for i, tg in enumerate(gset["groups"], 1):
+                gid = tg["id"]
+                short = tg.get("short_name", f"TG{gid}").strip()
+                long_n = tg.get("long_name", short).strip()
+                if long_n and long_n != short:
+                    lines.append(f"{i} = {gid},{short},{long_n}")
+                else:
+                    lines.append(f"{i} = {gid},{short}")
+            lines.append("")
+
+    # Conventional channel sets
+    conv_sets = d.get("conv_sets", [])
+    template_cache = _build_template_cache()
+
+    for cset in conv_sets:
+        set_name = cset["name"].strip()
+        if not set_name or set_name == "Conv 1":
+            # Skip the default blank conv set
+            channels = cset.get("channels", [])
+            if len(channels) <= 1:
+                continue
+
+        safe_name = set_name.replace(".", "_")
+        channels = cset.get("channels", [])
+
+        # Try to detect if this matches a template
+        matched_template = _detect_template(channels, template_cache)
+        if matched_template:
+            lines.append(f"[channels.{safe_name}]")
+            lines.append(f"template = {matched_template}")
+            lines.append("")
+        else:
+            lines.append(f"[channels.{safe_name}]")
+            for i, ch in enumerate(channels, 1):
+                short = ch.get("short_name", "CH").strip()
+                tx = ch["tx_freq"]
+                rx = ch.get("rx_freq", tx)
+                tx_tone = ch.get("tx_tone", "")
+                rx_tone = ch.get("rx_tone", "")
+                long_n = ch.get("long_name", short).strip()
+                lines.append(
+                    f"{i} = {short},{tx},{rx},{tx_tone},{rx_tone},{long_n}")
+            lines.append("")
+
+    # Options from platformConfig
+    options = d.get("options", {})
+    platform_config = options.get("platform_config", {})
+    if platform_config:
+        option_lines = _flatten_config(platform_config)
+        if option_lines:
+            lines.append("[options]")
+            for key, value in option_lines:
+                lines.append(f"{key} = {value}")
+            lines.append("")
+
+    # Write to file
+    out_path = Path(filepath)
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    return str(out_path)
+
+
+def _build_template_cache():
+    """Build a cache of template channels for matching.
+
+    Returns dict mapping template name -> list of tx_freq values (sorted).
+    """
+    from .templates import get_template_names, get_template_channels
+
+    cache = {}
+    for name in get_template_names():
+        try:
+            channels = get_template_channels(name)
+            freqs = sorted(round(ch["tx_freq"], 6) for ch in channels)
+            cache[name] = freqs
+        except Exception:
+            continue
+    return cache
+
+
+def _detect_template(channels, template_cache):
+    """Check if a set of channels matches a built-in template.
+
+    Compares the sorted TX frequencies of the channel set against
+    each template. Returns the template name if matched, else None.
+    """
+    if not channels:
+        return None
+
+    ch_freqs = sorted(round(ch["tx_freq"], 6) for ch in channels)
+
+    for name, template_freqs in template_cache.items():
+        if ch_freqs == template_freqs:
+            return name
+
+    return None
+
+
+def _flatten_config(config, prefix=""):
+    """Flatten a nested config dict into dot-separated key=value pairs.
+
+    Args:
+        config: nested dict from extract_platform_config
+        prefix: current key prefix for recursion
+
+    Returns:
+        list of (key, value) tuples
+    """
+    result = []
+    for key, value in config.items():
+        full_key = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            result.extend(_flatten_config(value, full_key))
+        else:
+            result.append((full_key, str(value)))
+    return result

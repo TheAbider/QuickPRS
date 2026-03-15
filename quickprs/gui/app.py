@@ -142,6 +142,8 @@ class QuickPRSApp:
         file_menu.add_command(label="Export JSON...",
                               command=self.export_json,
                               accelerator="Ctrl+E")
+        file_menu.add_command(label="Export as Config...",
+                              command=self.export_config)
         file_menu.add_command(label="Import JSON...",
                               command=self.import_json)
         file_menu.add_command(label="Merge PRS...",
@@ -1609,6 +1611,34 @@ class QuickPRSApp:
         except Exception as e:
             log_error("export_json", str(e), path=path)
             messagebox.showerror("Error", f"Failed to export JSON:\n{e}")
+
+    def export_config(self):
+        """Export the current PRS as an editable INI config file."""
+        if not self.prs:
+            messagebox.showwarning("Warning", "No file loaded.")
+            return
+
+        initial_name = (self.prs_path.stem + ".ini") if self.prs_path else "config.ini"
+        path = filedialog.asksaveasfilename(
+            title="Export as Config",
+            defaultextension=".ini",
+            filetypes=[("Config files", "*.ini"), ("All Files", "*.*")],
+            initialfile=initial_name,
+        )
+        if not path:
+            return
+
+        try:
+            from ..config_builder import export_config as do_export
+            source = str(self.prs_path) if self.prs_path else None
+            do_export(self.prs, path, source_path=source)
+            self.status_set(f"Exported config: {Path(path).name}")
+            log_action("export_config", path=path)
+        except (PermissionError, FileNotFoundError) as e:
+            messagebox.showerror("Error", f"File access error:\n{e}")
+        except Exception as e:
+            log_error("export_config", str(e), path=path)
+            messagebox.showerror("Error", f"Failed to export config:\n{e}")
 
     def import_json(self):
         """Import a PRS personality from a JSON file."""

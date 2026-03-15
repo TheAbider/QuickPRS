@@ -69,6 +69,9 @@ Non-GUI operations for scripting and batch processing:
     quickprs rename file.PRS --set "PSERN PD" --pattern "^PD " --replace ""
     quickprs sort file.PRS --set "MURS" --key frequency
     quickprs diff-report before.PRS after.PRS [-o report.txt]
+    quickprs export-config file.PRS [-o config.ini]
+    quickprs profiles list
+    quickprs profiles build scanner_basic [-o scanner.PRS]
 """
 
 import csv
@@ -1663,6 +1666,108 @@ def cmd_build(config_path, output=None):
         print(f"  Validation: OK ({len(warnings)} warnings)")
 
     return 0
+
+
+def cmd_export_config(filepath, output=None):
+    """Export a PRS file as an INI config file.
+
+    The exported config can be edited and rebuilt with ``quickprs build``.
+
+    Args:
+        filepath: path to the PRS file
+        output: output .ini file path (default: same name with .ini)
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    from .config_builder import export_config
+
+    filepath = Path(filepath)
+    if not filepath.exists():
+        print(f"Error: file not found: {filepath}", file=sys.stderr)
+        return 1
+
+    if output is None:
+        output = filepath.with_suffix('.ini')
+
+    try:
+        prs = parse_prs(str(filepath))
+        result_path = export_config(prs, str(output),
+                                    source_path=str(filepath))
+        print(f"Exported config: {result_path}")
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_profiles(subcmd, profile_name=None, output=None):
+    """List or build from profile templates.
+
+    Args:
+        subcmd: 'list' or 'build'
+        profile_name: profile name (for 'build')
+        output: output PRS path (for 'build')
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    from .profile_templates import (
+        list_profile_templates, build_from_profile,
+    )
+
+    if subcmd == "list":
+        profiles = list_profile_templates()
+        if not profiles:
+            print("No profile templates available.")
+            return 0
+        print("Available profile templates:\n")
+        for name, desc in profiles:
+            print(f"  {name:20s}  {desc}")
+        print(f"\nUse 'quickprs profiles build <name>' to create a PRS.")
+        return 0
+
+    elif subcmd == "build":
+        if not profile_name:
+            print("Error: profile name required", file=sys.stderr)
+            return 1
+
+        try:
+            prs = build_from_profile(profile_name)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        if output is None:
+            output = f"{profile_name.upper()}.PRS"
+
+        out = Path(output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        raw = prs.to_bytes()
+        out.write_bytes(raw)
+
+        print(f"Built: {out}")
+        print(f"  Profile: {profile_name}")
+        print(f"  Size: {len(raw):,} bytes")
+        print(f"  Sections: {len(prs.sections)}")
+
+        # Validate
+        from .validation import validate_prs as _validate_prs
+        issues = _validate_prs(prs)
+        errors = [m for s, m in issues if s == ERROR]
+        if errors:
+            print(f"  Validation: {len(errors)} errors", file=sys.stderr)
+            for msg in errors[:5]:
+                print(f"    [ERROR] {msg}", file=sys.stderr)
+            return 1
+        else:
+            warnings = [m for s, m in issues if s not in (ERROR,)]
+            print(f"  Validation: OK ({len(warnings)} warnings)")
+
+        return 0
+
+    print(f"Error: unknown profiles subcommand: {subcmd}", file=sys.stderr)
+    return 1
 
 
 def cmd_fleet(config_path, units_csv, output_dir=None):
@@ -3612,6 +3717,7 @@ def run_cli(args=None):
         "Create & Build:\n"
         "  create            Create a new blank PRS file\n"
         "  build             Build from INI config file\n"
+        "  profiles          Build from pre-built profile templates\n"
         "  wizard            Interactive guided setup\n"
         "  fleet             Batch-build for radio fleet\n"
         "\n"
@@ -3641,6 +3747,7 @@ def run_cli(args=None):
         "  export            Export to CHIRP, Uniden, SDRTrunk, DSD+, Markdown\n"
         "  export-csv        Export all data to CSV files\n"
         "  export-json       Export PRS to structured JSON\n"
+        "  export-config     Export PRS as editable INI config file\n"
         "  report            Generate full HTML report\n"
         "  card              Generate printable summary reference card\n"
         "\n"
@@ -3825,6 +3932,35 @@ def run_cli(args=None):
     p_build.add_argument("config", help="INI config file path")
     p_build.add_argument("-o", "--output", default=None,
                           help="Output PRS path (default: same name .PRS)")
+
+    # export-config
+    p_exp_cfg = sub.add_parser("export-config",
+                                help="Export PRS as editable INI config",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs export-config radio.PRS\n"
+               "  quickprs export-config radio.PRS -o config.ini")
+    p_exp_cfg.add_argument("file", help="PRS file path")
+    p_exp_cfg.add_argument("-o", "--output", default=None,
+                            help="Output INI path (default: same name .ini)")
+
+    # profiles
+    p_prof = sub.add_parser("profiles",
+                             help="Build from pre-built profile templates",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs profiles list\n"
+               "  quickprs profiles build scanner_basic\n"
+               "  quickprs profiles build ham_portable -o ham.PRS")
+    p_prof_sub = p_prof.add_subparsers(dest="prof_cmd",
+                                        metavar="<subcommand>")
+    p_prof_list = p_prof_sub.add_parser("list",
+                                         help="List available profiles")
+    p_prof_build = p_prof_sub.add_parser("build",
+                                          help="Build from a profile")
+    p_prof_build.add_argument("profile", help="Profile template name")
+    p_prof_build.add_argument("-o", "--output", default=None,
+                               help="Output PRS path")
 
     # fleet
     p_fleet = sub.add_parser("fleet",
@@ -4743,6 +4879,17 @@ def run_cli(args=None):
                               author=parsed.author)
         elif parsed.command == "build":
             return cmd_build(parsed.config, output=parsed.output)
+        elif parsed.command == "export-config":
+            return cmd_export_config(parsed.file, output=parsed.output)
+        elif parsed.command == "profiles":
+            if parsed.prof_cmd is None:
+                p_prof.print_help()
+                return 1
+            elif parsed.prof_cmd == "list":
+                return cmd_profiles("list")
+            elif parsed.prof_cmd == "build":
+                return cmd_profiles("build", parsed.profile,
+                                    output=parsed.output)
         elif parsed.command == "fleet":
             return cmd_fleet(parsed.config, parsed.units,
                              output_dir=parsed.output)
