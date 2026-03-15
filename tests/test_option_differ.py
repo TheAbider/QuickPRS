@@ -44,6 +44,7 @@ ACC_NOISE = EVERY_OPT / "new radio - accessory device option - noise cancelation
 
 class TestIdenticalFiles:
 
+    @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_same_file_no_diffs(self):
         prs = parse_prs(BASELINE)
         diffs = diff_options(prs, prs)
@@ -56,6 +57,7 @@ class TestIdenticalFiles:
 
 # ─── Battery settings diffs ──────────────────────────────────────────
 
+@pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
 class TestBatteryDiffs:
 
     def test_nimh_to_alkaline(self):
@@ -93,6 +95,7 @@ class TestBatteryDiffs:
 
 # ─── Audio settings diffs ────────────────────────────────────────────
 
+@pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
 class TestAudioDiffs:
 
     def test_speaker_off(self):
@@ -137,6 +140,7 @@ class TestAudioDiffs:
 
 # ─── Binary section diffs ────────────────────────────────────────────
 
+@pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
 class TestBinarySectionDiffs:
 
     @pytest.mark.skipif(not ACC_PTT.exists(),
@@ -160,6 +164,7 @@ class TestBinarySectionDiffs:
 
 # ─── Raw byte diffs ──────────────────────────────────────────────────
 
+@pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
 class TestRawByteDiffs:
 
     def test_no_section_returns_empty(self):
@@ -220,6 +225,7 @@ class TestFormatOptionDiff:
 
 # ─── CLI integration ─────────────────────────────────────────────────
 
+@pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
 class TestCliDiffOptions:
 
     def test_cli_diff_options(self):
@@ -254,6 +260,7 @@ class TestCliDiffOptions:
 PAWSOVERMAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 
 
+@pytest.mark.skipif(not BASELINE.exists() or not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestFriendlyValueFormatting:
     """Tests that diff output uses display_map and onoff formatting."""
 
@@ -283,6 +290,7 @@ class TestFriendlyValueFormatting:
 
 # ─── Programmable button diffs ──────────────────────────────────────
 
+@pytest.mark.skipif(not BASELINE.exists() or not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestProgButtonDiffs:
     """Tests for programmable button diff display."""
 
@@ -331,6 +339,7 @@ class TestProgButtonDiffs:
 
 # ─── Edge case: malformed / asymmetric XML ─────────────────────────
 
+@pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
 class TestXmlEdgeCases:
 
     def test_malformed_xml_both(self):

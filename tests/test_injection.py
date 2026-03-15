@@ -13,6 +13,7 @@ import sys
 import struct
 from pathlib import Path
 from copy import deepcopy
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -44,6 +45,8 @@ from quickprs.record_types import (
 from quickprs.validation import validate_prs, validate_group_set, LIMITS
 
 TESTDATA = Path(__file__).parent / "testdata"
+CLAUDE = TESTDATA / "claude test.PRS"
+PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 
 
 def _get_group_sets(prs):
@@ -66,6 +69,7 @@ def _get_trunk_sets(prs):
     return parse_trunk_channel_section(ch_sec.raw, ch_data, len(ch_sec.raw), first_count)
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_add_talkgroups():
     """Add talkgroups to an existing group set in claude test.PRS."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -107,6 +111,7 @@ def test_add_talkgroups():
     print(f"  PASS: Added 3 talkgroups (1 -> 4), size {original_size} -> {new_size}")
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_add_group_set():
     """Add an entirely new group set to claude test.PRS."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -139,6 +144,7 @@ def test_add_group_set():
           f"size {original_size} -> {new_size}")
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_add_trunk_channels():
     """Add trunk channels to existing set in claude test.PRS."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -167,6 +173,7 @@ def test_add_trunk_channels():
           f"size {original_size} -> {new_size}")
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_add_trunk_set():
     """Add a new trunk set to claude test.PRS."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -189,6 +196,7 @@ def test_add_trunk_set():
           f"size {original_size} -> {new_size}")
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_injection_double_roundtrip():
     """Parse -> inject -> write -> parse again -> verify consistency."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -221,6 +229,7 @@ def test_injection_double_roundtrip():
             tmp.unlink()
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_validation_clean():
     """Validate unmodified PAWSOVERMAWS — should have no errors."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -262,6 +271,7 @@ def test_validation_name_lengths():
     print(f"  PASS: Name length limits enforced ({len(errors)} errors)")
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_system_name_extraction():
     """Extract system names from header and config data sections."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -288,6 +298,7 @@ def test_system_name_extraction():
     print("  PASS: System name extraction")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_system_name_extraction_pawsovermaws():
     """Extract system names from PAWSOVERMAWS test file."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -312,6 +323,7 @@ def test_system_name_extraction_pawsovermaws():
     print("  PASS: System name extraction (PAWSOVERMAWS)")
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_system_config_detection():
     """Test is_system_config_data() on various section types."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -375,6 +387,7 @@ def test_p25_trunked_system_config_build():
     print("  PASS: P25TrkSystem config build")
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_add_p25_trunked_system():
     """Add a complete P25 trunked system to claude test.PRS."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -466,6 +479,7 @@ def test_add_p25_trunked_system():
             tmp.unlink()
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_add_system_to_pawsovermaws():
     """Add a system to the larger PAWSOVERMAWS file."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -569,6 +583,7 @@ def test_p25_conv_system_config_build():
     print("  PASS: P25ConvSystem config build")
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_add_conv_system():
     """Add a conventional system with channels to claude test.PRS."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -632,6 +647,7 @@ def test_add_conv_system():
             tmp.unlink()
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_add_p25_conv_system():
     """Add a P25 conventional system to claude test.PRS."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -677,6 +693,7 @@ def test_add_p25_conv_system():
             tmp.unlink()
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_add_conv_set_to_existing():
     """Add a new conv set to PAWSOVERMAWS (which already has conv sets)."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -714,6 +731,7 @@ def test_add_conv_set_to_existing():
             tmp.unlink()
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_conv_from_parsed_channels():
     """Full flow: parse conv channels -> make_conv_set -> inject into PRS."""
     from quickprs.radioreference import (
@@ -777,6 +795,7 @@ def test_conv_from_parsed_channels():
             tmp.unlink()
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_remove_system_config():
     """Remove a system config data section by long name."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -815,6 +834,7 @@ def test_remove_system_config():
             tmp.unlink()
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_remove_system_by_class():
     """Remove all sections for a system type."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -842,6 +862,7 @@ def test_remove_system_by_class():
             tmp.unlink()
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_batch_modify_selected_tgs():
     """Batch-modify specific selected talkgroups by ID."""
     from quickprs.injector import (
@@ -919,6 +940,7 @@ def test_batch_modify_selected_tgs():
             tmp.unlink()
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_batch_delete_selected_tgs():
     """Batch-delete specific selected talkgroups by ID."""
     from quickprs.injector import (
@@ -1072,6 +1094,7 @@ def test_add_preferred_entries():
             tmp.unlink()
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_preferred_roundtrip():
     """Parse → build → compare for both test files."""
     from quickprs.record_types import parse_preferred_section, build_preferred_section
@@ -1087,11 +1110,9 @@ def test_preferred_roundtrip():
                 assert rebuilt == original, f"Roundtrip mismatch for {fpath.name}"
 
 
-import pytest
-
-
 # ─── ValueError error path tests ─────────────────────────────────────
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_add_trunk_set_no_existing_raises():
     """add_trunk_set on a file without trunk sections should raise."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -1103,6 +1124,7 @@ def test_add_trunk_set_no_existing_raises():
         add_trunk_set(prs, ts)
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_add_trunk_channels_missing_set_raises():
     """add_trunk_channels with a bad set name should raise."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -1111,6 +1133,7 @@ def test_add_trunk_channels_missing_set_raises():
         add_trunk_channels(prs, "NONEXISTENT_SET", [ch])
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_add_group_set_no_existing_raises():
     """add_group_set on a file without group sections should raise."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -1121,6 +1144,7 @@ def test_add_group_set_no_existing_raises():
         add_group_set(prs, gs)
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_add_talkgroups_missing_set_raises():
     """add_talkgroups with a bad set name should raise."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -1129,6 +1153,7 @@ def test_add_talkgroups_missing_set_raises():
         add_talkgroups(prs, "NONEXISTENT_SET", [tg])
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_add_iden_set_no_existing_raises():
     """add_iden_set on a file without IDEN sections should raise."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -1139,6 +1164,7 @@ def test_add_iden_set_no_existing_raises():
         add_iden_set(prs, iset)
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_add_conv_set_no_existing_raises():
     """add_conv_set on a file without conv sections should raise."""
     prs = parse_prs(TESTDATA / "claude test.PRS")
@@ -1151,6 +1177,7 @@ def test_add_conv_set_no_existing_raises():
 
 # ─── Create-from-scratch tests (via add_p25_trunked_system) ─────────
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_create_trunk_from_scratch():
     """Injecting a system with trunk set into a file without trunk sections
     should create them from scratch via _safe_add_trunk_set."""
@@ -1175,6 +1202,7 @@ def test_create_trunk_from_scratch():
     assert prs.get_section_by_class("CTrunkSet") is not None
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_create_group_from_scratch():
     """Injecting a system with group set into a file without group sections
     should create them from scratch."""
@@ -1198,6 +1226,7 @@ def test_create_group_from_scratch():
     assert prs.get_section_by_class("CP25GroupSet") is not None
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_create_iden_from_scratch():
     """Injecting a system with IDEN set into a file without IDEN sections
     should create them from scratch."""
@@ -1357,6 +1386,7 @@ def test_wan_update_roundtrip():
     assert raw1 == raw2, "Double roundtrip mismatch after WAN update"
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_wan_update_existing_file():
     """Add system to PAWSOVERMAWS, verify WAN count increases from 9 to 10."""
     from quickprs.record_types import (

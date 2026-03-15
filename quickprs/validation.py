@@ -194,13 +194,19 @@ def validate_group_set(group_set):
     if count > LIMITS['groups_per_set']:
         issues.append((ERROR,
             f"Group set '{name}' has {count} groups "
-            f"(max {LIMITS['groups_per_set']})"))
+            f"(max {LIMITS['groups_per_set']}). "
+            f"Remove at least {count - LIMITS['groups_per_set']} talkgroup(s) "
+            f"or split into multiple group sets."))
 
     scan_count = sum(1 for g in group_set.groups if g.scan)
     if scan_count > LIMITS['scan_talkgroups_per_set']:
+        over = scan_count - LIMITS['scan_talkgroups_per_set']
         issues.append((ERROR,
             f"Group set '{name}' has {scan_count} scan-enabled talkgroups "
-            f"(max {LIMITS['scan_talkgroups_per_set']} — 128 breaks scanning)"))
+            f"(max {LIMITS['scan_talkgroups_per_set']}). "
+            f"Disable scan on at least {over} talkgroup(s) to avoid "
+            f"radio scanning issues. Use: quickprs bulk-edit <file> "
+            f"talkgroups --set \"{name}\" --disable-scan"))
     elif scan_count > LIMITS['scan_talkgroups_per_set'] - 10:
         issues.append((WARNING,
             f"Group set '{name}' has {scan_count} scan-enabled talkgroups "
@@ -211,13 +217,16 @@ def validate_group_set(group_set):
     for g in group_set.groups:
         if g.group_id in seen_ids:
             issues.append((WARNING,
-                f"Duplicate talkgroup ID {g.group_id} in set '{name}'"))
+                f"Duplicate talkgroup ID {g.group_id} in set '{name}'. "
+                f"Remove the duplicate or assign a unique ID to avoid "
+                f"scan/display issues on the radio."))
         seen_ids.add(g.group_id)
 
         if g.group_id > LIMITS['talkgroup_id_max']:
             issues.append((ERROR,
                 f"Talkgroup '{g.group_name}' ID {g.group_id} "
-                f"exceeds uint16 max ({LIMITS['talkgroup_id_max']})"))
+                f"exceeds uint16 max ({LIMITS['talkgroup_id_max']}). "
+                f"Use an ID between 1 and {LIMITS['talkgroup_id_max']}."))
         issues.extend(_validate_name_lengths(g.group_name, g.long_name,
                                               f"talkgroup {g.group_id}"))
 
@@ -236,9 +245,12 @@ def validate_trunk_set(trunk_set):
             f"(max {LIMITS['short_name_max']} — system config truncates reference)"))
 
     if len(trunk_set.channels) > LIMITS['unique_freqs_per_system']:
+        over = len(trunk_set.channels) - LIMITS['unique_freqs_per_system']
         issues.append((ERROR,
             f"Trunk set '{name}' has {len(trunk_set.channels)} channels "
-            f"(max {LIMITS['unique_freqs_per_system']})"))
+            f"(max {LIMITS['unique_freqs_per_system']}). "
+            f"Remove at least {over} frequency(s) or split across "
+            f"multiple trunk sets."))
 
     # Check for duplicate frequencies (report count, not each one)
     seen = set()
@@ -258,11 +270,15 @@ def validate_trunk_set(trunk_set):
         if ch.tx_freq < trunk_set.tx_min or ch.tx_freq > trunk_set.tx_max:
             issues.append((WARNING,
                 f"Trunk set '{name}' TX freq {ch.tx_freq:.5f} "
-                f"outside band limits {trunk_set.tx_min:.1f}-{trunk_set.tx_max:.1f}"))
+                f"outside band limits {trunk_set.tx_min:.1f}-"
+                f"{trunk_set.tx_max:.1f}. Verify the frequency is correct "
+                f"or update the IDEN band limits."))
         if ch.rx_freq < trunk_set.rx_min or ch.rx_freq > trunk_set.rx_max:
             issues.append((WARNING,
                 f"Trunk set '{name}' RX freq {ch.rx_freq:.5f} "
-                f"outside band limits {trunk_set.rx_min:.1f}-{trunk_set.rx_max:.1f}"))
+                f"outside band limits {trunk_set.rx_min:.1f}-"
+                f"{trunk_set.rx_max:.1f}. Verify the frequency is correct "
+                f"or update the IDEN band limits."))
 
     # Check absolute frequency range
     for ch in trunk_set.channels:
@@ -271,7 +287,9 @@ def validate_trunk_set(trunk_set):
                 issues.append((ERROR,
                     f"Trunk set '{name}' freq {freq:.5f} MHz outside "
                     f"XG-100P range ({LIMITS['freq_min_mhz']}-"
-                    f"{LIMITS['freq_max_mhz']} MHz)"))
+                    f"{LIMITS['freq_max_mhz']} MHz). "
+                    f"Remove this frequency or correct it to a valid "
+                    f"XG-100P band."))
 
     return issues
 
@@ -288,13 +306,17 @@ def validate_conv_set(conv_set):
             f"(max {LIMITS['short_name_max']} — system config truncates reference)"))
 
     if len(conv_set.channels) > LIMITS['conv_channels_per_system']:
+        over = len(conv_set.channels) - LIMITS['conv_channels_per_system']
         issues.append((ERROR,
             f"Conv set '{name}' has {len(conv_set.channels)} channels "
-            f"(max {LIMITS['conv_channels_per_system']} per system)"))
+            f"(max {LIMITS['conv_channels_per_system']} per system). "
+            f"Remove at least {over} channel(s) or split into "
+            f"multiple conv sets."))
     elif len(conv_set.channels) > LIMITS['channels_per_zone']:
         issues.append((INFO,
             f"Conv set '{name}' has {len(conv_set.channels)} channels "
-            f"(zone limit is {LIMITS['channels_per_zone']})"))
+            f"(zone limit is {LIMITS['channels_per_zone']}). "
+            f"Use 'quickprs zones' to plan multi-zone layout."))
 
     for ch in conv_set.channels:
         issues.extend(_validate_name_lengths(
@@ -306,7 +328,8 @@ def validate_conv_set(conv_set):
                 issues.append((ERROR,
                     f"Conv channel '{ch.short_name}' freq {freq:.5f} MHz "
                     f"outside XG-100P range ({LIMITS['freq_min_mhz']}-"
-                    f"{LIMITS['freq_max_mhz']} MHz)"))
+                    f"{LIMITS['freq_max_mhz']} MHz). "
+                    f"Correct the frequency or remove this channel."))
 
         # Check tone format
         for tone_name, tone_val in [("TX tone", ch.tx_tone),
@@ -314,7 +337,9 @@ def validate_conv_set(conv_set):
             if tone_val and not _is_valid_tone(tone_val):
                 issues.append((WARNING,
                     f"Conv channel '{ch.short_name}' {tone_name} "
-                    f"'{tone_val}' may not be a valid CTCSS/DCS code"))
+                    f"'{tone_val}' may not be a valid CTCSS/DCS code. "
+                    f"Use 'quickprs freq-tools tones' to see valid CTCSS "
+                    f"tones or 'quickprs freq-tools dcs' for DCS codes."))
 
     return issues
 
@@ -332,7 +357,9 @@ def validate_iden_set(iden_set):
 
     if len(iden_set.elements) > 16:
         issues.append((ERROR,
-            f"IDEN set '{name}' has {len(iden_set.elements)} elements (max 16)"))
+            f"IDEN set '{name}' has {len(iden_set.elements)} elements "
+            f"(max 16). Remove unused IDEN entries or create a separate "
+            f"IDEN set for additional band plans."))
 
     for i, elem in enumerate(iden_set.elements):
         if elem.is_empty():
@@ -340,8 +367,10 @@ def validate_iden_set(iden_set):
         # TDMA bandwidth: 6250 or 12500 are both valid (RPM uses 12500)
         if elem.iden_type == 1 and elem.bandwidth_hz not in (6250, 12500):
             issues.append((WARNING,
-                f"IDEN set '{name}' element {i}: TDMA bandwidth {elem.bandwidth_hz} Hz "
-                f"is unusual (expected 6250 or 12500 Hz)"))
+                f"IDEN set '{name}' element {i}: TDMA bandwidth "
+                f"{elem.bandwidth_hz} Hz is unusual (expected 6250 or "
+                f"12500 Hz). Check the system's IDEN table on "
+                f"RadioReference for the correct bandwidth."))
 
     return issues
 
@@ -504,7 +533,9 @@ def _validate_frequencies(prs):
         for ch in tset.channels:
             if ch.rx_freq == 0.0 or ch.tx_freq == 0.0:
                 issues.append((WARNING,
-                    f"Trunk set '{name}' has a channel with 0 MHz frequency"))
+                    f"Trunk set '{name}' has a channel with 0 MHz frequency. "
+                    f"This may be a placeholder. Remove it or set a valid "
+                    f"frequency."))
                 break  # Only report once per set
 
         # Frequencies outside valid P25 bands (check RX freqs only —
@@ -519,7 +550,8 @@ def _validate_frequencies(prs):
         if oob_count > 0:
             issues.append((WARNING,
                 f"Trunk set '{name}' has {oob_count} RX freq(s) "
-                "outside standard P25 bands"))
+                "outside standard P25 bands. Verify frequencies match "
+                "the system's RadioReference listing."))
 
         # Mismatched TX/RX offsets within a set
         offsets = set()
@@ -531,7 +563,9 @@ def _validate_frequencies(prs):
             offset_strs = [f"{o:+.4f}" for o in sorted(offsets)]
             issues.append((WARNING,
                 f"Trunk set '{name}' has inconsistent TX/RX offsets: "
-                f"{', '.join(offset_strs)} MHz"))
+                f"{', '.join(offset_strs)} MHz. This is normal for "
+                f"multi-band systems but may indicate a data entry error "
+                f"for single-band systems."))
 
         # Track for cross-set duplicate detection
         for ch in tset.channels:
@@ -564,7 +598,8 @@ def _validate_frequencies(prs):
             if ch.tx_freq == 0.0 and ch.rx_freq == 0.0:
                 issues.append((WARNING,
                     f"Conv set '{name}' channel '{ch.short_name}' "
-                    "has 0 MHz frequency"))
+                    "has 0 MHz frequency. Set a valid frequency or "
+                    "remove this channel."))
 
         # TX == RX but tones suggest repeater
         for ch in cset.channels:
@@ -576,7 +611,9 @@ def _validate_frequencies(prs):
                     issues.append((INFO,
                         f"Conv channel '{ch.short_name}' in '{name}' "
                         f"has TX=RX ({ch.tx_freq:.4f} MHz) but uses "
-                        "tones — may be a repeater with missing offset"))
+                        "tones, which suggests a repeater with missing "
+                        "offset. Use 'quickprs freq-tools offset "
+                        f"{ch.tx_freq:.4f}' to find the correct offset."))
 
     # ── IDEN vs trunk frequency cross-check ──
     _validate_iden_trunk_match(prs, trunk_sets, issues)
@@ -674,7 +711,10 @@ def _validate_iden_trunk_match(prs, trunk_sets, issues):
                     issues.append((WARNING,
                         f"System '{sys_name}' trunk set '{trunk_ref}' "
                         f"uses {', '.join(sorted(missing))} MHz band(s) "
-                        f"but IDEN set '{iden_ref}' does not cover them"))
+                        f"but IDEN set '{iden_ref}' does not cover them. "
+                        f"The radio will not decode channels in the "
+                        f"uncovered band(s). Re-inject the system with "
+                        f"correct IDEN entries."))
     except Exception as e:
         logger.debug("IDEN/trunk cross-check failed: %s", e)
 
@@ -692,9 +732,12 @@ def _validate_system_counts(prs):
     if total_systems > LIMITS['systems_per_personality']:
         issues.append((ERROR,
             f"Total systems ({total_systems}) exceeds maximum "
-            f"({LIMITS['systems_per_personality']})"))
+            f"({LIMITS['systems_per_personality']}). "
+            f"Remove systems with 'quickprs remove <file> system <name>'."))
     elif total_systems == 0:
-        issues.append((INFO, "No systems found in personality"))
+        issues.append((INFO,
+            "No systems found in personality. Use 'quickprs inject' to "
+            "add P25 trunked or conventional systems."))
 
     # System short name length check (8-char LPS limit)
     from .record_types import parse_system_short_name
@@ -704,7 +747,10 @@ def _validate_system_counts(prs):
             if short and len(short) > LIMITS['short_name_max']:
                 issues.append((ERROR,
                     f"System short name '{short}' is {len(short)} chars "
-                    f"(max {LIMITS['short_name_max']})"))
+                    f"(max {LIMITS['short_name_max']}). "
+                    f"Shorten the name to {LIMITS['short_name_max']} "
+                    f"characters with 'quickprs edit <file> "
+                    f"--rename-set trunk \"{short}\" <new_name>'."))
 
     # Count conventional channels against personality limit (1,250 conv per plan)
     total_conv = 0
@@ -717,13 +763,17 @@ def _validate_system_counts(prs):
             total_conv = sum(len(cs.channels) for cs in sets)
 
     if total_conv > LIMITS['channels_per_personality']:
+        over = total_conv - LIMITS['channels_per_personality']
         issues.append((ERROR,
             f"Total conventional channels ({total_conv}) exceeds "
-            f"personality limit ({LIMITS['channels_per_personality']})"))
+            f"personality limit ({LIMITS['channels_per_personality']}). "
+            f"Remove at least {over} channel(s) across conv sets."))
     elif total_conv > LIMITS['channels_per_personality'] * 0.9:
+        remaining = LIMITS['channels_per_personality'] - total_conv
         issues.append((WARNING,
             f"Total conventional channels ({total_conv}) approaching "
-            f"personality limit ({LIMITS['channels_per_personality']})"))
+            f"personality limit ({LIMITS['channels_per_personality']}). "
+            f"Only {remaining} channel(s) remaining before limit."))
 
     # Count talkgroups against per-system limit
     total_tgs = 0
@@ -734,23 +784,30 @@ def _validate_system_counts(prs):
         if isinstance(sets, list):
             for gs in sets:
                 if len(gs.groups) > LIMITS['tgs_per_trunked_system']:
+                    over = len(gs.groups) - LIMITS['tgs_per_trunked_system']
                     issues.append((ERROR,
                         f"Group set '{gs.name}' has {len(gs.groups)} TGs "
-                        f"(max {LIMITS['tgs_per_trunked_system']} per system)"))
+                        f"(max {LIMITS['tgs_per_trunked_system']} per system). "
+                        f"Remove at least {over} talkgroup(s) from this set."))
             total_tgs = sum(len(gs.groups) for gs in sets)
 
     # Combined channel+TG personality limit
     total_combined = total_conv + total_tgs
     if total_combined > LIMITS['channels_per_personality']:
+        over = total_combined - LIMITS['channels_per_personality']
         issues.append((ERROR,
             f"Total channels+talkgroups ({total_combined}: "
             f"{total_tgs} TGs + {total_conv} conv) exceeds "
-            f"personality limit ({LIMITS['channels_per_personality']})"))
+            f"personality limit ({LIMITS['channels_per_personality']}). "
+            f"Remove at least {over} item(s). Use 'quickprs capacity "
+            f"<file>' to see per-set breakdown."))
     elif total_combined > LIMITS['channels_per_personality'] * 0.9:
+        remaining = LIMITS['channels_per_personality'] - total_combined
         issues.append((WARNING,
             f"Total channels+talkgroups ({total_combined}: "
             f"{total_tgs} TGs + {total_conv} conv) approaching "
-            f"personality limit ({LIMITS['channels_per_personality']})"))
+            f"personality limit ({LIMITS['channels_per_personality']}). "
+            f"Only {remaining} slot(s) remaining."))
 
     # Duplicate set name detection
     _check_duplicate_set_names(prs, issues)
@@ -761,21 +818,25 @@ def _validate_system_counts(prs):
         if isinstance(sets, list):
             for gs in sets:
                 if len(gs.groups) > LIMITS['channels_per_zone']:
+                    zones_needed = (len(gs.groups) + LIMITS['channels_per_zone'] - 1) // LIMITS['channels_per_zone']
                     issues.append((INFO,
                         f"Group set '{gs.name}' has {len(gs.groups)} TGs "
-                        f"— zone limit is {LIMITS['channels_per_zone']}, "
-                        "will need multiple zones"))
+                        f"(zone limit is {LIMITS['channels_per_zone']}). "
+                        f"Will need at least {zones_needed} zones. "
+                        f"Use 'quickprs zones <file>' to auto-plan."))
 
     # Total file size check (RPM sometimes has issues with very large files)
     file_size = len(prs.to_bytes())
     if file_size > 1_000_000:
         issues.append((ERROR,
-            f"Personality file is very large ({file_size:,} bytes) — "
-            "may exceed RPM limits"))
+            f"Personality file is very large ({file_size:,} bytes). "
+            "RPM may reject files over 1 MB. Remove unused systems "
+            "or reduce talkgroup/channel counts."))
     elif file_size > 500_000:
         issues.append((WARNING,
-            f"Personality file is large ({file_size:,} bytes) — "
-            "RPM may be slow to load"))
+            f"Personality file is large ({file_size:,} bytes). "
+            "RPM may be slow to load. Consider removing unused "
+            "systems to reduce file size."))
 
     # Mixed scanning warning (conv + trunked)
     has_trunk = bool(prs.get_sections_by_class('CP25TrkSystem'))
@@ -824,26 +885,35 @@ def _validate_system_counts(prs):
                 sname = parse_system_long_name(sec.raw) or "Unknown"
                 ecc_count, _, iden_name = parse_ecc_entries(sec.raw)
                 if ecc_count > LIMITS['enhanced_cc_entries']:
+                    over = ecc_count - LIMITS['enhanced_cc_entries']
                     issues.append((WARNING,
                         f"System '{sname}' has {ecc_count} ECC entries "
-                        f"(max {LIMITS['enhanced_cc_entries']})"))
+                        f"(max {LIMITS['enhanced_cc_entries']}). "
+                        f"Remove at least {over} Enhanced Control "
+                        f"Channel entry(s)."))
 
                 # Cross-reference: ECC IDEN set must exist
                 if iden_name and iden_set_names and iden_name not in iden_set_names:
                     issues.append((WARNING,
                         f"System '{sname}' ECC references IDEN set "
-                        f"'{iden_name}' which doesn't exist in personality"))
+                        f"'{iden_name}' which doesn't exist in personality. "
+                        f"Re-inject the system to auto-create the "
+                        f"matching IDEN set."))
 
                 # Cross-reference: system config → trunk/group sets
                 trunk_ref, group_ref = parse_system_set_refs(sec.raw)
                 if trunk_ref and trunk_set_names and trunk_ref not in trunk_set_names:
                     issues.append((WARNING,
                         f"System '{sname}' references trunk set "
-                        f"'{trunk_ref}' which doesn't exist"))
+                        f"'{trunk_ref}' which doesn't exist. "
+                        f"The system may have been partially removed. "
+                        f"Re-inject it or remove the system entirely."))
                 if group_ref and group_set_names and group_ref not in group_set_names:
                     issues.append((WARNING,
                         f"System '{sname}' references group set "
-                        f"'{group_ref}' which doesn't exist"))
+                        f"'{group_ref}' which doesn't exist. "
+                        f"The system may have been partially removed. "
+                        f"Re-inject it or remove the system entirely."))
 
                 # Track WAN names for conflict detection
                 wan = parse_system_wan_name(sec.raw)
@@ -855,8 +925,10 @@ def _validate_system_counts(prs):
             if len(systems) > 1:
                 names = ", ".join(systems)
                 issues.append((WARNING,
-                    f"Systems share WACN '{wan}': {names} — "
-                    "XG-100P may lock onto wrong system during scan"))
+                    f"Systems share WACN '{wan}': {names}. "
+                    "XG-100P may lock onto the wrong system during scan. "
+                    "If these are different sites of the same system, "
+                    "this is normal. Otherwise, consider removing one."))
     except Exception as e:
         logger.debug("System cross-validation failed: %s", e)
 
@@ -891,8 +963,10 @@ def _check_duplicate_set_names(prs, issues):
         if len(types) > 1:
             labels = ", ".join(types)
             issues.append((WARNING,
-                f"Duplicate set name '{name}' used by: {labels} — "
-                "RPM may confuse references"))
+                f"Duplicate set name '{name}' used by: {labels}. "
+                "RPM may confuse references. Rename one of the sets "
+                "with 'quickprs edit <file> --rename-set <type> "
+                f"\"{name}\" <new_name>'."))
 
 
 
@@ -902,11 +976,13 @@ def _validate_name_lengths(short_name, long_name, context):
     if len(short_name) > LIMITS['short_name_max']:
         issues.append((ERROR,
             f"{context}: short name '{short_name}' is {len(short_name)} chars "
-            f"(max {LIMITS['short_name_max']})"))
+            f"(max {LIMITS['short_name_max']}). "
+            f"Truncate to {LIMITS['short_name_max']} characters."))
     if len(long_name) > LIMITS['long_name_max']:
         issues.append((ERROR,
             f"{context}: long name '{long_name}' is {len(long_name)} chars "
-            f"(max {LIMITS['long_name_max']})"))
+            f"(max {LIMITS['long_name_max']}). "
+            f"Truncate to {LIMITS['long_name_max']} characters."))
     return issues
 
 
@@ -937,7 +1013,9 @@ def _validate_platform_config(prs):
             val = prog.get(attr, "")
             if val and val not in SWITCH_FUNCTION_NAMES:
                 issues.append((WARNING,
-                    f"{label} function '{val}' is not a known switch function"))
+                    f"{label} function '{val}' is not a known switch "
+                    f"function. Use 'quickprs set-option <file> --list' "
+                    f"to see valid function names."))
 
         # Side buttons
         buttons = prog.get("progButton", [])
@@ -948,7 +1026,9 @@ def _validate_platform_config(prs):
             name = btn.get("buttonName", "")
             if func and func not in BUTTON_FUNCTION_NAMES:
                 issues.append((WARNING,
-                    f"Button '{name}' function '{func}' is not recognized"))
+                    f"Button '{name}' function '{func}' is not recognized. "
+                    f"Use 'quickprs set-option <file> --list' to see "
+                    f"valid button functions."))
 
     # Validate accessory buttons
     acc_container = config.get("accessoryButtons", {})
@@ -962,7 +1042,8 @@ def _validate_platform_config(prs):
             if func and func not in BUTTON_FUNCTION_NAMES:
                 issues.append((WARNING,
                     f"Accessory button '{name}' function '{func}' "
-                    "is not recognized"))
+                    "is not recognized. Use 'quickprs set-option "
+                    "<file> --list' to see valid button functions."))
 
     # Validate short menu
     menu = config.get("shortMenu", {})
@@ -977,7 +1058,8 @@ def _validate_platform_config(prs):
             if name and name not in SHORT_MENU_NAMES:
                 pos = it.get("position", "?")
                 issues.append((WARNING,
-                    f"Short menu slot {pos} name '{name}' is not recognized"))
+                    f"Short menu slot {pos} name '{name}' is not recognized. "
+                    f"This menu item may not work on the radio."))
 
         # Check for duplicate positions
         positions = [it.get("position", "") for it in items]
@@ -985,7 +1067,9 @@ def _validate_platform_config(prs):
         for pos in positions:
             if pos and pos in seen:
                 issues.append((WARNING,
-                    f"Duplicate short menu position: {pos}"))
+                    f"Duplicate short menu position: {pos}. "
+                    f"Each menu position should be unique. "
+                    f"Reassign one of the duplicates."))
             seen.add(pos)
 
     # Validate int fields against min/max ranges
@@ -1031,11 +1115,13 @@ def _validate_xml_int_ranges(config, issues):
         if field_def.min_val is not None and val < field_def.min_val:
             issues.append((WARNING,
                 f"{field_def.display_name} value {val} is below minimum "
-                f"({field_def.min_val})"))
+                f"({field_def.min_val}). Set to at least "
+                f"{field_def.min_val}."))
         if field_def.max_val is not None and val > field_def.max_val:
             issues.append((WARNING,
                 f"{field_def.display_name} value {val} exceeds maximum "
-                f"({field_def.max_val})"))
+                f"({field_def.max_val}). Set to at most "
+                f"{field_def.max_val}."))
 
 
 # ─── Tone validation ────────────────────────────────────────────────
@@ -1115,7 +1201,9 @@ def validate_structure(prs):
     # 1. CPersonality must be present and first
     personality = prs.get_section_by_class("CPersonality")
     if not personality:
-        issues.append((ERROR, "Missing CPersonality section"))
+        issues.append((ERROR,
+            "Missing CPersonality section. The file may be corrupted. "
+            "Try 'quickprs repair <file>' to attempt recovery."))
     elif prs.sections and prs.sections[0].class_name != "CPersonality":
         issues.append((ERROR,
             "CPersonality is not the first section "
@@ -1179,7 +1267,8 @@ def validate_structure(prs):
             if expected_count != len(actual_entries):
                 issues.append((ERROR,
                     f"WAN count mismatch: CP25tWanOpts says {expected_count} "
-                    f"entries but CP25TrkWan has {len(actual_entries)}"))
+                    f"entries but CP25TrkWan has {len(actual_entries)}. "
+                    f"Try 'quickprs repair <file>' to fix the count."))
         except Exception as e:
             logger.debug("WAN validation failed: %s", e)
 
@@ -1196,7 +1285,8 @@ def validate_structure(prs):
                     if len(meta) >= 40 and meta[38:40] != b'\x01\x01':
                         issues.append((WARNING,
                             f"Conv set '{cset.name}' metadata bytes 38-39 "
-                            f"are {meta[38:40].hex()} (RPM expects 01 01)"))
+                            f"are {meta[38:40].hex()} (RPM expects 01 01). "
+                            f"Try 'quickprs repair <file>' to fix this."))
         except Exception as e:
             logger.debug("ConvSet metadata check failed: %s", e)
 
@@ -1253,11 +1343,15 @@ def _validate_set_crossrefs(prs, issues, parse_refs_fn, parse_long_fn):
             if trunk_ref and all_set_names and trunk_ref not in trunk_names:
                 issues.append((ERROR,
                     f"System '{long}' references trunk set '{trunk_ref}' "
-                    "which does not exist"))
+                    "which does not exist. Re-inject the system or "
+                    "remove it with 'quickprs remove <file> system "
+                    f"\"{long}\"'."))
             if group_ref and all_set_names and group_ref not in group_names:
                 issues.append((ERROR,
                     f"System '{long}' references group set '{group_ref}' "
-                    "which does not exist"))
+                    "which does not exist. Re-inject the system or "
+                    "remove it with 'quickprs remove <file> system "
+                    f"\"{long}\"'."))
 
 
 def _validate_companion_sections(prs, issues):
@@ -1276,10 +1370,14 @@ def _validate_companion_sections(prs, issues):
         has_b = prs.get_section_by_class(b) is not None
         if has_a and not has_b:
             issues.append((ERROR,
-                f"{a} present but companion {b} is missing"))
+                f"{a} present but companion {b} is missing. "
+                f"The file structure is incomplete. "
+                f"Try 'quickprs repair <file>' to fix."))
         elif has_b and not has_a:
             issues.append((ERROR,
-                f"{b} present but companion {a} is missing"))
+                f"{b} present but companion {a} is missing. "
+                f"The file structure is incomplete. "
+                f"Try 'quickprs repair <file>' to fix."))
 
 
 # ─── Capacity estimation ─────────────────────────────────────────────

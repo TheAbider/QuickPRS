@@ -86,6 +86,7 @@ def _ensure_multi_tg(prs, set_name, min_count=6):
 
 # ─── reorder_talkgroup ───────────────────────────────────────────────
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestReorderTalkgroup:
     """Tests for reorder_talkgroup."""
 
@@ -215,6 +216,7 @@ class TestReorderTalkgroup:
 
 # ─── reorder_trunk_channel ───────────────────────────────────────────
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestReorderTrunkChannel:
     """Tests for reorder_trunk_channel."""
 
@@ -312,6 +314,7 @@ class TestReorderTrunkChannel:
 
 # ─── reorder_conv_channel ────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestReorderConvChannel:
     """Tests for reorder_conv_channel."""
 
@@ -428,6 +431,7 @@ class TestReorderConvChannel:
 
 # ─── Cross-type edge cases ──────────────────────────────────────────
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestReorderEdgeCases:
     """Edge cases and mixed scenarios."""
 

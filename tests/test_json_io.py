@@ -35,6 +35,7 @@ class TestExportPawsovermaws:
     def exported(self, prs):
         return prs_to_dict(prs)
 
+    @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_has_personality(self, exported):
         assert "personality" in exported
         p = exported["personality"]
@@ -128,10 +129,12 @@ class TestExportPawsovermaws:
         assert "options" in exported
         assert "platform_config" in exported["options"]
 
+    @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_total_trunk_freqs(self, exported):
         total = sum(len(ts["channels"]) for ts in exported["trunk_sets"])
         assert total >= 100  # PAWSOVERMAWS has ~290 trunk freqs
 
+    @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_total_talkgroups(self, exported):
         total = sum(len(gs["groups"]) for gs in exported["group_sets"])
         assert total >= 100  # PAWSOVERMAWS has ~241 talkgroups

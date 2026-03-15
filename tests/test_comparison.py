@@ -19,6 +19,7 @@ CLAUDE = TESTDATA / "claude test.PRS"
 PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_compare_identical():
     """Comparing a file to itself should show no added/removed/changed."""
     prs_a = parse_prs(CLAUDE)
@@ -30,6 +31,7 @@ def test_compare_identical():
         assert dtype != CHANGED
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 def test_compare_different_files():
     """PAWSOVERMAWS vs claude test should show differences."""
     diffs = compare_prs_files(PAWS, CLAUDE)
@@ -40,6 +42,7 @@ def test_compare_different_files():
     assert len(categories) > 0
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_compare_after_injection():
     """Adding a group set should show it as ADDED in comparison."""
     prs_before = parse_prs(CLAUDE)
@@ -60,6 +63,7 @@ def test_compare_after_injection():
     assert has_change
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_compare_after_system_add():
     """Adding a full P25 system should show system as ADDED."""
     prs_before = parse_prs(CLAUDE)
@@ -106,6 +110,7 @@ def test_format_comparison():
     assert "1 changed" in text
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 def test_compare_pawsovermaws_has_systems():
     """PAWSOVERMAWS has systems that claude test doesn't."""
     prs_paws = parse_prs(PAWS)
@@ -150,6 +155,7 @@ class TestComparisonEdgeCases:
         # Should not crash, should have at least the SAME sections entry
         assert any(d[1] == "File" for d in diffs)
 
+    @pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
     def test_compare_shows_section_diff(self):
         """Files with different named sections should show section diffs."""
         diffs = compare_prs_files(PAWS, CLAUDE)
@@ -157,6 +163,7 @@ class TestComparisonEdgeCases:
         # PAWS has sections claude doesn't (CAlertOpts, etc.)
         assert len(section_diffs) > 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_compare_group_set_content_change(self):
         """Modified group set should show CHANGED with TG diff."""
         from copy import deepcopy
@@ -172,6 +179,7 @@ class TestComparisonEdgeCases:
                        and d[2] == "PSERN PD"]
         assert len(group_diffs) > 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_compare_trunk_set_content_change(self):
         """Modified trunk set should show CHANGED with freq diff."""
         from copy import deepcopy
@@ -184,6 +192,7 @@ class TestComparisonEdgeCases:
                        and d[2] == "PSERN"]
         assert len(trunk_diffs) > 0
 
+    @pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
     def test_compare_size_difference(self):
         """Files of different sizes should show size change."""
         diffs = compare_prs_files(PAWS, CLAUDE)
@@ -192,6 +201,7 @@ class TestComparisonEdgeCases:
         assert "46,822" in size_diffs[0][3]
         assert "9,652" in size_diffs[0][3]
 
+    @pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
     def test_compare_iden_set_diff(self):
         """IDEN sets that differ should show active element counts."""
         prs_paws = parse_prs(PAWS)
@@ -201,6 +211,7 @@ class TestComparisonEdgeCases:
         # PAWS has more IDEN sets than claude
         assert len(iden_diffs) > 0
 
+    @pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
     def test_compare_system_config_names(self):
         """System config comparison should find config long names."""
         prs_paws = parse_prs(PAWS)

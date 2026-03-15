@@ -67,6 +67,7 @@ def _count_conv_sets(prs):
 # ─── merge_prs function ──────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestMergePrsFunction:
     """Test the merge_prs() injector function directly."""
 
@@ -156,6 +157,7 @@ class TestMergePrsFunction:
 class TestCmdMerge:
     """Test the merge CLI command."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_basic(self, capsys, tmp_path):
         """Basic merge should succeed and print summary."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -164,6 +166,7 @@ class TestCmdMerge:
         out = capsys.readouterr().out
         assert "Merged" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_reports_counts(self, capsys, tmp_path):
         """Merge should report added/skipped counts."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -172,6 +175,7 @@ class TestCmdMerge:
         out = capsys.readouterr().out
         assert "added" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_output_flag(self, capsys, tmp_path):
         """Merge with -o should write to separate file."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -180,12 +184,14 @@ class TestCmdMerge:
         assert result == 0
         assert Path(out_file).exists()
 
+    @pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
     def test_merge_into_paws(self, capsys, tmp_path):
         """Merge claude test into PAWSOVERMAWS."""
         target = _copy_prs(PAWS, tmp_path, "target.PRS")
         result = cmd_merge(target, str(CLAUDE))
         assert result == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_systems_only_flag(self, capsys, tmp_path):
         """--systems flag should only merge P25 systems."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -197,6 +203,7 @@ class TestCmdMerge:
         p25_names = _get_system_names(prs, "CP25TrkSystem")
         assert len(p25_names) > 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_channels_only_flag(self, capsys, tmp_path):
         """--channels flag should only merge conv systems."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -204,6 +211,7 @@ class TestCmdMerge:
                            include_systems=False, include_channels=True)
         assert result == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_duplicate_skip(self, capsys, tmp_path):
         """Merging source with existing systems should skip duplicates."""
         target = _copy_prs(PAWS, tmp_path, "target.PRS")
@@ -212,6 +220,7 @@ class TestCmdMerge:
         out = capsys.readouterr().out
         assert "skipped" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_validates_clean(self, capsys, tmp_path):
         """Merged file should validate with no errors."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -221,6 +230,7 @@ class TestCmdMerge:
         errors = [m for s, m in issues if s == ERROR]
         assert errors == [], f"Validation errors: {errors}"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_roundtrip(self, capsys, tmp_path):
         """Merged file should roundtrip through parse/write."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -230,30 +240,35 @@ class TestCmdMerge:
         raw2 = prs.to_bytes()
         assert raw1 == raw2
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_via_run_cli(self, capsys, tmp_path):
         """merge subcommand should work via run_cli."""
         target = _create_blank(tmp_path, "target.PRS")
         result = run_cli(["merge", target, str(PAWS)])
         assert result == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_all_flag_via_cli(self, capsys, tmp_path):
         """merge --all should work via run_cli."""
         target = _create_blank(tmp_path, "target.PRS")
         result = run_cli(["merge", target, str(PAWS), "--all"])
         assert result == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_systems_flag_via_cli(self, capsys, tmp_path):
         """merge --systems should work via run_cli."""
         target = _create_blank(tmp_path, "target.PRS")
         result = run_cli(["merge", target, str(PAWS), "--systems"])
         assert result == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_channels_flag_via_cli(self, capsys, tmp_path):
         """merge --channels should work via run_cli."""
         target = _create_blank(tmp_path, "target.PRS")
         result = run_cli(["merge", target, str(PAWS), "--channels"])
         assert result == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_output_flag_via_cli(self, capsys, tmp_path):
         """merge -o flag should work via run_cli."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -262,6 +277,7 @@ class TestCmdMerge:
         assert result == 0
         assert Path(out_file).exists()
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_missing_target(self, capsys):
         """merge with missing target should return 1."""
         result = run_cli(["merge", "nonexistent.PRS", str(PAWS)])
@@ -277,6 +293,7 @@ class TestCmdMerge:
 # ─── Merge data integrity ────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestMergeDataIntegrity:
     """Verify that merged data is structurally correct."""
 

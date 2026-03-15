@@ -40,6 +40,7 @@ def _get_section_data(class_name):
 
 # ─── CGenRadioOpts ───────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestGenRadioOpts:
 
     @pytest.fixture
@@ -107,6 +108,7 @@ class TestGenRadioOpts:
 
 # ─── CTimerOpts ──────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestTimerOpts:
 
     @pytest.fixture
@@ -188,6 +190,7 @@ class TestTimerOpts:
 
 # ─── CScanOpts ────────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestScanOpts:
 
     @pytest.fixture
@@ -255,6 +258,7 @@ class TestScanOpts:
 
 # ─── CPowerUpOpts ─────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestPowerUpOpts:
 
     @pytest.fixture
@@ -328,6 +332,7 @@ class TestPowerUpOpts:
 
 # ─── CDisplayOpts ────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestDisplayOpts:
 
     @pytest.fixture
@@ -377,6 +382,7 @@ class TestDisplayOpts:
 
 # ─── CDataOpts ───────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestDataOpts:
 
     @pytest.fixture
@@ -465,6 +471,7 @@ class TestDataOpts:
 
 # ─── CSupervisoryOpts ────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestSupervisoryOpts:
 
     @pytest.fixture
@@ -526,6 +533,7 @@ class TestAllOptionDataclasses:
         'CSupervisoryOpts': (SupervisoryOpts, 36),
     }
 
+    @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     @pytest.mark.parametrize("class_name,cls_and_size", CLASSES.items(),
                              ids=list(CLASSES.keys()))
     def test_roundtrip_from_pawsovermaws(self, class_name, cls_and_size):

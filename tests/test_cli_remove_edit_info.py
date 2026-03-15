@@ -26,6 +26,7 @@ def _copy_prs(src, tmp_path, name="test.PRS"):
 # ─── cmd_remove: system ──────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestRemoveSystem:
     """Test removing systems by long name."""
 
@@ -69,6 +70,7 @@ class TestRemoveSystem:
 # ─── cmd_remove: trunk-set ───────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestRemoveTrunkSet:
     """Test removing trunk frequency sets."""
 
@@ -127,6 +129,7 @@ class TestRemoveTrunkSet:
 # ─── cmd_remove: group-set ───────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestRemoveGroupSet:
     """Test removing P25 talkgroup sets."""
 
@@ -176,6 +179,7 @@ class TestRemoveGroupSet:
 # ─── cmd_remove: conv-set ───────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestRemoveConvSet:
     """Test removing conventional channel sets."""
 
@@ -233,6 +237,7 @@ class TestRemoveConvSet:
 # ─── cmd_edit: personality ────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestEditPersonality:
     """Test editing personality metadata."""
 
@@ -326,6 +331,7 @@ class TestEditPersonality:
 # ─── cmd_edit: set rename ────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestEditRenameSet:
     """Test renaming data sets."""
 
@@ -423,6 +429,7 @@ class TestEditRenameSet:
 # ─── cmd_info: enhanced / --detail ───────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestInfoDetail:
     """Test the --detail flag for enhanced info output."""
 
@@ -522,6 +529,7 @@ class TestInfoDetail:
 class TestInjectorRemoveFunctions:
     """Direct tests of injector removal functions."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_remove_trunk_set_direct(self, tmp_path):
         """Direct call to remove_trunk_set."""
         from quickprs.injector import remove_trunk_set
@@ -530,6 +538,7 @@ class TestInjectorRemoveFunctions:
         result = remove_trunk_set(prs, "PSERN")
         assert result is True
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_remove_trunk_set_nonexistent(self):
         """remove_trunk_set returns False for nonexistent set."""
         from quickprs.injector import remove_trunk_set
@@ -537,6 +546,7 @@ class TestInjectorRemoveFunctions:
         result = remove_trunk_set(prs, "NOSET")
         assert result is False
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_remove_group_set_direct(self, tmp_path):
         """Direct call to remove_group_set."""
         from quickprs.injector import remove_group_set
@@ -544,6 +554,7 @@ class TestInjectorRemoveFunctions:
         result = remove_group_set(prs, "PSERN PD")
         assert result is True
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_remove_group_set_nonexistent(self):
         """remove_group_set returns False for nonexistent set."""
         from quickprs.injector import remove_group_set
@@ -551,6 +562,7 @@ class TestInjectorRemoveFunctions:
         result = remove_group_set(prs, "NOSET")
         assert result is False
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_remove_conv_set_direct(self, tmp_path):
         """Direct call to remove_conv_set."""
         from quickprs.injector import remove_conv_set
@@ -558,6 +570,7 @@ class TestInjectorRemoveFunctions:
         result = remove_conv_set(prs, "FURRY NB")
         assert result is True
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_remove_conv_set_nonexistent(self):
         """remove_conv_set returns False for nonexistent set."""
         from quickprs.injector import remove_conv_set
@@ -565,6 +578,7 @@ class TestInjectorRemoveFunctions:
         result = remove_conv_set(prs, "NOSET")
         assert result is False
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_edit_personality_direct(self):
         """Direct call to edit_personality."""
         from quickprs.injector import edit_personality
@@ -575,6 +589,7 @@ class TestInjectorRemoveFunctions:
         p = parse_personality_section(sec.raw)
         assert p.filename == "NEW.PRS"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_edit_personality_no_change(self):
         """edit_personality returns False when nothing changes."""
         from quickprs.injector import edit_personality
@@ -584,6 +599,7 @@ class TestInjectorRemoveFunctions:
         result = edit_personality(prs, filename=p.filename)
         assert result is False
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_rename_trunk_set_direct(self):
         """Direct call to rename_trunk_set."""
         from quickprs.injector import rename_trunk_set
@@ -591,6 +607,7 @@ class TestInjectorRemoveFunctions:
         result = rename_trunk_set(prs, "PSERN", "RENAMED")
         assert result is True
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_rename_group_set_direct(self):
         """Direct call to rename_group_set."""
         from quickprs.injector import rename_group_set
@@ -598,6 +615,7 @@ class TestInjectorRemoveFunctions:
         result = rename_group_set(prs, "PSERN PD", "NEW PD")
         assert result is True
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_rename_conv_set_direct(self):
         """Direct call to rename_conv_set."""
         from quickprs.injector import rename_conv_set
@@ -605,6 +623,7 @@ class TestInjectorRemoveFunctions:
         result = rename_conv_set(prs, "FURRY NB", "NEW NB")
         assert result is True
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_rename_nonexistent(self):
         """Rename returns False for nonexistent set."""
         from quickprs.injector import rename_trunk_set
@@ -612,6 +631,7 @@ class TestInjectorRemoveFunctions:
         result = rename_trunk_set(prs, "NOSET", "NEWNAME")
         assert result is False
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_remove_wan_entry_direct(self):
         """Direct call to remove_wan_entry."""
         from quickprs.injector import remove_wan_entry
@@ -626,6 +646,7 @@ class TestInjectorRemoveFunctions:
             result = remove_wan_entry(prs, name)
             assert result is True
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_remove_wan_entry_not_found(self):
         """remove_wan_entry returns False for nonexistent entry."""
         from quickprs.injector import remove_wan_entry
@@ -659,6 +680,7 @@ class TestInjectorRemoveFunctions:
 # ─── Integration: remove + validate ──────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestRemoveIntegration:
     """Integration tests — remove then validate."""
 

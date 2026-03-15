@@ -39,12 +39,14 @@ def _copy_prs(src, tmp_path, name="work.PRS"):
 class TestCmdList:
     """Test the list command with all data types."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_list_systems(self, capsys):
         result = run_cli(["list", str(PAWS), "systems"])
         assert result == 0
         out = capsys.readouterr().out
         assert "P25 Trunked" in out or "Conventional" in out or out == ""
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_list_talkgroups(self, capsys):
         result = run_cli(["list", str(CLAUDE), "talkgroups"])
         assert result == 0
@@ -52,6 +54,7 @@ class TestCmdList:
         # claude test has at least one group set
         assert "scan=" in out or out == ""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_list_channels(self, capsys):
         result = run_cli(["list", str(PAWS), "channels"])
         assert result == 0
@@ -59,11 +62,13 @@ class TestCmdList:
         # PAWS has conv channels
         assert len(out) >= 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_list_frequencies(self, capsys):
         result = run_cli(["list", str(PAWS), "frequencies"])
         assert result == 0
         # May or may not have trunk freqs
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_list_sets(self, capsys):
         result = run_cli(["list", str(PAWS), "sets"])
         assert result == 0
@@ -71,6 +76,7 @@ class TestCmdList:
         # Should list at least one set type
         assert len(out) >= 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_list_options(self, capsys):
         result = run_cli(["list", str(PAWS), "options"])
         assert result == 0
@@ -79,11 +85,13 @@ class TestCmdList:
         result = run_cli(["list", "nonexistent.PRS", "systems"])
         assert result == 1
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_list_direct_call(self, capsys):
         """Direct call to cmd_list function."""
         result = cmd_list(str(PAWS), "systems")
         assert result == 0
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_list_systems_claude(self, capsys):
         """Claude test file has P25 trunked systems."""
         result = cmd_list(str(CLAUDE), "systems")
@@ -91,6 +99,7 @@ class TestCmdList:
         out = capsys.readouterr().out
         assert "P25 Trunked" in out
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_list_talkgroups_format(self, capsys):
         """Talkgroups output should be tab-separated."""
         result = cmd_list(str(CLAUDE), "talkgroups")
@@ -101,6 +110,7 @@ class TestCmdList:
             for line in lines:
                 assert "\t" in line
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_list_sets_includes_type(self, capsys):
         """Sets output should include the type (group, trunk, conv, iden)."""
         result = cmd_list(str(CLAUDE), "sets")
@@ -118,6 +128,7 @@ class TestCmdList:
 class TestCliBulkEditTalkgroups:
     """Test the bulk-edit talkgroups CLI command."""
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_enable_scan_cli(self, capsys, tmp_path):
         """CLI: enable scan on all TGs."""
         prs_file = _copy_prs(CLAUDE, tmp_path)
@@ -129,6 +140,7 @@ class TestCliBulkEditTalkgroups:
         out = capsys.readouterr().out
         assert "Bulk-edited" in out
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_disable_tx_cli(self, capsys, tmp_path):
         """CLI: disable TX on all TGs."""
         prs_file = _copy_prs(CLAUDE, tmp_path)
@@ -138,6 +150,7 @@ class TestCliBulkEditTalkgroups:
         ])
         assert result == 0
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_enable_tx_cli(self, capsys, tmp_path):
         """CLI: enable TX on all TGs."""
         prs_file = _copy_prs(CLAUDE, tmp_path)
@@ -147,6 +160,7 @@ class TestCliBulkEditTalkgroups:
         ])
         assert result == 0
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_prefix_cli(self, capsys, tmp_path):
         """CLI: add prefix to TG names."""
         prs_file = _copy_prs(CLAUDE, tmp_path)
@@ -156,6 +170,7 @@ class TestCliBulkEditTalkgroups:
         ])
         assert result == 0
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_suffix_cli(self, capsys, tmp_path):
         """CLI: add suffix to TG names."""
         prs_file = _copy_prs(CLAUDE, tmp_path)
@@ -165,6 +180,7 @@ class TestCliBulkEditTalkgroups:
         ])
         assert result == 0
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_output_flag(self, capsys, tmp_path):
         """CLI: write to a different output file."""
         prs_file = _copy_prs(CLAUDE, tmp_path)
@@ -177,6 +193,7 @@ class TestCliBulkEditTalkgroups:
         assert result == 0
         assert Path(out_file).exists()
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_bad_set_name(self, capsys, tmp_path):
         """CLI: nonexistent set name should fail."""
         prs_file = _copy_prs(CLAUDE, tmp_path)
@@ -186,6 +203,7 @@ class TestCliBulkEditTalkgroups:
         ])
         assert result == 1
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_direct_call(self, capsys, tmp_path):
         """Direct call to cmd_bulk_edit_talkgroups."""
         prs_file = _copy_prs(CLAUDE, tmp_path)
@@ -199,6 +217,7 @@ class TestCliBulkEditTalkgroups:
             run_cli(["bulk-edit", "f.PRS", "talkgroups", "--help"])
         assert exc.value.code == 0
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_no_subcommand_prints_help(self, capsys):
         """bulk-edit without sub-subcommand should print help."""
         result = run_cli(["bulk-edit", str(CLAUDE)])
@@ -219,6 +238,7 @@ class TestCliBulkEditChannels:
             pytest.skip("No conv sets in PAWS")
         return conv_sets[0].name
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_set_tone_cli(self, capsys, tmp_path):
         """CLI: set CTCSS tone on all channels."""
         set_name = self._get_conv_set_name()
@@ -231,6 +251,7 @@ class TestCliBulkEditChannels:
         out = capsys.readouterr().out
         assert "Bulk-edited" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clear_tones_cli(self, capsys, tmp_path):
         """CLI: clear tones on all channels."""
         set_name = self._get_conv_set_name()
@@ -241,6 +262,7 @@ class TestCliBulkEditChannels:
         ])
         assert result == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_set_power_cli(self, capsys, tmp_path):
         """CLI: set power level."""
         set_name = self._get_conv_set_name()
@@ -251,6 +273,7 @@ class TestCliBulkEditChannels:
         ])
         assert result == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_output_flag(self, capsys, tmp_path):
         """CLI: write to different output."""
         set_name = self._get_conv_set_name()
@@ -264,6 +287,7 @@ class TestCliBulkEditChannels:
         assert result == 0
         assert Path(out_file).exists()
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_bad_set_name(self, capsys, tmp_path):
         """CLI: nonexistent set name should fail."""
         prs_file = _copy_prs(PAWS, tmp_path)
@@ -273,6 +297,7 @@ class TestCliBulkEditChannels:
         ])
         assert result == 1
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_direct_call(self, capsys, tmp_path):
         """Direct call to cmd_bulk_edit_channels."""
         set_name = self._get_conv_set_name()

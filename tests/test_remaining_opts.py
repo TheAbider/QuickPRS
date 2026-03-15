@@ -44,6 +44,7 @@ def _get_section_data(class_name):
 
 # ─── CVgOpts ──────────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestVgOpts:
 
     @pytest.fixture
@@ -97,6 +98,7 @@ class TestVgOpts:
 
 # ─── CNetworkOpts ────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestNetworkOpts:
 
     @pytest.fixture
@@ -148,6 +150,7 @@ class TestNetworkOpts:
 
 # ─── CGEstarOpts ─────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestGEstarOpts:
 
     @pytest.fixture
@@ -199,6 +202,7 @@ class TestGEstarOpts:
 
 # ─── CConvScanOpts ───────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestConvScanOpts:
 
     @pytest.fixture
@@ -252,6 +256,7 @@ class TestConvScanOpts:
 
 # ─── CProSoundOpts ───────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestProSoundOpts:
 
     @pytest.fixture
@@ -306,6 +311,7 @@ class TestProSoundOpts:
 
 # ─── CSystemScanOpts ─────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestSystemScanOpts:
 
     @pytest.fixture
@@ -363,6 +369,7 @@ class TestSystemScanOpts:
 
 # ─── CKeypadCtrlOpts ─────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestKeypadCtrlOpts:
 
     @pytest.fixture
@@ -404,6 +411,7 @@ class TestKeypadCtrlOpts:
 
 # ─── CMdcOpts ────────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestMdcOpts:
 
     @pytest.fixture
@@ -485,6 +493,7 @@ class TestMdcOpts:
 
 # ─── CVoiceAnnunciation ──────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestVoiceAnnunciation:
 
     @pytest.fixture
@@ -535,6 +544,7 @@ class TestVoiceAnnunciation:
 
 # ─── CMrkOpts ────────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestMrkOpts:
 
     @pytest.fixture
@@ -573,6 +583,7 @@ class TestMrkOpts:
 
 # ─── CIgnitionOpts ───────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestIgnitionOpts:
 
     @pytest.fixture
@@ -605,6 +616,7 @@ class TestIgnitionOpts:
 
 # ─── CDiagnosticOpts ─────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestDiagnosticOpts:
 
     @pytest.fixture
@@ -661,6 +673,7 @@ class TestDiagnosticOpts:
 
 # ─── CMmsOpts ────────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestMmsOpts:
 
     @pytest.fixture
@@ -705,6 +718,7 @@ class TestMmsOpts:
 
 # ─── CSndcpOpts ──────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestSndcpOpts:
 
     @pytest.fixture
@@ -737,6 +751,7 @@ class TestSndcpOpts:
 
 # ─── CSecurityPolicy ─────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestSecurityPolicy:
 
     @pytest.fixture
@@ -769,6 +784,7 @@ class TestSecurityPolicy:
 
 # ─── CStatus ─────────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
 class TestStatusOpts:
 
     @pytest.fixture
@@ -844,6 +860,7 @@ class TestAllRemainingOpts:
         'CStatus': (StatusOpts, 7),
     }
 
+    @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     @pytest.mark.parametrize("class_name,cls_and_size", CLASSES.items(),
                              ids=list(CLASSES.keys()))
     def test_roundtrip_from_pawsovermaws(self, class_name, cls_and_size):
@@ -888,6 +905,7 @@ class TestAllRemainingOpts:
         cls, expected_size = cls_and_size
         assert cls.DATA_SIZE == expected_size
 
+    @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     @pytest.mark.parametrize("class_name,cls_and_size", CLASSES.items(),
                              ids=list(CLASSES.keys()))
     def test_parse_at_offset(self, class_name, cls_and_size):

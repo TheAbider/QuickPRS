@@ -110,6 +110,7 @@ class TestCliErrors:
         result = run_cli(["validate", "does_not_exist.PRS"])
         assert result == 1
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_compare_one_file_missing(self, capsys):
         result = run_cli(["compare", str(PAWS), "does_not_exist.PRS"])
         assert result == 1
@@ -192,14 +193,17 @@ class TestCliErrors:
         with pytest.raises(SystemExit):
             run_cli(["nonexistent-command"])
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_nonexistent_target(self, capsys):
         result = run_cli(["merge", "missing.PRS", str(PAWS)])
         assert result == 1
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_merge_nonexistent_source(self, capsys):
         result = run_cli(["merge", str(PAWS), "missing.PRS"])
         assert result == 1
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clone_nonexistent_source(self, capsys):
         result = run_cli(["clone", str(PAWS), "missing.PRS", "SYS"])
         assert result == 1
@@ -729,6 +733,7 @@ class TestLargeData:
 # ═══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCliBatch:
     """Batch mode CLI tests."""
 

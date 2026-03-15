@@ -91,6 +91,7 @@ def _parse_conv_sets(prs):
 # ═══════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCloneSystemFunction:
     """Test the clone_system() injector function directly."""
 
@@ -284,6 +285,7 @@ class TestCloneSystemFunction:
 class TestCmdClone:
     """Test the clone CLI command."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clone_basic(self, capsys, tmp_path):
         """Basic clone should succeed."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -292,6 +294,7 @@ class TestCmdClone:
         out = capsys.readouterr().out
         assert "Cloned" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clone_reports_copied_sets(self, capsys, tmp_path):
         """Clone should report which sets were copied."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -300,6 +303,7 @@ class TestCmdClone:
         out = capsys.readouterr().out
         assert "Copied" in out or "Sets already" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clone_output_flag(self, capsys, tmp_path):
         """Clone with -o should write to separate file."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -309,6 +313,7 @@ class TestCmdClone:
         assert result == 0
         assert Path(out_file).exists()
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clone_into_existing(self, capsys, tmp_path):
         """Clone into file that already has the system should not error."""
         target = _copy_prs(PAWS, tmp_path, "target.PRS")
@@ -317,12 +322,14 @@ class TestCmdClone:
         out = capsys.readouterr().out
         assert "already exists" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clone_not_found(self, capsys, tmp_path):
         """Clone nonexistent system should return 1."""
         target = _create_blank(tmp_path, "target.PRS")
         result = cmd_clone(target, str(PAWS), "NONEXISTENT")
         assert result == 1
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clone_validates_clean(self, capsys, tmp_path):
         """Cloned file should validate with no errors."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -332,6 +339,7 @@ class TestCmdClone:
         errors = [m for s, m in issues if s == ERROR]
         assert errors == [], f"Validation errors: {errors}"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clone_roundtrip(self, capsys, tmp_path):
         """Cloned file should roundtrip cleanly."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -341,12 +349,14 @@ class TestCmdClone:
         raw2 = prs.to_bytes()
         assert raw1 == raw2
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clone_via_run_cli(self, capsys, tmp_path):
         """clone subcommand should work via run_cli."""
         target = _create_blank(tmp_path, "target.PRS")
         result = run_cli(["clone", target, str(PAWS), "PSERN SEATTLE"])
         assert result == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clone_output_via_run_cli(self, capsys, tmp_path):
         """clone -o flag should work via run_cli."""
         target = _create_blank(tmp_path, "target.PRS")
@@ -356,6 +366,7 @@ class TestCmdClone:
         assert result == 0
         assert Path(out_file).exists()
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_clone_missing_target(self, capsys):
         """clone with missing target should return 1."""
         result = run_cli(["clone", "nonexistent.PRS", str(PAWS),
@@ -375,6 +386,7 @@ class TestCmdClone:
 # ═══════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestDetailedComparison:
     """Test the detailed_comparison() function."""
 
@@ -611,6 +623,7 @@ class TestFormatDetailedComparison:
         assert "1 system(s) only in B" in text
         assert "1 option change(s)" in text
 
+    @pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
     def test_format_real_files(self):
         """Format detailed comparison between real PRS files."""
         prs_paws = parse_prs(PAWS)
@@ -622,6 +635,7 @@ class TestFormatDetailedComparison:
         assert len(lines) > 5
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCmdCompareDetail:
     """Test the --detail flag for cmd_compare."""
 
@@ -659,6 +673,7 @@ class TestCmdCompareDetail:
 # ─── Clone + Compare integration ─────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestCloneCompareIntegration:
     """Test clone and detailed comparison together."""
 

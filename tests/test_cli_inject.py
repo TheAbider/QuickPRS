@@ -170,6 +170,7 @@ class TestInjectP25Blank:
 
 # ─── inject p25 — PAWSOVERMAWS ──────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestInjectP25Paws:
     """Inject P25 system into PAWSOVERMAWS, verify existing data preserved."""
 
@@ -276,6 +277,7 @@ class TestInjectConv:
         raw2 = prs.to_bytes()
         assert raw1 == raw2
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_inject_conv_preserves_existing(self, capsys, tmp_path):
         """Inject into PAWS should preserve existing conv sets."""
         prs_file = _copy_prs(PAWS, tmp_path)
@@ -310,6 +312,7 @@ class TestInjectConv:
 
 # ─── inject talkgroups ───────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestInjectTalkgroups:
     """Tests for the inject talkgroups subcommand."""
 
@@ -418,6 +421,7 @@ class TestInjectErrors:
         ])
         assert result == 1
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_inject_tgs_missing_csv(self, capsys, tmp_path):
         """Missing talkgroups CSV should return 1."""
         prs_file = _copy_prs(PAWS, tmp_path)
@@ -428,6 +432,7 @@ class TestInjectErrors:
         ])
         assert result == 1
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_inject_tgs_bad_set_name(self, capsys, tmp_path):
         """Inject TGs into nonexistent set should return 1."""
         prs_file = _copy_prs(PAWS, tmp_path)
@@ -465,6 +470,7 @@ class TestInjectErrors:
         ])
         assert result == 1
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_inject_tgs_bad_id_csv(self, capsys, tmp_path):
         """CSV with non-integer talkgroup ID should return 1."""
         bad_csv = tmp_path / "bad_tgs.csv"
@@ -540,6 +546,7 @@ class TestInjectRunCli:
         assert result == 0
         assert Path(out_file).exists()
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_inject_tgs_via_cli(self, capsys, tmp_path):
         """inject talkgroups should work through run_cli."""
         prs_file = _copy_prs(PAWS, tmp_path)
@@ -552,6 +559,7 @@ class TestInjectRunCli:
         out = capsys.readouterr().out
         assert "Added 10 talkgroups" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_inject_tgs_output_via_cli(self, capsys, tmp_path):
         """inject talkgroups with -o flag."""
         prs_file = _copy_prs(PAWS, tmp_path, "input.PRS")

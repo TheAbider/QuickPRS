@@ -253,6 +253,7 @@ class TestCLISystems:
         result = run_cli(["systems", "info", "NONEXISTENT"])
         assert result == 1
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_systems_add_to_prs(self, capsys):
         """Add a known system to a PRS file."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -268,6 +269,7 @@ class TestCLISystems:
             assert "PSERN" in out
             assert "892" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_systems_add_to_prs_output_flag(self, capsys):
         """Add a system with -o output flag."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -281,6 +283,7 @@ class TestCLISystems:
             assert result == 0
             assert out_file.exists()
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_systems_add_unknown_name(self, capsys):
         """Adding unknown system should fail."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -340,6 +343,7 @@ class TestCmdSystemsDirect:
 # ─── Integration: system added to PRS validates ─────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestSystemDatabaseIntegration:
     """Test that systems from the database produce valid PRS files."""
 

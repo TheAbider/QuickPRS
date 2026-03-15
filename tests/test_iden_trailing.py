@@ -31,13 +31,17 @@ from quickprs.injector import (
 from quickprs.option_maps import extract_platform_xml
 
 TESTDATA = Path(__file__).parent / "testdata"
+CLAUDE = TESTDATA / "claude test.PRS"
+PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 
 
 # ─── extract_iden_trailing_data tests ────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestExtractIdenTrailingData:
     """Tests for the extract_iden_trailing_data function."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_size(self):
         """PAWSOVERMAWS has 3 IDEN sets, trailing = 3126 bytes."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -46,6 +50,7 @@ class TestExtractIdenTrailingData:
         trailing = extract_iden_trailing_data(sec.raw, first_count)
         assert len(trailing) == 3126, f"Expected 3126, got {len(trailing)}"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_starts_with_zeros(self):
         """Trailing data begins with 6 zero-byte padding."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -54,6 +59,7 @@ class TestExtractIdenTrailingData:
         trailing = extract_iden_trailing_data(sec.raw, first_count)
         assert trailing[:6] == b'\x00' * 6
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_has_ff_marker(self):
         """Trailing data has ff marker at byte 6."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -62,6 +68,7 @@ class TestExtractIdenTrailingData:
         trailing = extract_iden_trailing_data(sec.raw, first_count)
         assert trailing[6:7] == b'\xff'
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_xml_length(self):
         """uint16 LE at byte 7 gives XML length = 3035."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -71,6 +78,7 @@ class TestExtractIdenTrailingData:
         xml_len = int.from_bytes(trailing[7:9], 'little')
         assert xml_len == 3035
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_has_platform_xml(self):
         """Trailing data contains <platformConfig> XML."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -80,6 +88,7 @@ class TestExtractIdenTrailingData:
         assert b'<platformConfig>' in trailing
         assert b'</platformConfig>' in trailing
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_has_passwords(self):
         """Trailing data contains LPS password strings '1115'."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -89,6 +98,7 @@ class TestExtractIdenTrailingData:
         # LPS "1115" = 04 31 31 31 35
         assert b'\x041115' in trailing
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_has_guid(self):
         """Trailing data contains the radio GUID."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -116,9 +126,11 @@ class TestExtractIdenTrailingData:
 
 # ─── IDEN injection preserves trailing data ──────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestIdenInjectionPreservesTrailing:
     """Tests that IDEN injection preserves trailing data."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_xml_preserved(self):
         """After IDEN injection on PAWSOVERMAWS, platformConfig XML is intact."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -136,6 +148,7 @@ class TestIdenInjectionPreservesTrailing:
         assert xml_after is not None, "XML lost after injection"
         assert xml_after == xml_before, "XML content changed after injection"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_passwords_preserved(self):
         """After IDEN injection on PAWSOVERMAWS, passwords are intact."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -150,6 +163,7 @@ class TestIdenInjectionPreservesTrailing:
         sec = prs2.get_section_by_class("CDefaultIdenElem")
         assert b'\x041115' in sec.raw, "Password LPS '1115' lost after injection"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_guid_preserved(self):
         """After IDEN injection on PAWSOVERMAWS, radio GUID is intact."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -163,6 +177,7 @@ class TestIdenInjectionPreservesTrailing:
         sec = prs2.get_section_by_class("CDefaultIdenElem")
         assert b'00000000-2020-2020-2020-202020202020' in sec.raw
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_bytes_exact(self):
         """Trailing data is byte-for-byte identical after injection."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -207,6 +222,7 @@ class TestIdenInjectionPreservesTrailing:
         assert trailing_after == trailing_before
         assert trailing_after == b'\x00' * 39
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_section_grew(self):
         """After adding an IDEN set, section is larger (new set + preserved trailing)."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -226,6 +242,7 @@ class TestIdenInjectionPreservesTrailing:
             f"Section didn't grow: {size_before} -> {size_after}"
         )
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_iden_sets_parse_after_injection(self):
         """All IDEN sets (original + injected) still parse correctly."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")

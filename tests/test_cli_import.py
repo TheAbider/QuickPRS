@@ -270,6 +270,7 @@ class TestImportRR:
         # Only Law Dispatch (100) and Law Tac (200)
         assert "Talkgroups: 2" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     @patch('quickprs.radioreference.RadioReferenceAPI')
     def test_import_rr_into_paws(self, mock_api_cls, capsys, tmp_path):
         """Import into PAWS should preserve existing systems."""
@@ -542,6 +543,7 @@ class TestImportPaste:
         names = {s.name for s in group_sets}
         assert "TOOLONGN" in names  # truncated to 8
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_import_paste_into_paws(self, capsys, tmp_path):
         """Import into PAWS should preserve existing systems."""
         prs_file = _copy_prs(PAWS, tmp_path)

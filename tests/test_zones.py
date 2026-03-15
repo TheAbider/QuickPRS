@@ -65,6 +65,7 @@ class TestZoneDataclass:
 class TestPlanZones:
     """Test zone planning strategies."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_auto_strategy_paws(self):
         """Auto strategy produces zones from PAWSOVERMAWS."""
         prs = parse_prs(PAWS)
@@ -73,12 +74,14 @@ class TestPlanZones:
         # PAWS has conv and group sets, so should have zones
         assert len(zones) > 0
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_auto_strategy_claude(self):
         """Auto strategy produces zones from claude test."""
         prs = parse_prs(CLAUDE)
         zones = plan_zones(prs, strategy="auto")
         assert isinstance(zones, list)
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_by_set_strategy(self):
         """by_set strategy produces zones."""
         prs = parse_prs(PAWS)
@@ -86,6 +89,7 @@ class TestPlanZones:
         assert isinstance(zones, list)
         assert len(zones) > 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_combined_strategy(self):
         """combined strategy merges all channels."""
         prs = parse_prs(PAWS)
@@ -96,18 +100,21 @@ class TestPlanZones:
             total = sum(len(z.channels) for z in zones)
             assert total > 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_manual_strategy_empty(self):
         """manual strategy returns empty plan."""
         prs = parse_prs(PAWS)
         zones = plan_zones(prs, strategy="manual")
         assert zones == []
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_unknown_strategy_raises(self):
         """Unknown strategy should raise ValueError."""
         prs = parse_prs(PAWS)
         with pytest.raises(ValueError, match="Unknown zone strategy"):
             plan_zones(prs, strategy="nonexistent")
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_zones_respect_48_limit(self):
         """All auto-generated zones should have <= 48 channels."""
         prs = parse_prs(PAWS)
@@ -118,6 +125,7 @@ class TestPlanZones:
                     f"Zone '{z.name}' has {len(z.channels)} channels " \
                     f"(strategy={strategy})"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_zone_names_max_16_chars(self):
         """Auto zone names should be <= 16 chars."""
         prs = parse_prs(PAWS)
@@ -166,6 +174,7 @@ class TestFormatZonePlan:
         text = "\n".join(lines)
         assert "10/48" in text
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_format_from_prs(self):
         """Format zone plan from real PRS data."""
         prs = parse_prs(PAWS)
@@ -248,6 +257,7 @@ class TestValidateZonePlan:
         errors = [i for i in issues if i[0] == "error"]
         assert len(errors) == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_prs_auto_plan_validates(self):
         """Auto plan from real PRS should validate cleanly."""
         prs = parse_prs(PAWS)
@@ -294,6 +304,7 @@ class TestZoneCSVExport:
         assert "zone_number" in text
         assert "Test" in text
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_export_from_prs(self):
         """Export zone plan from real PRS to CSV."""
         prs = parse_prs(PAWS)
@@ -315,6 +326,7 @@ class TestZoneCSVExport:
 class TestZonesCLI:
     """Test the zones CLI command."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_cli_zones_auto(self, capsys):
         """zones command with auto strategy."""
         from quickprs.cli import run_cli
@@ -323,18 +335,21 @@ class TestZonesCLI:
         out = capsys.readouterr().out
         assert "Zone Plan" in out or "No zones" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_cli_zones_by_set(self, capsys):
         """zones command with by_set strategy."""
         from quickprs.cli import run_cli
         result = run_cli(["zones", str(PAWS), "--strategy", "by_set"])
         assert result == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_cli_zones_combined(self, capsys):
         """zones command with combined strategy."""
         from quickprs.cli import run_cli
         result = run_cli(["zones", str(PAWS), "--strategy", "combined"])
         assert result == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_cli_zones_manual(self, capsys):
         """zones command with manual strategy returns empty."""
         from quickprs.cli import run_cli
@@ -343,6 +358,7 @@ class TestZonesCLI:
         out = capsys.readouterr().out
         assert "No zones" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_cli_zones_export(self, capsys):
         """zones --export writes CSV."""
         from quickprs.cli import run_cli

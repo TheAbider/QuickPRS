@@ -14,6 +14,7 @@ from quickprs.option_maps import (
 )
 
 TESTDATA = Path(__file__).parent / "testdata"
+EVERY_OPT = TESTDATA / "every option"
 PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 CLAUDE = TESTDATA / "claude test.PRS"
 NEW_RADIO = TESTDATA / "every option" / "new radio - xg 100 portable .PRS"
@@ -29,6 +30,7 @@ def _copy_prs(src, tmp_path, name="test.PRS"):
 # ─── set_platform_option (option_maps.py) ────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists() or not NEW_RADIO.exists(), reason="Test PRS data not available")
 class TestSetPlatformOption:
     """Test the set_platform_option function directly."""
 
@@ -191,6 +193,7 @@ class TestSetPlatformOption:
 # ─── list_platform_options ───────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestListPlatformOptions:
     """Test the list_platform_options function."""
 
@@ -242,6 +245,7 @@ class TestListPlatformOptions:
 # ─── cmd_set_option (cli.py) ─────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCmdSetOption:
     """Test the set-option CLI command."""
 
@@ -330,6 +334,7 @@ class TestCmdSetOption:
 # ─── run_cli set-option dispatch ─────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestRunCliSetOption:
     """Test set-option via run_cli dispatcher."""
 
@@ -370,6 +375,7 @@ class TestRunCliSetOption:
 # ─── Multi-file info and validate ────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not NEW_RADIO.exists(), reason="Test PRS data not available")
 class TestMultiFileInfo:
     """Test info command with multiple files."""
 
@@ -398,6 +404,7 @@ class TestMultiFileInfo:
         assert "Processed 3 files" in out
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists() or not NEW_RADIO.exists(), reason="Test PRS data not available")
 class TestMultiFileValidate:
     """Test validate command with multiple files."""
 

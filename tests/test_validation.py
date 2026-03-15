@@ -28,6 +28,7 @@ PAWS_PRS = TESTDATA / "PAWSOVERMAWS.PRS"
 
 # ─── validate_prs (flat) ─────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS_PRS.exists() or not CLAUDE_PRS.exists(), reason="Test PRS data not available")
 def test_validate_prs_no_crash():
     """validate_prs runs without crashing on both test files."""
     for f in (CLAUDE_PRS, PAWS_PRS):

@@ -75,6 +75,7 @@ def _read_csv(path):
 
 # ─── export_group_sets ──────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestExportGroupSets:
 
     def test_headers(self):
@@ -129,6 +130,7 @@ class TestExportGroupSets:
 
 # ─── export_trunk_sets ──────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestExportTrunkSets:
 
     def test_headers(self):
@@ -165,6 +167,7 @@ class TestExportTrunkSets:
 
 # ─── export_conv_sets ───────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestExportConvSets:
 
     def test_headers(self):
@@ -190,6 +193,7 @@ class TestExportConvSets:
 
 # ─── export_iden_sets ───────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestExportIdenSets:
 
     def test_headers(self):
@@ -223,6 +227,7 @@ class TestExportIdenSets:
 
 # ─── export_options ─────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestExportOptions:
 
     def test_paws_has_options(self):
@@ -268,6 +273,7 @@ class TestExportOptions:
 
 # ─── export_systems ─────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestExportSystems:
 
     def test_paws_has_systems(self):
@@ -359,6 +365,7 @@ class TestFlattenConfig:
 
 # ─── collect_system_info ────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCollectSystemInfo:
 
     def test_paws_systems(self):
@@ -387,6 +394,7 @@ class TestCollectSystemInfo:
 
 # ─── export_ecc ──────────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestExportECC:
 
     def test_paws_has_ecc(self):
@@ -423,6 +431,7 @@ class TestExportECC:
 
 # ─── export_preferred ────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestExportPreferred:
 
     def test_paws_has_preferred(self):

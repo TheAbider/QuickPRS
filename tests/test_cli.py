@@ -35,6 +35,7 @@ class TestRunCliDispatch:
             run_cli(["--version"])
         assert exc.value.code == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_info_subcommand(self, capsys):
         """info subcommand should succeed on valid file."""
         result = run_cli(["info", str(PAWS)])
@@ -42,6 +43,7 @@ class TestRunCliDispatch:
         out = capsys.readouterr().out
         assert "PAWSOVERMAWS.PRS" in out
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_validate_subcommand(self, capsys):
         """validate subcommand should succeed."""
         result = run_cli(["validate", str(CLAUDE)])
@@ -49,6 +51,7 @@ class TestRunCliDispatch:
         out = capsys.readouterr().out
         assert "Validating" in out
 
+    @pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
     def test_compare_subcommand(self, capsys):
         """compare subcommand should work with two files."""
         result = run_cli(["compare", str(PAWS), str(CLAUDE)])
@@ -56,6 +59,7 @@ class TestRunCliDispatch:
         out = capsys.readouterr().out
         assert "Summary" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_export_csv_subcommand(self, capsys):
         """export-csv subcommand should succeed."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -74,6 +78,7 @@ class TestRunCliDispatch:
         result = run_cli(["validate", "nonexistent.PRS"])
         assert result == 1
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_compare_missing_file(self, capsys):
         """compare with missing file should return 1."""
         result = run_cli(["compare", "nonexistent.PRS", str(CLAUDE)])
@@ -83,6 +88,7 @@ class TestRunCliDispatch:
 # ─── cmd_info ────────────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCmdInfo:
     """Test the info command output."""
 
@@ -190,6 +196,7 @@ class TestCmdInfo:
 # ─── cmd_validate ────────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCmdValidate:
     """Test the validate command."""
 
@@ -227,6 +234,7 @@ class TestCmdValidate:
 # ─── cmd_export_csv ──────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCmdExportCsv:
     """Test the CSV export command."""
 
@@ -378,6 +386,7 @@ class TestCmdExportCsv:
 # ─── cmd_compare ─────────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCmdCompare:
     """Test the compare command."""
 
@@ -437,6 +446,7 @@ class TestCmdCompare:
 class TestSetParsingHelpers:
     """Test the internal set parsing helper functions."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_group_sets_paws(self):
         """Should parse group sets from PAWSOVERMAWS."""
         from quickprs.cli import _parse_group_sets
@@ -447,6 +457,7 @@ class TestSetParsingHelpers:
         names = {s.name for s in sets}
         assert "PSERN PD" in names
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_trunk_sets_paws(self):
         """Should parse trunk sets from PAWSOVERMAWS."""
         from quickprs.cli import _parse_trunk_sets
@@ -457,6 +468,7 @@ class TestSetParsingHelpers:
         total = sum(len(s.channels) for s in sets)
         assert total == 290
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_conv_sets_paws(self):
         """Should parse conv sets from PAWSOVERMAWS."""
         from quickprs.cli import _parse_conv_sets
@@ -467,6 +479,7 @@ class TestSetParsingHelpers:
         total = sum(len(s.channels) for s in sets)
         assert total == 145
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_iden_sets_paws(self):
         """Should parse IDEN sets from PAWSOVERMAWS."""
         from quickprs.cli import _parse_iden_sets
@@ -477,6 +490,7 @@ class TestSetParsingHelpers:
         names = {s.name for s in sets}
         assert "BEE00" in names
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_parse_group_sets_claude(self):
         """Should parse group sets from claude test."""
         from quickprs.cli import _parse_group_sets
@@ -497,6 +511,7 @@ class TestSetParsingHelpers:
 # ─── cmd_dump ─────────────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCmdDump:
     """Test the dump command."""
 
@@ -564,6 +579,7 @@ class TestCmdDump:
 # ─── Edge cases ──────────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCliEdgeCases:
     """Test CLI edge cases."""
 
@@ -592,6 +608,7 @@ class TestCliEdgeCases:
 # ─── ECC and IDEN type display ─────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestInfoECC:
     """Tests for Enhanced Control Channel display in cmd_info."""
 
@@ -626,6 +643,7 @@ class TestInfoECC:
         assert "Enhanced Control Channels:" not in out
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestInfoIdenTypes:
     """Tests for IDEN FDMA/TDMA type display in cmd_info."""
 
@@ -687,6 +705,7 @@ class TestIdenTemplates:
 # ─── diff-options subcommand ───────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestDiffOptions:
     """Tests for the diff-options CLI subcommand."""
 
@@ -730,11 +749,13 @@ class TestDiffOptions:
 
 class TestCmdDumpEdgeCases:
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_dump_negative_section_index(self, capsys):
         """Negative section index should return error."""
         result = cmd_dump(str(PAWS), section_idx=-1)
         assert result == 1
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_dump_hex_zero(self, capsys):
         """hex_bytes=0 should not show hex output."""
         result = cmd_dump(str(PAWS), section_idx=0, hex_bytes=0)
@@ -742,6 +763,7 @@ class TestCmdDumpEdgeCases:
         out = capsys.readouterr().out
         assert "000000" not in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_dump_hex_larger_than_section(self, capsys):
         """hex_bytes > section size should show what's available."""
         result = cmd_dump(str(PAWS), section_idx=0, hex_bytes=99999)
@@ -749,6 +771,7 @@ class TestCmdDumpEdgeCases:
         out = capsys.readouterr().out
         assert "000000" in out
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_dump_last_section(self, capsys):
         """Dumping the last section should work."""
         from quickprs.prs_parser import parse_prs

@@ -99,26 +99,31 @@ class TestCompareIdentical:
         diffs = compare_prs(claude_prs, claude_prs)
         assert all(d[0] == SAME for d in diffs)
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_compare_prs_files_self_no_added(self):
         """compare_prs_files with same path shows no ADDED."""
         diffs = compare_prs_files(CLAUDE, CLAUDE)
         assert all(d[0] != ADDED for d in diffs)
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_compare_prs_files_self_no_removed(self):
         """compare_prs_files with same path shows no REMOVED."""
         diffs = compare_prs_files(CLAUDE, CLAUDE)
         assert all(d[0] != REMOVED for d in diffs)
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_compare_prs_files_self_no_changed(self):
         """compare_prs_files with same path shows no CHANGED."""
         diffs = compare_prs_files(CLAUDE, CLAUDE)
         assert all(d[0] != CHANGED for d in diffs)
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_paws_self_compare_no_added(self, paws_prs):
         """PAWSOVERMAWS self-compare has no ADDED."""
         diffs = compare_prs(paws_prs, paws_prs)
         assert all(d[0] != ADDED for d in diffs)
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_paws_self_compare_no_changed(self, paws_prs):
         """PAWSOVERMAWS self-compare has no CHANGED."""
         diffs = compare_prs(paws_prs, paws_prs)
@@ -130,6 +135,7 @@ class TestCompareIdentical:
 # ═══════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCompareSystems:
     """System-level comparison: add/remove systems, cross-file diffs."""
 
@@ -205,6 +211,7 @@ class TestCompareSystems:
 # ═══════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCompareSetLevel:
     """Set-level diffs: group sets, trunk sets, modifications."""
 
@@ -361,6 +368,7 @@ class TestFormatComparison:
 # ═══════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCompareConvSets:
     """Compare files with different conventional channel sets."""
 
@@ -393,6 +401,7 @@ class TestCompareConvSets:
 # ═══════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestCompareIdenSets:
     """Compare files with different IDEN sets."""
 
@@ -524,6 +533,7 @@ class TestParsePawsovermaws:
         s = paws_prs.summary()
         assert isinstance(s, str)
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_summary_contains_file_path(self, paws_prs):
         s = paws_prs.summary()
         assert "PAWSOVERMAWS" in s
@@ -551,6 +561,7 @@ class TestParsePrsBytes:
         prs_from_bytes = parse_prs_bytes(claude_bytes)
         assert prs_from_bytes.to_bytes() == claude_bytes
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_bytes_parse_same_sections_paws(self, paws_prs, paws_bytes):
         """parse_prs_bytes produces same section count for PAWS."""
         prs_from_bytes = parse_prs_bytes(paws_bytes)
@@ -564,6 +575,7 @@ class TestParsePrsBytes:
         bytes2 = prs2.to_bytes()
         assert bytes1 == bytes2
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_double_roundtrip_paws(self, paws_bytes):
         """to_bytes -> parse_prs_bytes -> to_bytes is stable for PAWS."""
         prs1 = parse_prs_bytes(paws_bytes)
@@ -591,6 +603,7 @@ class TestPRSFileMethods:
         """to_bytes on claude test produces exact original file bytes."""
         assert claude_prs.to_bytes() == claude_bytes
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_to_bytes_paws_exact(self, paws_prs, paws_bytes):
         """to_bytes on PAWSOVERMAWS produces exact original file bytes."""
         assert paws_prs.to_bytes() == paws_bytes
@@ -605,6 +618,7 @@ class TestPRSFileMethods:
         s = claude_prs.summary()
         assert "26" in s
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_summary_paws_has_path(self, paws_prs):
         """summary() contains the file path for PAWS."""
         s = paws_prs.summary()

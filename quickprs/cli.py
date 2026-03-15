@@ -60,6 +60,12 @@ Non-GUI operations for scripting and batch processing:
     quickprs clone-personality file.PRS -o variant.PRS --name "DET" --remove-set FIRE
     quickprs renumber file.PRS --set "MURS" --start 1
     quickprs auto-name file.PRS --set "PSERN PD" --style compact
+    quickprs cleanup file.PRS --check
+    quickprs cleanup file.PRS --fix
+    quickprs cleanup file.PRS --remove-unused
+    quickprs search *.PRS --freq 851.0125
+    quickprs search *.PRS --tg 1000
+    quickprs search *.PRS --name "PSERN"
 """
 
 import csv
@@ -3107,6 +3113,119 @@ def cmd_systems(subcmd, query=None, filepath=None, system_name=None,
         return 1
 
 
+def cmd_cleanup(filepath, check=False, fix=False, remove_unused=False):
+    """Find and fix duplicates and unused sets in a PRS file.
+
+    Args:
+        filepath: PRS file path
+        check: if True, report duplicates and unused sets
+        fix: if True, report what would be removed (duplicates)
+        remove_unused: if True, report unused sets
+    """
+    from .cleanup import (
+        find_duplicates, remove_duplicates,
+        find_unused_sets, cleanup_report,
+        format_duplicates_report, format_unused_report,
+    )
+
+    prs = parse_prs(filepath)
+    print(f"File: {filepath}")
+    print()
+
+    if check or (not fix and not remove_unused):
+        lines = cleanup_report(prs)
+        for line in lines:
+            print(line)
+        return 0
+
+    if fix:
+        dupes = find_duplicates(prs)
+        lines = format_duplicates_report(dupes)
+        for line in lines:
+            print(line)
+        counts = remove_duplicates(prs)
+        total = sum(counts.values())
+        if total == 0:
+            print("\nNo duplicates to remove.")
+        else:
+            print(f"\nWould remove: {counts['tgs_removed']} TGs, "
+                  f"{counts['freqs_removed']} freqs, "
+                  f"{counts['channels_removed']} channels")
+            print("(Binary modification not yet supported — "
+                  "use GUI Cleanup dialog to fix interactively)")
+        return 0
+
+    if remove_unused:
+        unused = find_unused_sets(prs)
+        lines = format_unused_report(unused)
+        for line in lines:
+            print(line)
+        total = sum(len(v) for v in unused.values())
+        if total == 0:
+            print("\nNo unused sets to remove.")
+        else:
+            print(f"\n{total} unused set(s) found.")
+            print("Use 'quickprs remove' to remove individual sets.")
+        return 0
+
+    return 0
+
+
+def cmd_search(filepaths, freq=None, tg=None, name=None):
+    """Search across multiple PRS files for data.
+
+    Args:
+        filepaths: list of PRS file paths (may include glob patterns)
+        freq: frequency to search for (MHz)
+        tg: talkgroup ID to search for
+        name: name/string to search for
+    """
+    import glob as globmod
+
+    # Expand glob patterns
+    expanded = []
+    for pattern in filepaths:
+        matches = globmod.glob(pattern)
+        if matches:
+            expanded.extend(matches)
+        else:
+            expanded.append(pattern)
+
+    # Filter to PRS files only
+    prs_files = [f for f in expanded
+                 if f.lower().endswith('.prs')]
+
+    if not prs_files:
+        print("No PRS files found.", file=sys.stderr)
+        return 1
+
+    print(f"Searching {len(prs_files)} file(s)...")
+    print()
+
+    from .search import (
+        search_freq, search_talkgroup, search_name,
+        format_search_results,
+    )
+
+    if freq is not None:
+        results = search_freq(prs_files, freq)
+        lines = format_search_results(results, 'freq')
+    elif tg is not None:
+        results = search_talkgroup(prs_files, tg)
+        lines = format_search_results(results, 'tg')
+    elif name is not None:
+        results = search_name(prs_files, name)
+        lines = format_search_results(results, 'name')
+    else:
+        print("Specify --freq, --tg, or --name", file=sys.stderr)
+        return 1
+
+    for line in lines:
+        print(line)
+
+    return 0
+
+
 def run_cli(args=None):
     """Parse CLI arguments and dispatch to the appropriate command.
 
@@ -3115,9 +3234,11 @@ def run_cli(args=None):
     """
     import argparse
 
+    fmt = argparse.RawDescriptionHelpFormatter
     parser = argparse.ArgumentParser(
         prog="QuickPRS",
         description=f"QuickPRS v{__version__} — Harris RPM Personality Tool",
+        formatter_class=fmt,
     )
     parser.add_argument("--version", action="version",
                         version=f"QuickPRS v{__version__}")
@@ -3129,7 +3250,12 @@ def run_cli(args=None):
     sub = parser.add_subparsers(dest="command")
 
     # info
-    p_info = sub.add_parser("info", help="Print personality summary")
+    p_info = sub.add_parser("info", help="Print personality summary",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs info radio.PRS\n"
+               "  quickprs info radio.PRS --detail\n"
+               "  quickprs info *.PRS")
     p_info.add_argument("file", nargs='+', help="PRS file path(s)")
     p_info.add_argument("-d", "--detail", action="store_true",
                         help="Show verbose output with WAN, IDEN freqs, "
@@ -3137,13 +3263,24 @@ def run_cli(args=None):
 
     # validate
     p_val = sub.add_parser("validate",
-                            help="Validate one or more PRS files")
+                            help="Validate one or more PRS files",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs validate radio.PRS\n"
+               "  quickprs validate *.PRS")
     p_val.add_argument("file", nargs='+', help="PRS file path(s)")
 
     # set-option
     p_setopt = sub.add_parser("set-option",
                                help="Get/set radio options in "
-                                    "platformConfig XML")
+                                    "platformConfig XML",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs set-option radio.PRS --list\n"
+               "  quickprs set-option radio.PRS gps.gpsMode\n"
+               "  quickprs set-option radio.PRS gps.gpsMode ON\n"
+               "  quickprs set-option radio.PRS misc.password 1234\n"
+               "  quickprs set-option radio.PRS bluetooth.btMode OFF")
     p_setopt.add_argument("file", help="PRS file path")
     p_setopt.add_argument("option", nargs='?', default=None,
                            help="section.attribute (e.g. gps.gpsMode)")
@@ -3155,13 +3292,21 @@ def run_cli(args=None):
                            help="Output file (default: overwrite input)")
 
     # export-csv
-    p_csv = sub.add_parser("export-csv", help="Export to CSV files")
+    p_csv = sub.add_parser("export-csv", help="Export to CSV files",
+        formatter_class=fmt,
+        epilog="Example:\n"
+               "  quickprs export-csv radio.PRS output/")
     p_csv.add_argument("file", help="PRS file path")
     p_csv.add_argument("output_dir", help="Output directory")
 
     # export-json
     p_json_out = sub.add_parser("export-json",
-                                 help="Export PRS to structured JSON")
+                                 help="Export PRS to structured JSON",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs export-json radio.PRS\n"
+               "  quickprs export-json radio.PRS -o config.json\n"
+               "  quickprs export-json radio.PRS --compact")
     p_json_out.add_argument("file", help="PRS file path")
     p_json_out.add_argument("-o", "--output", default=None,
                              help="Output JSON path (default: same name .json)")
@@ -3170,14 +3315,21 @@ def run_cli(args=None):
 
     # import-json
     p_json_in = sub.add_parser("import-json",
-                                help="Create PRS from a JSON file")
+                                help="Create PRS from a JSON file",
+        formatter_class=fmt,
+        epilog="Example:\n"
+               "  quickprs import-json config.json -o radio.PRS")
     p_json_in.add_argument("file", help="JSON file path")
     p_json_in.add_argument("-o", "--output", default=None,
                             help="Output PRS path (default: same name .PRS)")
 
     # compare
     p_cmp = sub.add_parser("compare",
-                            help="Compare systems, channels, and data sets")
+                            help="Compare systems, channels, and data sets",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs compare old.PRS new.PRS\n"
+               "  quickprs compare old.PRS new.PRS --detail")
     p_cmp.add_argument("file_a", help="First PRS file")
     p_cmp.add_argument("file_b", help="Second PRS file")
     p_cmp.add_argument("--detail", action="store_true", default=False,
@@ -3185,7 +3337,12 @@ def run_cli(args=None):
                              "(talkgroups, frequencies, channels, options)")
 
     # dump
-    p_dump = sub.add_parser("dump", help="Dump raw section info")
+    p_dump = sub.add_parser("dump", help="Dump raw section info",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs dump radio.PRS\n"
+               "  quickprs dump radio.PRS -s 5\n"
+               "  quickprs dump radio.PRS -s 5 -x 128")
     p_dump.add_argument("file", help="PRS file path")
     p_dump.add_argument("-s", "--section", type=int, default=None,
                         help="Section index to inspect in detail")
@@ -3195,7 +3352,11 @@ def run_cli(args=None):
     # diff-options
     p_dopt = sub.add_parser("diff-options",
                               help="Compare radio options (audio, buttons, "
-                                   "menu, display, etc.)")
+                                   "menu, display, etc.)",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs diff-options baseline.PRS modified.PRS\n"
+               "  quickprs diff-options baseline.PRS modified.PRS --raw")
     p_dopt.add_argument("file_a", help="First PRS file (baseline)")
     p_dopt.add_argument("file_b", help="Second PRS file (modified)")
     p_dopt.add_argument("--raw", action="store_true",
@@ -3203,7 +3364,11 @@ def run_cli(args=None):
 
     # create
     p_create = sub.add_parser("create",
-                               help="Create a new blank PRS file")
+                               help="Create a new blank PRS file",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs create radio.PRS\n"
+               "  quickprs create radio.PRS --name PATROL --author Dispatch")
     p_create.add_argument("output", help="Output PRS file path")
     p_create.add_argument("--name", default=None,
                            help="Personality name (default: output filename)")
@@ -3212,14 +3377,21 @@ def run_cli(args=None):
 
     # build
     p_build = sub.add_parser("build",
-                              help="Build a PRS from an INI config file")
+                              help="Build a PRS from an INI config file",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs build patrol.ini\n"
+               "  quickprs build patrol.ini -o patrol.PRS")
     p_build.add_argument("config", help="INI config file path")
     p_build.add_argument("-o", "--output", default=None,
                           help="Output PRS path (default: same name .PRS)")
 
     # fleet
     p_fleet = sub.add_parser("fleet",
-                              help="Build PRS files for a fleet of radios")
+                              help="Build PRS files for a fleet of radios",
+        formatter_class=fmt,
+        epilog="Example:\n"
+               "  quickprs fleet patrol.ini --units units.csv -o fleet_output/")
     p_fleet.add_argument("config", help="INI config file path")
     p_fleet.add_argument("--units", required=True,
                           help="CSV file with unit_id,name,password columns")
@@ -3228,7 +3400,13 @@ def run_cli(args=None):
 
     # remove
     p_remove = sub.add_parser("remove",
-                               help="Remove a system or data set")
+                               help="Remove a system or data set",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs remove radio.PRS system \"PSERN SEATTLE\"\n"
+               "  quickprs remove radio.PRS trunk-set PSERN\n"
+               "  quickprs remove radio.PRS group-set \"PSERN PD\"\n"
+               "  quickprs remove radio.PRS conv-set MURS")
     p_remove.add_argument("file", help="PRS file path")
     p_remove.add_argument("type",
                            choices=["system", "trunk-set",
@@ -3240,7 +3418,12 @@ def run_cli(args=None):
 
     # edit
     p_edit = sub.add_parser("edit",
-                             help="Edit personality metadata or rename sets")
+                             help="Edit personality metadata or rename sets",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs edit radio.PRS --name \"PATROL.PRS\"\n"
+               "  quickprs edit radio.PRS --author \"Dispatch\"\n"
+               "  quickprs edit radio.PRS --rename-set trunk PSERN NEWNAME")
     p_edit.add_argument("file", help="PRS file path")
     p_edit.add_argument("--name", default=None,
                          help="New personality filename")
@@ -3255,13 +3438,26 @@ def run_cli(args=None):
 
     # iden-templates
     p_iden = sub.add_parser("iden-templates",
-                             help="List standard IDEN templates")
+                             help="List standard IDEN templates",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs iden-templates\n"
+               "  quickprs iden-templates --detail")
     p_iden.add_argument("-d", "--detail", action="store_true",
                         help="Show individual entries per template")
 
     # import-rr
     p_rr = sub.add_parser("import-rr",
-                           help="Import P25 system from RadioReference API")
+                           help="Import P25 system from RadioReference API",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs import-rr radio.PRS --sid 8155 "
+               "--username USER --apikey KEY\n"
+               "  quickprs import-rr radio.PRS "
+               "--url https://www.radioreference.com/db/sid/8155 "
+               "--username USER --apikey KEY\n"
+               "  quickprs import-rr radio.PRS --sid 8155 "
+               "--username USER --apikey KEY --categories 1,3,5")
     p_rr.add_argument("file", help="PRS file to inject into")
     p_rr.add_argument("--sid", type=int, default=None,
                       help="RadioReference system ID (from URL: /db/sid/XXXX)")
@@ -3283,7 +3479,12 @@ def run_cli(args=None):
     # import-paste
     p_paste = sub.add_parser("import-paste",
                               help="Import P25 system from pasted "
-                                   "RadioReference text")
+                                   "RadioReference text",
+        formatter_class=fmt,
+        epilog="Example:\n"
+               "  quickprs import-paste radio.PRS --name PSERN "
+               "--sysid 892 --wacn 781824 "
+               "--tgs-file tgs.txt --freqs-file freqs.txt")
     p_paste.add_argument("file", help="PRS file to inject into")
     p_paste.add_argument("--name", required=True,
                          help="System short name (8 chars max)")
@@ -3303,7 +3504,13 @@ def run_cli(args=None):
     # merge
     p_merge = sub.add_parser("merge",
                               help="Merge systems/channels from one PRS "
-                                   "into another")
+                                   "into another",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs merge target.PRS source.PRS --all\n"
+               "  quickprs merge target.PRS source.PRS --systems\n"
+               "  quickprs merge target.PRS source.PRS --channels "
+               "-o merged.PRS")
     p_merge.add_argument("target", help="Target PRS file (receives data)")
     p_merge.add_argument("source", help="Source PRS file (provides data)")
     p_merge.add_argument("--systems", action="store_true", default=False,
@@ -3319,7 +3526,11 @@ def run_cli(args=None):
     # clone
     p_clone = sub.add_parser("clone",
                               help="Clone a specific system from one PRS "
-                                   "into another")
+                                   "into another",
+        formatter_class=fmt,
+        epilog="Example:\n"
+               "  quickprs clone target.PRS source.PRS "
+               "\"PSERN SEATTLE\" -o output.PRS")
     p_clone.add_argument("target", help="Target PRS file (receives data)")
     p_clone.add_argument("source", help="Source PRS file (provides data)")
     p_clone.add_argument("system", help="System long name to clone "
@@ -3330,7 +3541,15 @@ def run_cli(args=None):
     # clone-personality
     p_clonep = sub.add_parser("clone-personality",
                                help="Create a modified clone of a "
-                                    "personality file")
+                                    "personality file",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs clone-personality radio.PRS -o det.PRS "
+               "--name DET --remove-set FIRE\n"
+               "  quickprs clone-personality radio.PRS -o rx_only.PRS "
+               "--disable-tx \"PSERN PD\"\n"
+               "  quickprs clone-personality radio.PRS -o unit5.PRS "
+               "--unit-id 12345 --password 5678")
     p_clonep.add_argument("file", help="Source PRS file path")
     p_clonep.add_argument("-o", "--output", required=True,
                            help="Output file path (required)")
@@ -3353,7 +3572,12 @@ def run_cli(args=None):
 
     # renumber
     p_renum = sub.add_parser("renumber",
-                              help="Renumber channels sequentially")
+                              help="Renumber channels sequentially",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs renumber radio.PRS --set MURS --start 1\n"
+               "  quickprs renumber radio.PRS --type group "
+               "--set \"PSERN PD\" --start 100")
     p_renum.add_argument("file", help="PRS file path")
     p_renum.add_argument("--set", default=None, dest="set_name",
                           help="Set name to renumber (default: all)")
@@ -3368,7 +3592,12 @@ def run_cli(args=None):
     # auto-name
     p_autoname = sub.add_parser("auto-name",
                                  help="Auto-generate talkgroup short "
-                                      "names from long names")
+                                      "names from long names",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs auto-name radio.PRS --set \"PSERN PD\"\n"
+               "  quickprs auto-name radio.PRS --set \"PSERN PD\" "
+               "--style numbered")
     p_autoname.add_argument("file", help="PRS file path")
     p_autoname.add_argument("--set", required=True, dest="set_name",
                              help="Group set name")
@@ -3381,7 +3610,11 @@ def run_cli(args=None):
 
     # repair
     p_repair = sub.add_parser("repair",
-                               help="Repair a damaged PRS file")
+                               help="Repair a damaged PRS file",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs repair damaged.PRS -o fixed.PRS\n"
+               "  quickprs repair damaged.PRS --salvage")
     p_repair.add_argument("file", help="PRS file path")
     p_repair.add_argument("-o", "--output", default=None,
                            help="Output file (default: overwrite input)")
@@ -3392,26 +3625,47 @@ def run_cli(args=None):
     # capacity
     p_cap = sub.add_parser("capacity",
                             help="Show memory usage and remaining "
-                                 "capacity")
+                                 "capacity",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs capacity radio.PRS\n"
+               "  quickprs capacity *.PRS")
     p_cap.add_argument("file", nargs='+', help="PRS file path(s)")
 
     # report
     p_report = sub.add_parser("report",
                                help="Generate HTML report of radio "
-                                    "configuration")
+                                    "configuration",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs report radio.PRS\n"
+               "  quickprs report radio.PRS -o report.html")
     p_report.add_argument("file", help="PRS file path")
     p_report.add_argument("-o", "--output", default=None,
                            help="Output HTML path (default: same name .html)")
 
-    # inject — subcommand with its own sub-subparsers
+    # inject -- subcommand with its own sub-subparsers
     p_inject = sub.add_parser("inject",
-                               help="Inject data into a PRS file")
+                               help="Inject data into a PRS file",
+        formatter_class=fmt,
+        epilog="Subcommands: p25, conv, talkgroups\n\n"
+               "Examples:\n"
+               "  quickprs inject radio.PRS p25 --name PSERN "
+               "--sysid 892 --freqs-csv freqs.csv --tgs-csv tgs.csv\n"
+               "  quickprs inject radio.PRS conv --template murs\n"
+               "  quickprs inject radio.PRS talkgroups "
+               "--set \"PSERN PD\" --tgs-csv more_tgs.csv")
     p_inject.add_argument("file", help="PRS file path")
     inject_sub = p_inject.add_subparsers(dest="inject_cmd")
 
     # inject p25
     p_inj_p25 = inject_sub.add_parser("p25",
-                                        help="Add a P25 trunked system")
+                                        help="Add a P25 trunked system",
+        formatter_class=fmt,
+        epilog="Example:\n"
+               "  quickprs inject radio.PRS p25 --name PSERN "
+               "--sysid 892 --wacn 781824 "
+               "--freqs-csv freqs.csv --tgs-csv tgs.csv")
     p_inj_p25.add_argument("--name", required=True,
                             help="System short name (8 chars max)")
     p_inj_p25.add_argument("--long-name", default=None,
@@ -3433,7 +3687,13 @@ def run_cli(args=None):
 
     # inject conv
     p_inj_conv = inject_sub.add_parser("conv",
-                                        help="Add conventional channels")
+                                        help="Add conventional channels",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs inject radio.PRS conv --template murs\n"
+               "  quickprs inject radio.PRS conv --template noaa\n"
+               "  quickprs inject radio.PRS conv --name LOCAL "
+               "--channels-csv channels.csv")
     p_inj_conv.add_argument("--name", default=None,
                              help="Set name (8 chars max, defaults to "
                                   "template name if using --template)")
@@ -3450,7 +3710,11 @@ def run_cli(args=None):
 
     # inject talkgroups
     p_inj_tg = inject_sub.add_parser("talkgroups",
-                                      help="Add talkgroups to existing set")
+                                      help="Add talkgroups to existing set",
+        formatter_class=fmt,
+        epilog="Example:\n"
+               "  quickprs inject radio.PRS talkgroups "
+               "--set \"PSERN PD\" --tgs-csv new_tgs.csv")
     p_inj_tg.add_argument("--set", required=True, dest="set_name",
                            help="Target group set name")
     p_inj_tg.add_argument("--tgs-csv", required=True,
@@ -3461,7 +3725,12 @@ def run_cli(args=None):
     # import-scanner
     p_scanner = sub.add_parser("import-scanner",
                                 help="Import channels from scanner CSV "
-                                     "(Uniden, CHIRP, SDRTrunk)")
+                                     "(Uniden, CHIRP, SDRTrunk)",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs import-scanner radio.PRS --csv chirp.csv\n"
+               "  quickprs import-scanner radio.PRS --csv uniden.csv "
+               "--format uniden --name SCANNER")
     p_scanner.add_argument("file", help="PRS file to inject into")
     p_scanner.add_argument("--csv", required=True, dest="csv_file",
                             help="Scanner CSV file to import")
@@ -3475,26 +3744,51 @@ def run_cli(args=None):
     p_scanner.add_argument("-o", "--output", default=None,
                             help="Output file (default: overwrite input)")
 
-    # list — quick data dump
+    # list -- quick data dump
     p_list = sub.add_parser("list",
                              help="List specific data types "
                                   "(systems, talkgroups, channels, "
-                                  "frequencies, sets, options)")
+                                  "frequencies, sets, options)",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs list radio.PRS systems\n"
+               "  quickprs list radio.PRS talkgroups\n"
+               "  quickprs list radio.PRS channels\n"
+               "  quickprs list radio.PRS frequencies\n"
+               "  quickprs list radio.PRS options")
     p_list.add_argument("file", help="PRS file path")
     p_list.add_argument("type",
                          choices=["systems", "talkgroups", "channels",
                                   "frequencies", "sets", "options"],
                          help="Data type to list")
 
-    # bulk-edit — subcommand with talkgroups/channels sub-subcommands
+    # bulk-edit -- subcommand with talkgroups/channels sub-subcommands
     p_bulk = sub.add_parser("bulk-edit",
-                             help="Bulk-modify talkgroups or channels")
+                             help="Bulk-modify talkgroups or channels",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs bulk-edit radio.PRS talkgroups "
+               "--set \"PSERN PD\" --enable-scan\n"
+               "  quickprs bulk-edit radio.PRS talkgroups "
+               "--set \"PSERN PD\" --disable-tx\n"
+               "  quickprs bulk-edit radio.PRS channels "
+               "--set MURS --set-tone 100.0\n"
+               "  quickprs bulk-edit radio.PRS channels "
+               "--set MURS --clear-tones")
     p_bulk.add_argument("file", help="PRS file path")
     bulk_sub = p_bulk.add_subparsers(dest="bulk_cmd")
 
     # bulk-edit talkgroups
     p_bulk_tg = bulk_sub.add_parser("talkgroups",
-                                     help="Bulk-edit talkgroups in a set")
+                                     help="Bulk-edit talkgroups in a set",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs bulk-edit radio.PRS talkgroups "
+               "--set \"PSERN PD\" --enable-scan\n"
+               "  quickprs bulk-edit radio.PRS talkgroups "
+               "--set \"PSERN PD\" --disable-tx\n"
+               "  quickprs bulk-edit radio.PRS talkgroups "
+               "--set \"PSERN PD\" --prefix \"PD \"")
     p_bulk_tg.add_argument("--set", required=True, dest="set_name",
                             help="Target group set name")
     p_bulk_tg.add_argument("--enable-scan", action="store_true",
@@ -3518,7 +3812,15 @@ def run_cli(args=None):
 
     # bulk-edit channels
     p_bulk_ch = bulk_sub.add_parser("channels",
-                                     help="Bulk-edit conv channels in a set")
+                                     help="Bulk-edit conv channels in a set",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs bulk-edit radio.PRS channels "
+               "--set MURS --set-tone 100.0\n"
+               "  quickprs bulk-edit radio.PRS channels "
+               "--set MURS --clear-tones\n"
+               "  quickprs bulk-edit radio.PRS channels "
+               "--set MURS --set-power 2")
     p_bulk_ch.add_argument("--set", required=True, dest="set_name",
                             help="Target conv set name")
     p_bulk_ch.add_argument("--set-tone", default=None,
@@ -3533,9 +3835,16 @@ def run_cli(args=None):
     p_bulk_ch.add_argument("-o", "--output", default=None,
                             help="Output file (default: overwrite input)")
 
-    # freq-tools — frequency/tone reference
+    # freq-tools -- frequency/tone reference
     p_freq = sub.add_parser("freq-tools",
-                             help="Frequency and tone reference tools")
+                             help="Frequency and tone reference tools",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs freq-tools offset 146.94\n"
+               "  quickprs freq-tools channel 462.5625\n"
+               "  quickprs freq-tools tones\n"
+               "  quickprs freq-tools dcs\n"
+               "  quickprs freq-tools nearest 100.5")
     freq_sub = p_freq.add_subparsers(dest="freq_cmd")
 
     p_freq_offset = freq_sub.add_parser("offset",
@@ -3556,10 +3865,16 @@ def run_cli(args=None):
     p_freq_nearest.add_argument("freq", type=float,
                                  help="Tone frequency in Hz")
 
-    # systems — built-in P25 system database
+    # systems -- built-in P25 system database
     p_sys = sub.add_parser("systems",
                             help="Built-in P25 system database "
-                                 "(list, search, info, add)")
+                                 "(list, search, info, add)",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs systems list\n"
+               "  quickprs systems search seattle\n"
+               "  quickprs systems info PSERN\n"
+               "  quickprs systems add radio.PRS PSERN")
     sys_sub = p_sys.add_subparsers(dest="sys_cmd")
 
     sys_sub.add_parser("list", help="List all known P25 systems")
@@ -3580,10 +3895,14 @@ def run_cli(args=None):
     p_sys_add.add_argument("-o", "--output", default=None,
                             help="Output file (default: overwrite input)")
 
-    # auto-setup — one-click RadioReference system setup
+    # auto-setup -- one-click RadioReference system setup
     p_auto = sub.add_parser("auto-setup",
                              help="One-click P25 system setup from "
-                                  "RadioReference (with ECC + IDEN)")
+                                  "RadioReference (with ECC + IDEN)",
+        formatter_class=fmt,
+        epilog="Example:\n"
+               "  quickprs auto-setup radio.PRS --sid 8155 "
+               "--username USER --apikey KEY")
     p_auto.add_argument("file", help="PRS file to inject into")
     p_auto.add_argument("--sid", type=int, default=None,
                         help="RadioReference system ID")
@@ -3601,9 +3920,17 @@ def run_cli(args=None):
     p_auto.add_argument("-o", "--output", default=None,
                         help="Output file (default: overwrite input)")
 
-    # encrypt — set encryption on talkgroups
+    # encrypt -- set encryption on talkgroups
     p_enc = sub.add_parser("encrypt",
-                            help="Set encryption on P25 talkgroups")
+                            help="Set encryption on P25 talkgroups",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs encrypt radio.PRS --set \"PSERN PD\" "
+               "--tg 1000 --key-id 1\n"
+               "  quickprs encrypt radio.PRS --set \"PSERN PD\" "
+               "--all --key-id 1\n"
+               "  quickprs encrypt radio.PRS --set \"PSERN PD\" "
+               "--all --decrypt")
     p_enc.add_argument("file", help="PRS file path")
     p_enc.add_argument("--set", required=True, dest="set_name",
                         help="Target group set name")
@@ -3618,9 +3945,15 @@ def run_cli(args=None):
     p_enc.add_argument("-o", "--output", default=None,
                         help="Output file (default: overwrite input)")
 
-    # set-nac — set NAC on P25 conventional channel
+    # set-nac -- set NAC on P25 conventional channel
     p_nac = sub.add_parser("set-nac",
-                            help="Set NAC on P25 conventional channel")
+                            help="Set NAC on P25 conventional channel",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs set-nac radio.PRS --set P25CONV "
+               "--channel 0 --nac 293\n"
+               "  quickprs set-nac radio.PRS --set P25CONV "
+               "--channel 0 --nac 293 --nac-rx F7E")
     p_nac.add_argument("file", help="PRS file path")
     p_nac.add_argument("--set", required=True, dest="set_name",
                         help="P25 conv set name")
@@ -3633,11 +3966,19 @@ def run_cli(args=None):
     p_nac.add_argument("-o", "--output", default=None,
                         help="Output file (default: overwrite input)")
 
-    # export — export to third-party formats
+    # export -- export to third-party formats
     p_export = sub.add_parser("export",
                                help="Export to third-party radio tool "
                                     "formats (CHIRP, Uniden, SDRTrunk, "
-                                    "DSD+, Markdown)")
+                                    "DSD+, Markdown)",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs export radio.PRS chirp -o channels.csv\n"
+               "  quickprs export radio.PRS uniden\n"
+               "  quickprs export radio.PRS sdrtrunk\n"
+               "  quickprs export radio.PRS markdown\n"
+               "  quickprs export radio.PRS chirp "
+               "--sets \"MURS,GMRS\"")
     p_export.add_argument("file", help="PRS file path")
     p_export.add_argument("format",
                            choices=["chirp", "uniden", "sdrtrunk",
@@ -3649,10 +3990,15 @@ def run_cli(args=None):
                            help="Comma-separated set names to export "
                                 "(default: all)")
 
-    # zones — zone planning
+    # zones -- zone planning
     p_zones = sub.add_parser("zones",
                               help="Generate zone plan for channel "
-                                   "organization")
+                                   "organization",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs zones radio.PRS\n"
+               "  quickprs zones radio.PRS --strategy by_set\n"
+               "  quickprs zones radio.PRS --export zones.csv")
     p_zones.add_argument("file", help="PRS file path")
     p_zones.add_argument("--strategy",
                           choices=["auto", "by_set", "combined", "manual"],
@@ -3661,17 +4007,66 @@ def run_cli(args=None):
     p_zones.add_argument("--export", default=None, metavar="CSV",
                           help="Export zone plan to CSV file")
 
-    # stats — personality statistics
+    # stats -- personality statistics
     p_stats = sub.add_parser("stats",
-                              help="Show radio personality statistics")
+                              help="Show radio personality statistics",
+        formatter_class=fmt,
+        epilog="Example:\n"
+               "  quickprs stats radio.PRS")
     p_stats.add_argument("file", help="PRS file path")
 
-    # card — summary card
+    # card -- summary card
     p_card = sub.add_parser("card",
-                             help="Generate compact summary reference card")
+                             help="Generate compact summary reference card",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs card radio.PRS\n"
+               "  quickprs card radio.PRS -o card.html")
     p_card.add_argument("file", help="PRS file path")
     p_card.add_argument("-o", "--output", default=None,
                          help="Output HTML path (default: <name>_card.html)")
+
+    # cleanup -- duplicate detection and removal
+    p_cleanup = sub.add_parser("cleanup",
+                                help="Find and fix duplicates and "
+                                     "unused sets",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs cleanup radio.PRS --check\n"
+               "  quickprs cleanup radio.PRS --fix\n"
+               "  quickprs cleanup radio.PRS --remove-unused")
+    p_cleanup.add_argument("file", help="PRS file path")
+    p_cleanup.add_argument("--check", action="store_true",
+                            default=False,
+                            help="Report duplicates and unused sets "
+                                 "(default action)")
+    p_cleanup.add_argument("--fix", action="store_true",
+                            default=False,
+                            help="Show what duplicates would be removed")
+    p_cleanup.add_argument("--remove-unused", action="store_true",
+                            default=False, dest="remove_unused",
+                            help="Report unreferenced data sets")
+
+    # search -- cross-file search
+    p_search = sub.add_parser("search",
+                               help="Search across PRS files for "
+                                    "frequencies, talkgroups, or names",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs search *.PRS --freq 851.0125\n"
+               "  quickprs search *.PRS --tg 1000\n"
+               "  quickprs search *.PRS --name PSERN")
+    p_search.add_argument("file", nargs='+',
+                           help="PRS file path(s) or glob pattern(s)")
+    search_type = p_search.add_mutually_exclusive_group(required=True)
+    search_type.add_argument("--freq", type=float, default=None,
+                              help="Frequency to search for (MHz)")
+    search_type.add_argument("--tg", type=int, default=None,
+                              help="Talkgroup ID to search for")
+    search_type.add_argument("--name", default=None,
+                              dest="search_name",
+                              help="Name/string to search for "
+                                   "(case-insensitive)")
 
     parsed = parser.parse_args(args)
 
@@ -4000,6 +4395,20 @@ def run_cli(args=None):
             return cmd_stats(parsed.file)
         elif parsed.command == "card":
             return cmd_card(parsed.file, output=parsed.output)
+        elif parsed.command == "cleanup":
+            return cmd_cleanup(
+                parsed.file,
+                check=parsed.check,
+                fix=parsed.fix,
+                remove_unused=parsed.remove_unused,
+            )
+        elif parsed.command == "search":
+            return cmd_search(
+                parsed.file,
+                freq=parsed.freq,
+                tg=parsed.tg,
+                name=parsed.search_name,
+            )
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

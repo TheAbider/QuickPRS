@@ -5,6 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import pytest
 from quickprs.iden_library import (
     P25_BANDS, detect_p25_band, calculate_tx_freq,
     build_standard_iden_entries,
@@ -14,6 +15,9 @@ from quickprs.iden_library import (
     auto_select_template_key, find_matching_iden_set,
     _iden_entries_match,
 )
+
+TESTDATA = Path(__file__).parent / "testdata"
+PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 
 
 # ─── Band detection / TX calc (canonical source now in iden_library) ──
@@ -464,6 +468,7 @@ def test_entries_no_match_different_mode():
 
 # ─── find_matching_iden_set (with real PRS) ──────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_find_matching_iden_in_pawsovermaws():
     """PAWSOVERMAWS PRS has an 800 MHz IDEN set; find_matching should find it."""
     prs_path = Path(__file__).parent / "testdata" / "PAWSOVERMAWS.PRS"

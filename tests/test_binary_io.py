@@ -20,6 +20,7 @@ from quickprs.binary_io import (
 
 
 TESTDATA = Path(__file__).parent / "testdata"
+PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -245,6 +246,7 @@ class TestReadBytes:
 # ═══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestMarkers:
 
     def test_section_marker_constant(self):
@@ -293,6 +295,7 @@ class TestMarkers:
 # ═══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestClassNameReader:
 
     def test_read_cpersonality(self):

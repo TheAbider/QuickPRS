@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from quickprs.prs_parser import parse_prs
 from quickprs.binary_io import read_uint16_le, try_read_class_name
+import pytest
 from quickprs.record_types import (
     TrunkChannel, TrunkSet, ConvChannel, ConvSet,
     IdenElement, IdenDataSet, P25Group, P25GroupSet,
@@ -40,8 +41,11 @@ from quickprs.record_types import (
 )
 
 TESTDATA = Path(__file__).parent / "testdata"
+CLAUDE = TESTDATA / "claude test.PRS"
+PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_trunk_channel_parse():
     """Parse first few trunk channels from PAWSOVERMAWS and verify against CSV."""
     data = (TESTDATA / "PAWSOVERMAWS.PRS").read_bytes()
@@ -64,6 +68,7 @@ def test_trunk_channel_parse():
     print("  PASS: TrunkChannel parse + roundtrip")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_trunk_channel_section_parse():
     """Parse all trunk sets from PAWSOVERMAWS."""
     data = (TESTDATA / "PAWSOVERMAWS.PRS").read_bytes()
@@ -101,6 +106,7 @@ def test_trunk_channel_section_parse():
               f"band {s.tx_min:.0f}-{s.tx_max:.0f} MHz")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_p25_group_parse():
     """Parse first few P25 groups from PAWSOVERMAWS and verify against CSV."""
     data = (TESTDATA / "PAWSOVERMAWS.PRS").read_bytes()
@@ -129,6 +135,7 @@ def test_p25_group_parse():
     print("  PASS: P25Group parse + roundtrip")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_group_section_parse():
     """Parse all group sets from PAWSOVERMAWS."""
     data = (TESTDATA / "PAWSOVERMAWS.PRS").read_bytes()
@@ -158,6 +165,7 @@ def test_group_section_parse():
         print(f"    {s.name}: {len(s.groups)} groups")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_conv_channel_parse():
     """Parse conventional channels from PAWSOVERMAWS."""
     data = (TESTDATA / "PAWSOVERMAWS.PRS").read_bytes()
@@ -181,6 +189,7 @@ def test_conv_channel_parse():
     print("  PASS: ConvChannel parse + roundtrip")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_iden_element_parse():
     """Parse IDEN elements from PAWSOVERMAWS."""
     data = (TESTDATA / "PAWSOVERMAWS.PRS").read_bytes()
@@ -207,6 +216,7 @@ def test_iden_element_parse():
     print("  PASS: IdenElement parse + roundtrip")
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_claude_test_groups():
     """Parse the simpler claude test.PRS group section."""
     data = (TESTDATA / "claude test.PRS").read_bytes()
@@ -239,6 +249,7 @@ def test_claude_test_groups():
           f"with {len(sets[0].groups)} group(s)")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_conv_section_parse():
     """Parse all conv sets from PAWSOVERMAWS."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -277,6 +288,7 @@ def test_conv_section_parse():
         print(f"    {s.name}: {len(s.channels)} channels")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_ecc_entries_pawsovermaws():
     """Parse enhanced CC entries from all P25 system configs in PAWSOVERMAWS."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -339,6 +351,7 @@ def test_ecc_entry_roundtrip():
     print("  PASS: ECC entry roundtrip")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_ecc_washoe_details():
     """Verify WASHOE/N NEVADA has 1 ECC entry with sysid=775."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -359,6 +372,7 @@ def test_ecc_washoe_details():
     assert False, "WASHOE/N NEVADA not found"
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_build_data_section_psern():
     """Build PSERN-like system config and compare to real PAWSOVERMAWS bytes."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -387,6 +401,7 @@ def test_build_data_section_psern():
     print("  PASS: build_data_section matches PSERN (214 bytes, exact)")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_build_data_section_psrs():
     """Build PSRS config with ECC entries and IDEN ref, compare to real."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -420,6 +435,7 @@ def test_build_data_section_psrs():
     print("  PASS: build_data_section matches PSRS (337 bytes, 3 ECC, IDEN=BEE00)")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_build_data_section_cs_nevada():
     """Build C/S Nevada config with 30 ECC entries (max stress test)."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -481,6 +497,7 @@ def test_build_data_section_cs_nevada():
           f"(739 bytes, 30 ECC, IDEN={iden_name})")
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 def test_build_data_section_last_system():
     """Build S/FRINGE (last system in chain, ends with 07 00)."""
     prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -707,6 +724,7 @@ def _parse_p25_trunk_fields(raw):
     )
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestP25TrkBuilderAccuracy:
     """Byte-by-byte verification of P25TrkSystemConfig.build_data_section()
     against every P25 trunked system data section in PAWSOVERMAWS.PRS."""
@@ -759,6 +777,7 @@ class TestP25TrkBuilderAccuracy:
         self._check_section(16)
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestConvBuilderAccuracy:
     """Byte-by-byte verification of ConvSystemConfig.build_data_section()
     against real conv system data sections."""
@@ -789,6 +808,7 @@ class TestConvBuilderAccuracy:
             next_system_type=next_type,
         )
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_furry_wb_chained(self):
         """FURRY TRASH WB chains to FURRY NB."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -797,6 +817,7 @@ class TestConvBuilderAccuracy:
         built = config.build_data_section()
         assert built == raw, f"Mismatch: {_first_diff(built, raw)}"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_furry_nb_chained(self):
         """FURRY TRASH NB chains to WA."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -805,6 +826,7 @@ class TestConvBuilderAccuracy:
         built = config.build_data_section()
         assert built == raw, f"Mismatch: {_first_diff(built, raw)}"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_none_terminal(self):
         """Terminal conv system (no chain reference)."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -822,6 +844,7 @@ class TestConvBuilderAccuracy:
         assert built == raw, f"Mismatch: {_first_diff(built, raw)}"
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestP25ConvBuilderAccuracy:
     """Byte-by-byte verification of P25ConvSystemConfig builders."""
 
@@ -844,9 +867,11 @@ class TestP25ConvBuilderAccuracy:
         assert built == raw, f"Mismatch: {_first_diff(built, raw)}"
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestSystemConfigPrefix:
     """Verify SYSTEM_CONFIG_PREFIX is identical across all system config sections."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_all_sections_same_prefix(self):
         """All 12 system config data sections in PAWSOVERMAWS share the same prefix."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -874,6 +899,7 @@ class TestSystemConfigPrefix:
         assert count == 3, f"Expected 3 system configs, found {count}"
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestChainMarkerFormula:
     """Verify chain marker byte = next_system_type + 2."""
 
@@ -889,6 +915,7 @@ class TestChainMarkerFormula:
         """P25Trunk system (type 0x05) uses marker byte 0x07."""
         assert 0x05 + 2 == 0x07
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_wasp_uses_conv_marker(self):
         """WASP (P25 trunk) chains to NV (conv) using 03 80 marker."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -1237,6 +1264,7 @@ class TestConvSetSerialization:
 # ─── NEW TESTS: Decoded opaque fields ─────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestConvChannelDecodedFlags:
     """Test ConvChannel decoded flag fields from the 48-byte flags block."""
 
@@ -1330,6 +1358,7 @@ class TestConvChannelDecodedFlags:
             ch.flags = raw
             assert ch.flags == raw, f"Roundtrip failed for {pat_hex}"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_flags_parsed_from_real_file_nb(self):
         """Parse real NB channel and verify decoded flags."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -1348,6 +1377,7 @@ class TestConvChannelDecodedFlags:
             assert ch.tx is True
             assert ch.scan is True
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_flags_parsed_from_real_file_wb(self):
         """Parse real WB channel and verify decoded flags."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -1364,6 +1394,7 @@ class TestConvChannelDecodedFlags:
             assert ch.narrowband is False
             assert ch.tone_mode is True
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_flags_parsed_murs(self):
         """Parse MURS channels (WA WIDE set) and verify flag0=True."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -1391,6 +1422,7 @@ class TestConvChannelDecodedFlags:
         assert ch.squelch_threshold == 12  # default pre_long_name has 0x0C at byte 2
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestConvSetDecodedMetadata:
     """Test ConvSet decoded metadata fields (band limits, config)."""
 
@@ -1447,6 +1479,7 @@ class TestConvSetDecodedMetadata:
         with pytest.raises(ValueError):
             cs.metadata = b'\x00' * 20
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_metadata_roundtrip_real_file(self):
         """Parse real file metadata and verify roundtrip."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -1467,6 +1500,7 @@ class TestConvSetDecodedMetadata:
         assert wide_set.tx_min == 0.0
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestP25GroupDecodedFields:
     """Test P25Group decoded middle and tail fields."""
 
@@ -1543,6 +1577,7 @@ class TestP25GroupDecodedFields:
         with pytest.raises(ValueError):
             g.tail = b'\x00' * 2
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_priority_tg_from_real_file(self):
         """SNACC/NLVPD T1 should have priority_tg=True in PAWSOVERMAWS."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -1584,6 +1619,7 @@ class TestP25GroupDecodedFields:
         assert parsed.to_bytes() == raw
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestP25GroupSetDecodedMetadata:
     """Test P25GroupSet decoded metadata fields."""
 
@@ -1620,6 +1656,7 @@ class TestP25GroupSetDecodedMetadata:
         with pytest.raises(ValueError):
             gs.metadata = b'\x00' * 8
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_metadata_roundtrip_real_file(self):
         """Parse real file and verify system_id roundtrip."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -1706,9 +1743,11 @@ class TestP25GroupSetSerialization:
 # ─── NEW TESTS: Section builder roundtrips ────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestSectionBuilderRoundtrips:
     """Build a section from structured data → parse it back → compare."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_trunk_channel_section_roundtrip(self):
         """build_trunk_channel_section preserves channel data from real file.
 
@@ -1906,6 +1945,7 @@ class TestP25ConvSystemConfig:
 # ─── NEW TESTS: PreferredSystemEntry roundtrip ───────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestPreferredSystemEntry:
     """PreferredSystemEntry to_bytes / from_bytes roundtrip tests."""
 
@@ -1943,6 +1983,7 @@ class TestPreferredSystemEntry:
         result = PreferredSystemEntry.from_bytes(b'\x00' * 10, 0)
         assert result is None
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_preferred_section(self):
         """Parse real preferred section from PAWSOVERMAWS, verify roundtrip."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -1978,10 +2019,12 @@ class TestPreferredSystemEntry:
 # ─── NEW TESTS: System name parsers against test files ────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestSystemNameParsers:
     """parse_system_short_name, parse_system_long_name, parse_system_wan_name
     tested against both test files."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_short_name_pawsovermaws(self):
         """Parse short names from system header sections in PAWSOVERMAWS.
 
@@ -2013,6 +2056,7 @@ class TestSystemNameParsers:
                     names.append(name)
         assert len(names) >= 1, f"Expected at least 1 system, got {names}"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_long_name_pawsovermaws(self):
         """Parse long names from system config data sections in PAWSOVERMAWS."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -2025,6 +2069,7 @@ class TestSystemNameParsers:
         assert "PSERN SEATTLE" in long_names, \
             f"PSERN SEATTLE not found in {long_names}"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_wan_name_pawsovermaws(self):
         """Parse WAN names from P25 trunked system configs in PAWSOVERMAWS."""
         from quickprs.record_types import parse_system_wan_name
@@ -2039,6 +2084,7 @@ class TestSystemNameParsers:
         assert len(wan_names) >= 1, f"No WAN names found"
         assert "PSERN" in wan_names, f"PSERN not in WAN names: {wan_names}"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_is_system_config_data_positive(self):
         """is_system_config_data should return True for real system config sections."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -2049,6 +2095,7 @@ class TestSystemNameParsers:
                 break
         assert found, "No system config data sections found in PAWSOVERMAWS"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_is_system_config_data_negative(self):
         """is_system_config_data should return False for non-config sections."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
@@ -2178,6 +2225,7 @@ def _first_diff(a, b):
     return "identical"
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestParseSetsFromSections:
     """Tests for the shared parse_sets_from_sections helper."""
 
@@ -2186,6 +2234,7 @@ class TestParseSetsFromSections:
         set_sec = prs.get_section_by_class(set_cls)
         return set_sec, data_sec
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_groups(self):
         prs = parse_prs(str(TESTDATA / "PAWSOVERMAWS.PRS"))
         set_sec, data_sec = self._get_sections(prs, "CP25Group", "CP25GroupSet")
@@ -2195,6 +2244,7 @@ class TestParseSetsFromSections:
         total = sum(len(s.groups) for s in sets)
         assert total == 241
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_trunks(self):
         prs = parse_prs(str(TESTDATA / "PAWSOVERMAWS.PRS"))
         set_sec, data_sec = self._get_sections(
@@ -2205,6 +2255,7 @@ class TestParseSetsFromSections:
         total = sum(len(s.channels) for s in sets)
         assert total == 290
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_idens(self):
         prs = parse_prs(str(TESTDATA / "PAWSOVERMAWS.PRS"))
         set_sec, data_sec = self._get_sections(
@@ -2229,9 +2280,11 @@ class TestParseSetsFromSections:
         assert result == []
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestParseSystemSetRefs:
     """Tests for parse_system_set_refs — extracts trunk/group set names."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_paws_has_refs(self):
         """PAWSOVERMAWS system configs should reference trunk/group sets."""
         from quickprs.record_types import (
@@ -2250,6 +2303,7 @@ class TestParseSystemSetRefs:
                         assert len(group_ref) <= 8
         assert found >= 2  # PAWS has multiple P25 trunked systems
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_refs_match_existing_sets(self):
         """Set refs should match actual set names in the file."""
         from quickprs.record_types import (

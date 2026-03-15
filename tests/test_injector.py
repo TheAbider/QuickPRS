@@ -58,6 +58,7 @@ def _get_conv_sets(prs):
 
 # ─── Internal helpers ─────────────────────────────────────────────────
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestInternalHelpers:
     """Tests for _find_section_index, _get_first_count, etc."""
 
@@ -86,6 +87,7 @@ class TestInternalHelpers:
 
 # ─── bulk_edit_talkgroups ────────────────────────────────────────────
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestBulkEditTalkgroups:
     """Tests for bulk_edit_talkgroups."""
 
@@ -222,6 +224,7 @@ class TestBulkEditTalkgroups:
 
 # ─── bulk_edit_channels ─────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestBulkEditChannels:
     """Tests for bulk_edit_channels."""
 
@@ -275,6 +278,7 @@ class TestBulkEditChannels:
         for ch in target.channels:
             assert ch.power_level == 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_set_not_found_raises(self):
         """Editing a nonexistent set should raise ValueError."""
         prs = parse_prs(PAWS)

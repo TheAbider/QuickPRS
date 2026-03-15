@@ -24,6 +24,7 @@ CLAUDE = TESTDATA / "claude test.PRS"
 class TestButtonConfigData:
     """Test reading programmable button data from PRS files."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_read_prog_buttons_pawsovermaws(self):
         """PAWSOVERMAWS should have progButtons in its config."""
         prs = parse_prs(PAWS)
@@ -40,6 +41,7 @@ class TestButtonConfigData:
                 assert "buttonName" in btn
                 assert "function" in btn
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_read_prog_buttons_claude(self):
         """Claude test file may or may not have platform config."""
         prs = parse_prs(CLAUDE)
@@ -104,6 +106,7 @@ class TestButtonConfigData:
         assert format_switch_function("SCAN") == "Scan"
         assert format_switch_function("CHAN_BANK") == "Channel Bank"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_switch_values_readable(self):
         """Switch position values should be readable from config."""
         prs = parse_prs(PAWS)
@@ -124,6 +127,7 @@ class TestButtonConfigData:
                 val = prog.get(f"_3Pos{pos}Value", "")
                 assert isinstance(val, str)
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_short_menu_items_readable(self):
         """Short menu items should be readable from config."""
         prs = parse_prs(PAWS)
@@ -167,6 +171,7 @@ class TestButtonConfigData:
             assert d2r[display] == raw
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestButtonConfigModify:
     """Test modifying programmable button data via XML."""
 
@@ -284,6 +289,7 @@ class TestButtonConfigModify:
 # ─── Diff viewer data generation tests ──────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestDiffViewerData:
     """Test the data that feeds the diff viewer."""
 

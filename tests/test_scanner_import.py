@@ -32,6 +32,7 @@ class TestDetectFormat:
     def test_detect_chirp(self):
         assert detect_scanner_format(CHIRP_CSV) == 'chirp'
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_detect_unknown_for_prs(self):
         """Non-CSV file should return unknown."""
         assert detect_scanner_format(PAWS) == 'unknown'

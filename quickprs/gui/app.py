@@ -92,7 +92,7 @@ class QuickPRSApp:
         self.root.bind('<Control-Z>', lambda e: self.redo())
         self.root.bind('<Control-d>', lambda e: self.compare_files())
         self.root.bind('<Control-e>', lambda e: self.export_json())
-        self.root.bind('<Control-i>', lambda e: self.import_csv())
+        self.root.bind('<Control-i>', lambda e: self._show_import_wizard())
         self.root.bind('<Control-m>', lambda e: self.merge_prs())
         self.root.bind('<Control-t>', lambda e: self.add_template_channels())
         self.root.bind('<Control-g>', lambda e: self.generate_report())
@@ -133,9 +133,11 @@ class QuickPRSApp:
                               command=self.build_from_config)
         file_menu.add_separator()
 
-        file_menu.add_command(label="Import CSV...",
-                              command=self.import_csv,
+        file_menu.add_command(label="Import Wizard...",
+                              command=self._show_import_wizard,
                               accelerator="Ctrl+I")
+        file_menu.add_command(label="Import CSV...",
+                              command=self.import_csv)
         file_menu.add_command(label="Export JSON...",
                               command=self.export_json,
                               accelerator="Ctrl+E")
@@ -242,6 +244,9 @@ class QuickPRSApp:
         tools_menu.add_command(label="Frequency Reference...",
                                 command=self._show_freq_reference)
         tools_menu.add_separator()
+        tools_menu.add_command(label="Cleanup...",
+                                command=self._show_cleanup_dialog)
+        tools_menu.add_separator()
         tools_menu.add_command(label="View Log...",
                                 command=self.show_log)
         tools_menu.add_command(label="Settings...",
@@ -291,6 +296,8 @@ class QuickPRSApp:
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(
             side=tk.LEFT, fill=tk.Y, padx=4)
 
+        ttk.Button(toolbar, text="Import Wizard", command=self._show_import_wizard,
+                    width=14).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="Import RR", command=self._quick_import_rr,
                     width=10).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="Import CSV", command=self.import_csv,
@@ -2530,6 +2537,70 @@ class QuickPRSApp:
             return
         from .system_wizard import SystemWizard
         SystemWizard(self.root, self)
+
+    def _show_import_wizard(self):
+        """Open the unified import wizard dialog."""
+        from .import_wizard import ImportWizard
+        ImportWizard(self.root, self)
+
+    def _show_cleanup_dialog(self):
+        """Show the cleanup/duplicate detection dialog."""
+        if not self.prs:
+            messagebox.showwarning("Warning", "No file loaded.")
+            return
+
+        from ..cleanup import (
+            find_duplicates, find_unused_sets,
+            format_duplicates_report, format_unused_report,
+        )
+
+        dupes = find_duplicates(self.prs)
+        unused = find_unused_sets(self.prs)
+
+        win = tk.Toplevel(self.root)
+        win.title("Cleanup - Duplicate Detection")
+        win.geometry("700x500")
+        win.transient(self.root)
+
+        # Results text
+        text = tk.Text(win, wrap=tk.WORD, font=("Consolas", 10),
+                       state=tk.DISABLED, padx=8, pady=8)
+        vsb = ttk.Scrollbar(win, orient=tk.VERTICAL, command=text.yview)
+        text.configure(yscrollcommand=vsb.set)
+        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+
+        lines = []
+        lines.append("=== Duplicate Detection Report ===")
+        lines.append("")
+        lines.extend(format_duplicates_report(dupes))
+        lines.append("")
+        lines.extend(format_unused_report(unused))
+
+        # Summary
+        total_dupes = (
+            sum(c - 1 for _, _, c in dupes['duplicate_tgs']) +
+            sum(c - 1 for _, _, c in dupes['duplicate_freqs']) +
+            sum(c - 1 for _, _, c in dupes['duplicate_channels'])
+        )
+        total_cross = len(dupes['cross_set_tgs'])
+        total_unused = sum(len(v) for v in unused.values())
+        lines.append("")
+        lines.append(f"Summary: {total_dupes} duplicates, "
+                     f"{total_cross} cross-set TGs, "
+                     f"{total_unused} unused sets")
+
+        text.configure(state=tk.NORMAL)
+        text.insert(tk.END, "\n".join(lines))
+        text.configure(state=tk.DISABLED)
+
+        # Button bar
+        btn_frame = ttk.Frame(win, padding=8)
+        btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        ttk.Button(btn_frame, text="Close",
+                   command=win.destroy).pack(side=tk.RIGHT, padx=2)
+
+        self.status_set("Cleanup report generated")
 
     def _show_scan_priority(self):
         """Delegate to personality view's scan priority dialog."""

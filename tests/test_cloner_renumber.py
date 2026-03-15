@@ -211,6 +211,7 @@ class TestDepartmentName:
 # ─── renumber_channels (conv) ────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestRenumberChannelsConv:
     """Test renumbering of conventional channels."""
 
@@ -300,6 +301,7 @@ class TestRenumberChannelsConv:
 # ─── renumber_channels (group) ───────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestRenumberChannelsGroup:
     """Test renumbering of P25 talkgroups."""
 
@@ -330,6 +332,7 @@ class TestRenumberChannelsGroup:
 # ─── auto_name_talkgroups ────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestAutoNameTalkgroups:
     """Test auto-naming of talkgroup short names from long names."""
 
@@ -388,6 +391,7 @@ class TestAutoNameTalkgroups:
 # ─── clone_personality ───────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestClonePersonality:
     """Test personality cloning with modifications."""
 
@@ -527,6 +531,7 @@ class TestClonePersonality:
 # ─── CLI: clone-personality ──────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestCLIClonePersonality:
     """Test clone-personality CLI command."""
 
@@ -590,6 +595,7 @@ class TestCLIClonePersonality:
 # ─── CLI: renumber ───────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestCLIRenumber:
     """Test renumber CLI command."""
 
@@ -649,6 +655,7 @@ class TestCLIRenumber:
 # ─── CLI: auto-name ──────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestCLIAutoName:
     """Test auto-name CLI command."""
 
@@ -706,6 +713,7 @@ class TestCLIAutoName:
 # ─── Integration: renumber + validate ────────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestRenumberValidation:
     """Verify renumbered files pass validation."""
 
@@ -738,6 +746,7 @@ class TestRenumberValidation:
 # ─── Integration: auto-name + validate ───────────────────────────────
 
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestAutoNameValidation:
     """Verify auto-named files pass validation."""
 

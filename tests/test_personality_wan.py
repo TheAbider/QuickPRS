@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from quickprs.prs_parser import parse_prs
 from quickprs.binary_io import read_uint16_le
+import pytest
 from quickprs.record_types import (
     Personality, parse_personality_section, build_personality_section,
     P25TrkWanEntry, parse_wan_opts_section, build_wan_opts_section,
@@ -23,10 +24,14 @@ from quickprs.record_types import (
 )
 
 TESTDATA = Path(__file__).parent / "testdata"
+PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
+CLAUDE_TEST = TESTDATA / "claude test.PRS"
+EVERY_OPT = TESTDATA / "every option"
 
 
 # ─── CPersonality: PAWSOVERMAWS (saved file) ────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestPersonalityPawsovermaws:
     """CPersonality tests using PAWSOVERMAWS.PRS (saved by RPM)."""
 
@@ -44,6 +49,7 @@ class TestPersonalityPawsovermaws:
     def test_section_size(self):
         assert len(self.sec.raw) == 160
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_filename(self):
         p = parse_personality_section(self.sec.raw)
         assert p.filename == "PAWSOVERMAWS.PRS"
@@ -104,6 +110,7 @@ class TestPersonalityPawsovermaws:
 
 # ─── CPersonality: claude test (unsaved file) ───────────────────────
 
+@pytest.mark.skipif(not CLAUDE_TEST.exists(), reason="Test PRS data not available")
 class TestPersonalityClaudeTest:
     """CPersonality tests using claude test.PRS (never saved by user)."""
 
@@ -163,6 +170,7 @@ class TestPersonalityClaudeTest:
 
 # ─── CPersonality: base radio (every option) ────────────────────────
 
+@pytest.mark.skipif(not EVERY_OPT.exists(), reason="Test PRS data not available")
 class TestPersonalityBaseRadio:
     """CPersonality tests using the base 'new radio' file."""
 
@@ -268,6 +276,7 @@ class TestPersonalityBuild:
 
 # ─── CPersonality: roundtrip all test files ─────────────────────────
 
+@pytest.mark.skipif(not EVERY_OPT.exists(), reason="Test PRS data not available")
 class TestPersonalityAllFiles:
     """CPersonality roundtrip across all test PRS files."""
 
@@ -292,9 +301,11 @@ class TestPersonalityAllFiles:
 
 # ─── CP25tWanOpts ───────────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE_TEST.exists(), reason="Test PRS data not available")
 class TestWanOpts:
     """CP25tWanOpts section tests."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_pawsovermaws_count(self):
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CP25tWanOpts")
@@ -315,6 +326,7 @@ class TestWanOpts:
         count = parse_wan_opts_section(raw)
         assert count == 5
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_build_roundtrip_pawsovermaws(self):
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CP25tWanOpts")
@@ -341,6 +353,7 @@ class TestWanOpts:
 
 # ─── CP25TrkWan: PAWSOVERMAWS (9 entries) ───────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
 class TestWanSectionPawsovermaws:
     """CP25TrkWan tests using PAWSOVERMAWS.PRS (9 WAN entries)."""
 
@@ -437,6 +450,7 @@ class TestWanSectionPawsovermaws:
 
 # ─── CP25TrkWan: claude test (1 entry) ──────────────────────────────
 
+@pytest.mark.skipif(not CLAUDE_TEST.exists(), reason="Test PRS data not available")
 class TestWanSectionClaudeTest:
     """CP25TrkWan tests using claude test.PRS (1 WAN entry)."""
 
@@ -627,12 +641,14 @@ class TestP25TrkWanEntry:
 
 # ─── Separator constant ─────────────────────────────────────────────
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE_TEST.exists(), reason="Test PRS data not available")
 class TestWanSeparator:
     """Verify the WAN entry separator constant."""
 
     def test_separator_value(self):
         assert WAN_ENTRY_SEP == b'\x31\x82'
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_separator_in_pawsovermaws(self):
         """PAWSOVERMAWS CP25TrkWan section should contain 8 separators (9 entries)."""
         prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")

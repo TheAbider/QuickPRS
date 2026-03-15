@@ -67,6 +67,7 @@ class MockRRSystem:
 # ─── Tests ───────────────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestAutoSetup:
     """Test the auto_setup_from_rr function."""
 
@@ -226,6 +227,7 @@ class TestAutoSetup:
         assert summary['sites'] == 2
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestAutoSetupSysidParsing:
     """Test system ID and WACN parsing edge cases."""
 

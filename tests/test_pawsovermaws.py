@@ -140,6 +140,7 @@ class TestGroupSets:
         total = sum(len(s.groups) for s in sets)
         assert total == 241
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_all_tgs_passive_monitoring(self, prs):
         """Every TG in PAWSOVERMAWS is tx=False scan=True (NAS passive)."""
         sets = _get_group_sets(prs)
@@ -626,6 +627,7 @@ class TestSectionOrdering:
         sec = prs.get_section_by_class("CPreferredSystemTableEntry")
         assert sec is not None
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_section_count(self, prs):
         """PAWSOVERMAWS has exactly 63 sections."""
         assert len(prs.sections) == 63

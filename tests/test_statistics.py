@@ -19,12 +19,14 @@ CLAUDE = TESTDATA / "claude test.PRS"
 class TestComputeStatistics:
     """Test statistics computation."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_returns_dict(self):
         """compute_statistics returns a dict."""
         prs = parse_prs(PAWS)
         stats = compute_statistics(prs)
         assert isinstance(stats, dict)
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_has_required_keys(self):
         """Statistics dict contains all required keys."""
         prs = parse_prs(PAWS)
@@ -35,6 +37,7 @@ class TestComputeStatistics:
         for key in required:
             assert key in stats, f"Missing key: {key}"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_systems_count(self):
         """Systems count is populated."""
         prs = parse_prs(PAWS)
@@ -46,12 +49,14 @@ class TestComputeStatistics:
         assert 'p25_conv' in sys_info
         assert 'names' in sys_info
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_paws_has_systems(self):
         """PAWSOVERMAWS should have systems."""
         prs = parse_prs(PAWS)
         stats = compute_statistics(prs)
         assert stats['systems']['total'] > 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_channels_count(self):
         """Channel counts add up correctly."""
         prs = parse_prs(PAWS)
@@ -60,6 +65,7 @@ class TestComputeStatistics:
         assert ch['total'] == (ch['talkgroups'] + ch['trunk_freqs']
                                + ch['conv_channels'])
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_freq_bands_populated(self):
         """Frequency bands dict is populated for PAWS."""
         prs = parse_prs(PAWS)
@@ -82,6 +88,7 @@ class TestComputeStatistics:
         assert _classify_band(50.0) == "Low Band"
         assert "Other" in _classify_band(1200.0)
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_talkgroup_analysis(self):
         """Talkgroup analysis fields are populated."""
         prs = parse_prs(PAWS)
@@ -93,6 +100,7 @@ class TestComputeStatistics:
         assert 'encrypted' in tg
         assert 'priority' in tg
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_tg_analysis_consistency(self):
         """TG analysis counts should be <= total."""
         prs = parse_prs(PAWS)
@@ -103,6 +111,7 @@ class TestComputeStatistics:
         assert tg['encrypted'] <= tg['total']
         assert tg['priority'] <= tg['total']
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_channel_types(self):
         """Channel types dict has simplex and duplex."""
         prs = parse_prs(PAWS)
@@ -113,6 +122,7 @@ class TestComputeStatistics:
         assert ct['simplex'] >= 0
         assert ct['duplex'] >= 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_ctcss_tones(self):
         """CTCSS tones dict is populated."""
         prs = parse_prs(PAWS)
@@ -120,6 +130,7 @@ class TestComputeStatistics:
         tones = stats['ctcss_tones']
         assert isinstance(tones, dict)
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_file_info(self):
         """File info has size and section count."""
         prs = parse_prs(PAWS)
@@ -128,6 +139,7 @@ class TestComputeStatistics:
         assert fi['size_bytes'] > 0
         assert fi['sections'] > 0
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_claude_test_file(self):
         """Statistics work on claude test PRS."""
         prs = parse_prs(CLAUDE)
@@ -151,6 +163,7 @@ class TestComputeStatistics:
 class TestFormatStatistics:
     """Test statistics text formatting."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_returns_lines(self):
         """format_statistics returns list of strings."""
         prs = parse_prs(PAWS)
@@ -159,6 +172,7 @@ class TestFormatStatistics:
         assert isinstance(lines, list)
         assert len(lines) > 0
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_header_with_filename(self):
         """Header shows filename when given."""
         prs = parse_prs(PAWS)
@@ -166,6 +180,7 @@ class TestFormatStatistics:
         lines = format_statistics(stats, filename="TEST.PRS")
         assert any("TEST.PRS" in l for l in lines)
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_header_without_filename(self):
         """Header works without filename."""
         prs = parse_prs(PAWS)
@@ -173,6 +188,7 @@ class TestFormatStatistics:
         lines = format_statistics(stats)
         assert any("Radio Statistics" in l for l in lines)
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_systems(self):
         """Output contains system information."""
         prs = parse_prs(PAWS)
@@ -181,6 +197,7 @@ class TestFormatStatistics:
         text = "\n".join(lines)
         assert "Systems" in text
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_channels(self):
         """Output contains channel information."""
         prs = parse_prs(PAWS)
@@ -189,6 +206,7 @@ class TestFormatStatistics:
         text = "\n".join(lines)
         assert "Total Channels" in text
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_file_info(self):
         """Output contains file size information."""
         prs = parse_prs(PAWS)
@@ -211,6 +229,7 @@ class TestFormatStatistics:
 class TestStatsCLI:
     """Test the stats CLI command."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_cli_stats(self, capsys):
         """stats command produces output."""
         from quickprs.cli import run_cli
@@ -219,6 +238,7 @@ class TestStatsCLI:
         out = capsys.readouterr().out
         assert "Radio Statistics" in out
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_cli_stats_claude(self, capsys):
         """stats command works on claude test."""
         from quickprs.cli import run_cli
@@ -237,6 +257,7 @@ class TestStatsCLI:
 class TestSummaryCard:
     """Test summary card generation."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_returns_html(self):
         """generate_summary_card returns HTML string."""
         prs = parse_prs(PAWS)
@@ -244,6 +265,7 @@ class TestSummaryCard:
         assert isinstance(html, str)
         assert html.startswith("<!DOCTYPE html>")
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_structure(self):
         """Card has proper HTML structure."""
         prs = parse_prs(PAWS)
@@ -254,18 +276,21 @@ class TestSummaryCard:
         assert "<body>" in html
         assert "<style>" in html
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_personality_name(self):
         """Card shows personality name."""
         prs = parse_prs(PAWS)
         html = generate_summary_card(prs, source_path=str(PAWS))
         assert "Quick Reference" in html
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_systems(self):
         """Card shows system information."""
         prs = parse_prs(PAWS)
         html = generate_summary_card(prs)
         assert "Systems" in html
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_channels_section(self):
         """Card should have channel or talkgroup data."""
         prs = parse_prs(PAWS)
@@ -274,6 +299,7 @@ class TestSummaryCard:
         assert "TX Talkgroups" in html or "Conventional" in html or \
                "Summary" in html
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_writes_to_file(self):
         """Card writes to file when filepath given."""
         prs = parse_prs(PAWS)
@@ -289,6 +315,7 @@ class TestSummaryCard:
         finally:
             os.unlink(path)
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_claude_test(self):
         """Card works on claude test PRS."""
         prs = parse_prs(CLAUDE)
@@ -303,6 +330,7 @@ class TestSummaryCard:
         assert "<!DOCTYPE html>" in html
         assert "Summary" in html
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_card_compact(self):
         """Card should be significantly smaller than full report."""
         prs = parse_prs(PAWS)
@@ -318,6 +346,7 @@ class TestSummaryCard:
 class TestCardCLI:
     """Test the card CLI command."""
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_cli_card(self, capsys):
         """card command generates HTML file."""
         from quickprs.cli import run_cli
@@ -334,6 +363,7 @@ class TestCardCLI:
         finally:
             os.unlink(out_path)
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_cli_card_default_output(self, capsys):
         """card without -o creates _card.html next to PRS."""
         from quickprs.cli import run_cli

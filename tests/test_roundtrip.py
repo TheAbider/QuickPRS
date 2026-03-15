@@ -13,6 +13,8 @@ from quickprs.prs_parser import parse_prs, parse_prs_bytes
 from quickprs.prs_writer import write_prs
 
 TESTDATA = Path(__file__).parent / "testdata"
+CLAUDE = TESTDATA / "claude test.PRS"
+PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 
 TEST_FILES = [
     TESTDATA / "claude test.PRS",

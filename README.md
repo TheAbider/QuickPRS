@@ -6,6 +6,8 @@ Generate and edit Harris XG-100P personality (.PRS) files without Harris RPM sof
 
 > **STATUS: In Development.** This tool is under active development. While the binary format has been extensively reverse-engineered and tested against known-good RPM files, it has NOT been exhaustively tested on all XG-100P hardware revisions and firmware versions. Test on non-critical equipment first.
 
+> **IMPORTANT: This tool does NOT load mission plans onto radios.** QuickPRS generates and edits .PRS personality files. To actually load a personality onto an XG-100P radio, you still need Harris RPM software (for now). QuickPRS replaces the personality *creation and editing* workflow, not the radio flashing process.
+
 ## Features
 
 - 100% binary format decoded (49 section types, 27 option sections, 514+ fields)

@@ -69,6 +69,7 @@ def _get_trunk_sets(prs):
 # ═══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestSystemLifecycle:
 
     def test_add_validate_compare_remove(self):
@@ -219,6 +220,7 @@ class TestStressScenarios:
         assert any("128" in e[1] for e in [(ERROR, m) for _, m in issues
                                              if _ == ERROR])
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_large_group_set_injection(self):
         """Inject 100 TGs into claude test and verify roundtrip."""
         prs = parse_prs(CLAUDE)
@@ -234,6 +236,7 @@ class TestStressScenarios:
         prs2 = parse_prs_bytes(modified)
         assert prs2.to_bytes() == modified
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_large_trunk_set_injection(self):
         """Inject 50 trunk channels."""
         prs = parse_prs(CLAUDE)
@@ -249,6 +252,7 @@ class TestStressScenarios:
         prs2 = parse_prs_bytes(modified)
         assert prs2.to_bytes() == modified
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_many_sets_injection(self):
         """Add 5 group sets and 5 trunk sets."""
         prs = parse_prs(CLAUDE)
@@ -300,6 +304,7 @@ class TestStressScenarios:
 # ═══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestUndoWorkflow:
 
     def test_undo_via_bytes_snapshot(self):
@@ -353,6 +358,7 @@ class TestUndoWorkflow:
 # ═══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestComparisonIntegration:
 
     def test_compare_before_after_group_add(self):
@@ -406,6 +412,7 @@ class TestComparisonIntegration:
 # ═══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestValidationIntegration:
 
     def test_pawsovermaws_validates_clean(self):
@@ -454,6 +461,7 @@ class TestValidationIntegration:
 # ═══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestFileIO:
 
     def test_write_modified_and_reread(self, tmp_path):
@@ -509,6 +517,7 @@ class TestFileIO:
 # ═══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestPreferredIntegration:
 
     def test_preferred_roundtrip_after_add(self):
@@ -542,6 +551,7 @@ class TestPreferredIntegration:
 
 class TestIdenDedup:
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_find_matching_iden_after_inject(self):
         """Inject IDEN set, then find_matching should detect it."""
         from quickprs.iden_library import (
@@ -556,6 +566,7 @@ class TestIdenDedup:
         result = find_matching_iden_set(prs, "800-TDMA")
         assert result == "8TDMA"
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_no_match_different_band(self):
         """Inject 800 IDEN, looking for 700 should return None."""
         from quickprs.iden_library import (
@@ -586,6 +597,7 @@ class TestIdenDedup:
             "Project 25 Phase I")
         assert key == "700-FDMA"
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_inject_two_systems_same_band_iden_reuse(self):
         """Two 800 MHz systems should be able to share the same IDEN set."""
         from quickprs.iden_library import (
@@ -645,6 +657,7 @@ class TestIdenDedup:
 # ═══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 class TestImportEdgeCases:
 
     def test_empty_talkgroup_list_still_injects_freqs(self):
@@ -929,6 +942,7 @@ class TestCreateFromScratch:
 # ═══════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 class TestModifyExisting:
 
     def test_modify_pawsovermaws_add_system(self):
@@ -1147,6 +1161,7 @@ class TestEdgeCases:
         assert len(errors) >= 1, "128 scan-enabled TGs should error"
         assert any("128" in e[1] for e in errors), "Error should mention 128"
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_max_trunk_channels(self):
         """Inject 1024 trunk frequencies in one set."""
         prs = parse_prs(CLAUDE)
@@ -1166,6 +1181,7 @@ class TestEdgeCases:
         # 1025 > 1024 limit, so this SHOULD error
         assert len(errors) >= 1, "1025 channels exceeds 1024 limit"
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_empty_names(self):
         """Inject with empty string names, verify defaults applied."""
         # make_p25_group: empty long_name defaults to short_name
@@ -1183,6 +1199,7 @@ class TestEdgeCases:
         prs2 = parse_prs_bytes(modified)
         assert prs2.to_bytes() == modified
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_unicode_names(self):
         """Try to inject non-ASCII names, verify truncation/handling."""
         # P25Group names are written as LPS (length-prefixed string).
@@ -1239,6 +1256,7 @@ class TestEdgeCases:
         freq_errors = [i for i in issues if i[0] == ERROR and "range" in i[1].lower()]
         assert len(freq_errors) >= 1, "0.0 MHz should be caught as out-of-range"
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_duplicate_talkgroup_ids_different_sets(self):
         """Same talkgroup ID in different sets should be OK."""
         prs = parse_prs(CLAUDE)
@@ -1325,6 +1343,7 @@ class TestRoundtripStress:
 
         assert bytes1 == bytes2 == bytes3, "Triple roundtrip should produce identical bytes"
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_modify_write_reparse(self):
         """Open PAWSOVERMAWS, modify every section type, write, re-parse, verify."""
         prs = parse_prs(PAWS)
@@ -1684,6 +1703,7 @@ class TestCrossValidation:
         prs2 = parse_prs_bytes(modified)
         assert prs2.to_bytes() == modified
 
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_original_roundtrip(self):
         """PAWSOVERMAWS should be byte-for-byte identical after parse->to_bytes."""
         original = PAWS.read_bytes()
@@ -1692,6 +1712,7 @@ class TestCrossValidation:
         assert reassembled == original, \
             f"Roundtrip mismatch: {len(original)} vs {len(reassembled)} bytes"
 
+    @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_claude_test_original_roundtrip(self):
         """claude test.PRS should be byte-for-byte identical after parse->to_bytes."""
         original = CLAUDE.read_bytes()
