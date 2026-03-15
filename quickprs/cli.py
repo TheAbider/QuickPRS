@@ -4122,6 +4122,9 @@ def run_cli(args=None):
         "\n"
         "Reference:\n"
         "  cheat-sheet       Print comprehensive CLI command cheat sheet\n"
+        "  about             Project info and statistics\n"
+        "  demo              Non-interactive demo (builds a patrol radio)\n"
+        "  tutorial          Interactive step-by-step CLI tutorial\n"
         "\n"
         "Use 'quickprs <command> --help' for details on any command."
     )
@@ -5325,6 +5328,31 @@ def run_cli(args=None):
     p_convert.add_argument("-o", "--output", default=None,
                             help="Output path (default: auto-named)")
 
+    # demo
+    p_demo = sub.add_parser("demo",
+                             help="Non-interactive demo that builds "
+                                  "a patrol radio from scratch",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs demo\n"
+               "  quickprs demo --output-dir my_demo/")
+    p_demo.add_argument("--output-dir", default=None,
+                         help="Output directory (default: demo_output/)")
+
+    # tutorial
+    sub.add_parser("tutorial",
+                    help="Interactive step-by-step CLI tutorial",
+        formatter_class=fmt,
+        epilog="Example:\n"
+               "  quickprs tutorial")
+
+    # about
+    sub.add_parser("about",
+                    help="Show project info and statistics",
+        formatter_class=fmt,
+        epilog="Example:\n"
+               "  quickprs about")
+
     # Suppress the auto-generated subparser listing since we have a
     # curated categorized listing in the description above
     for action_group in parser._action_groups:
@@ -5778,6 +5806,15 @@ def run_cli(args=None):
         elif parsed.command == "convert":
             return cmd_convert(parsed.file, parsed.to_format,
                                output_path=parsed.output)
+        elif parsed.command == "demo":
+            from .demo import run_demo
+            return run_demo(output_dir=parsed.output_dir)
+        elif parsed.command == "tutorial":
+            from .demo import run_tutorial
+            return run_tutorial()
+        elif parsed.command == "about":
+            from .demo import show_about
+            return show_about()
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
