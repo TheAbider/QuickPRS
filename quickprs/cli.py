@@ -66,6 +66,9 @@ Non-GUI operations for scripting and batch processing:
     quickprs search *.PRS --freq 851.0125
     quickprs search *.PRS --tg 1000
     quickprs search *.PRS --name "PSERN"
+    quickprs rename file.PRS --set "PSERN PD" --pattern "^PD " --replace ""
+    quickprs sort file.PRS --set "MURS" --key frequency
+    quickprs diff-report before.PRS after.PRS [-o report.txt]
 """
 
 import csv
@@ -2784,12 +2787,101 @@ def cmd_set_nac(filepath, set_name, channel=0, nac="293", nac_rx=None,
     return 0
 
 
-def cmd_freq_tools(subcmd, freq=None):
+def cmd_rename(filepath, set_name, pattern, replace,
+               set_type="group", field="short_name", output=None):
+    """Batch rename items in a set using regex substitution.
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    from .injector import batch_rename
+    from .prs_writer import write_prs
+
+    find_pattern = pattern
+    replace_str = replace
+    prs = parse_prs(filepath)
+
+    try:
+        count = batch_rename(prs, set_name, find_pattern, replace_str,
+                              set_type=set_type, field=field)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if count == 0:
+        print(f"No matches found for pattern '{find_pattern}' "
+              f"in set '{set_name}'")
+        return 0
+
+    out_path = output or filepath
+    write_prs(prs, out_path, backup=(out_path == filepath))
+
+    print(f"Renamed {count} items in set '{set_name}' -> {out_path}")
+
+    issues = validate_prs(prs)
+    errors = [(s, m) for s, m in issues if s == ERROR]
+    if errors:
+        print(f"  Validation: {len(errors)} errors", file=sys.stderr)
+        for _, msg in errors:
+            print(f"    [ERROR] {msg}", file=sys.stderr)
+        return 1
+    else:
+        warnings = [(s, m) for s, m in issues if s == WARNING]
+        print(f"  Validation: OK ({len(warnings)} warnings)")
+    return 0
+
+
+def cmd_sort(filepath, set_name, key="frequency", set_type="conv",
+             reverse=False, output=None):
+    """Sort channels or talkgroups within a set.
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    from .injector import sort_channels
+    from .prs_writer import write_prs
+
+    sort_by = key
+    prs = parse_prs(filepath)
+
+    try:
+        found = sort_channels(prs, set_name, set_type=set_type,
+                               key=sort_by, reverse=reverse)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if not found:
+        print(f"Error: set '{set_name}' not found", file=sys.stderr)
+        return 1
+
+    out_path = output or filepath
+    write_prs(prs, out_path, backup=(out_path == filepath))
+
+    order = "descending" if reverse else "ascending"
+    print(f"Sorted set '{set_name}' by {sort_by} ({order}) -> {out_path}")
+
+    issues = validate_prs(prs)
+    errors = [(s, m) for s, m in issues if s == ERROR]
+    if errors:
+        print(f"  Validation: {len(errors)} errors", file=sys.stderr)
+        for _, msg in errors:
+            print(f"    [ERROR] {msg}", file=sys.stderr)
+        return 1
+    else:
+        warnings = [(s, m) for s, m in issues if s == WARNING]
+        print(f"  Validation: OK ({len(warnings)} warnings)")
+    return 0
+
+
+def cmd_freq_tools(subcmd, freq=None, freq_list=None):
     """Frequency/tone reference tool.
 
     Args:
-        subcmd: 'offset', 'channel', 'tones', 'dcs', or 'nearest'
-        freq: frequency value (MHz) for offset/channel/nearest
+        subcmd: 'offset', 'channel', 'tones', 'dcs', 'nearest',
+                'identify', 'all-offsets', or 'conflicts'
+        freq: frequency value (MHz) for offset/channel/nearest/identify
+        freq_list: list of frequencies for conflicts check
 
     Returns:
         0 on success, 1 on error.
@@ -2798,6 +2890,7 @@ def cmd_freq_tools(subcmd, freq=None):
         format_repeater_offset, format_channel_id,
         format_ctcss_table, format_dcs_table,
         nearest_ctcss,
+        format_service_id, format_all_offsets, format_conflict_check,
     )
 
     if subcmd == "tones":
@@ -2829,6 +2922,30 @@ def cmd_freq_tools(subcmd, freq=None):
         tone, diff = nearest_ctcss(freq)
         print(f"Input:   {freq:.1f} Hz")
         print(f"Nearest: {tone:.1f} Hz (diff: {diff:+.1f} Hz)")
+        return 0
+    elif subcmd == "identify":
+        if freq is None:
+            print("Error: frequency required for 'identify'",
+                  file=sys.stderr)
+            return 1
+        for line in format_service_id(freq):
+            print(line)
+        return 0
+    elif subcmd == "all-offsets":
+        if freq is None:
+            print("Error: frequency required for 'all-offsets'",
+                  file=sys.stderr)
+            return 1
+        for line in format_all_offsets(freq):
+            print(line)
+        return 0
+    elif subcmd == "conflicts":
+        if not freq_list:
+            print("Error: frequency list required for 'conflicts'",
+                  file=sys.stderr)
+            return 1
+        for line in format_conflict_check(freq_list):
+            print(line)
         return 0
     else:
         print(f"Error: unknown freq-tools subcommand: {subcmd}",
@@ -3397,6 +3514,88 @@ def cmd_backup(filepath, list_backups=False, restore=False,
     return 0
 
 
+def cmd_rename(filepath, set_name, pattern, replacement,
+               set_type="group", field="short_name", output=None):
+    """Batch rename items in a set using regex substitution.
+
+    Args:
+        filepath: PRS file path
+        set_name: name of the target set
+        pattern: regex pattern to match in names
+        replacement: replacement string (supports backreferences)
+        set_type: "group" or "conv"
+        field: "short_name" or "long_name"
+        output: output file path (default: overwrite input)
+    """
+    from .injector import batch_rename
+    from .prs_writer import write_prs
+
+    prs = parse_prs(filepath)
+    count = batch_rename(prs, set_name, pattern, replacement,
+                         set_type=set_type, field=field)
+
+    if count == 0:
+        print("No items matched the pattern.")
+        return 0
+
+    out = Path(output) if output else Path(filepath)
+    write_prs(prs, out)
+    print(f"Renamed {count} item(s) in {set_type} set '{set_name}'")
+    print(f"Written to {out}")
+    return 0
+
+
+def cmd_sort(filepath, set_name, set_type="conv", key="name",
+             reverse=False, output=None):
+    """Sort channels or talkgroups within a set.
+
+    Args:
+        filepath: PRS file path
+        set_name: name of the target set
+        set_type: "conv" or "group"
+        key: sort key — "frequency", "name", "id", "tone"
+        reverse: if True, reverse sort order
+        output: output file path (default: overwrite input)
+    """
+    from .injector import sort_channels
+    from .prs_writer import write_prs
+
+    prs = parse_prs(filepath)
+    result = sort_channels(prs, set_name, set_type=set_type,
+                           key=key, reverse=reverse)
+
+    if not result:
+        print(f"Error: {set_type} set '{set_name}' not found",
+              file=sys.stderr)
+        return 1
+
+    out = Path(output) if output else Path(filepath)
+    write_prs(prs, out)
+    order = "descending" if reverse else "ascending"
+    print(f"Sorted {set_type} set '{set_name}' by {key} ({order})")
+    print(f"Written to {out}")
+    return 0
+
+
+def cmd_diff_report(filepath_a, filepath_b, output=None):
+    """Generate a personality change report between two PRS files.
+
+    Args:
+        filepath_a: original PRS file (before)
+        filepath_b: modified PRS file (after)
+        output: output file path (default: print to stdout)
+    """
+    from .diff_report import generate_diff_report_from_files
+
+    report = generate_diff_report_from_files(filepath_a, filepath_b,
+                                             output=output)
+    if not output:
+        print(report)
+    else:
+        print(f"Change report written to {output}")
+    return 0
+
+
 def run_cli(args=None):
     """Parse CLI arguments and dispatch to the appropriate command.
 
@@ -3406,10 +3605,80 @@ def run_cli(args=None):
     import argparse
 
     fmt = argparse.RawDescriptionHelpFormatter
+
+    categorized_help = (
+        "QuickPRS v" + __version__ + " - XG-100P Personality File Tool\n"
+        "\n"
+        "Create & Build:\n"
+        "  create            Create a new blank PRS file\n"
+        "  build             Build from INI config file\n"
+        "  wizard            Interactive guided setup\n"
+        "  fleet             Batch-build for radio fleet\n"
+        "\n"
+        "Modify:\n"
+        "  inject            Add systems/channels/talkgroups\n"
+        "  remove            Remove systems or sets\n"
+        "  edit              Edit metadata or rename sets\n"
+        "  merge             Merge from another PRS file\n"
+        "  clone             Clone a system between files\n"
+        "  clone-personality  Create modified personality copy\n"
+        "  rename            Batch rename with regex patterns\n"
+        "  sort              Sort channels or talkgroups in a set\n"
+        "  renumber          Auto-number channels sequentially\n"
+        "  auto-name         Auto-generate short names from long names\n"
+        "  bulk-edit         Batch-modify talkgroup or channel settings\n"
+        "\n"
+        "Import:\n"
+        "  import-rr         Import P25 system from RadioReference API\n"
+        "  import-paste      Import from pasted RadioReference text\n"
+        "  import-scanner    Import from CHIRP, Uniden, or SDRTrunk CSV\n"
+        "  import-json       Create PRS from a JSON file\n"
+        "  auto-setup        One-click P25 system setup from RadioReference\n"
+        "  systems           Browse/search/add from built-in P25 database\n"
+        "  template-csv      Generate blank CSV/INI templates for data entry\n"
+        "\n"
+        "Export:\n"
+        "  export            Export to CHIRP, Uniden, SDRTrunk, DSD+, Markdown\n"
+        "  export-csv        Export all data to CSV files\n"
+        "  export-json       Export PRS to structured JSON\n"
+        "  report            Generate full HTML report\n"
+        "  card              Generate printable summary reference card\n"
+        "\n"
+        "Inspect & Validate:\n"
+        "  info              Print personality summary\n"
+        "  validate          Validate against XG-100P hardware limits\n"
+        "  compare           Compare two PRS files\n"
+        "  diff-report       Generate personality change report\n"
+        "  diff-options      Compare radio options between two files\n"
+        "  stats             Show channel statistics and frequency analysis\n"
+        "  capacity          Show memory usage and remaining capacity\n"
+        "  list              Quick-list systems, talkgroups, channels, etc.\n"
+        "  dump              Dump raw section structure and hex data\n"
+        "\n"
+        "Radio Options:\n"
+        "  set-option        Get/set radio options (GPS, audio, bluetooth, etc.)\n"
+        "  encrypt           Set/clear P25 encryption on talkgroups\n"
+        "  set-nac           Set Network Access Code on P25 conv channels\n"
+        "\n"
+        "Planning & Tools:\n"
+        "  zones             Generate and export zone plans\n"
+        "  freq-tools        Frequency reference (offsets, tones, channel lookup)\n"
+        "  iden-templates    List standard IDEN frequency templates\n"
+        "\n"
+        "Maintenance:\n"
+        "  repair            Fix corrupted PRS files or salvage data\n"
+        "  cleanup           Find and fix duplicates and unused sets\n"
+        "  search            Search across PRS files for freqs/TGs/names\n"
+        "  backup            Create, list, or restore timestamped backups\n"
+        "\n"
+        "Use 'quickprs <command> --help' for details on any command."
+    )
+
     parser = argparse.ArgumentParser(
         prog="QuickPRS",
-        description=f"QuickPRS v{__version__} — Harris RPM Personality Tool",
+        description=categorized_help,
         formatter_class=fmt,
+        usage="quickprs [-h] [--version] <command> [options]",
     )
     parser.add_argument("--version", action="version",
                         version=f"QuickPRS v{__version__}")
@@ -3418,7 +3687,7 @@ def run_cli(args=None):
                         help="Output shell completion script "
                              "(bash or powershell)")
 
-    sub = parser.add_subparsers(dest="command")
+    sub = parser.add_subparsers(dest="command", metavar="<command>")
 
     # info
     p_info = sub.add_parser("info", help="Print personality summary",
@@ -4015,7 +4284,11 @@ def run_cli(args=None):
                "  quickprs freq-tools channel 462.5625\n"
                "  quickprs freq-tools tones\n"
                "  quickprs freq-tools dcs\n"
-               "  quickprs freq-tools nearest 100.5")
+               "  quickprs freq-tools nearest 100.5\n"
+               "  quickprs freq-tools identify 462.5625\n"
+               "  quickprs freq-tools all-offsets 146.94\n"
+               "  quickprs freq-tools conflicts "
+               "462.5625,462.5875,462.6125")
     freq_sub = p_freq.add_subparsers(dest="freq_cmd")
 
     p_freq_offset = freq_sub.add_parser("offset",
@@ -4035,6 +4308,23 @@ def run_cli(args=None):
                                           help="Find nearest CTCSS tone")
     p_freq_nearest.add_argument("freq", type=float,
                                  help="Tone frequency in Hz")
+
+    p_freq_identify = freq_sub.add_parser("identify",
+                                           help="Identify frequency service")
+    p_freq_identify.add_argument("freq", type=float,
+                                  help="Frequency in MHz")
+
+    p_freq_all = freq_sub.add_parser("all-offsets",
+                                      help="Show all possible repeater "
+                                           "offsets")
+    p_freq_all.add_argument("freq", type=float,
+                             help="Output frequency in MHz")
+
+    p_freq_conflicts = freq_sub.add_parser("conflicts",
+                                            help="Check frequencies for "
+                                                 "interference")
+    p_freq_conflicts.add_argument("freqs", type=str,
+                                   help="Comma-separated frequencies in MHz")
 
     # systems -- built-in P25 system database
     p_sys = sub.add_parser("systems",
@@ -4287,6 +4577,82 @@ def run_cli(args=None):
                            default=False, metavar="N",
                            help="Restore from backup (optionally "
                                 "specify backup number, 1=newest)")
+
+    # rename -- batch rename with regex
+    p_rename = sub.add_parser("rename",
+                               help="Batch rename channels or talkgroups "
+                                    "using regex",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs rename radio.PRS --set \"PSERN PD\" "
+               "--pattern \"^PD \" --replace \"\"\n"
+               "  quickprs rename radio.PRS --set MURS --type conv "
+               "--pattern \"CH(\\d)\" --replace \"MURS \\1\"\n"
+               "  quickprs rename radio.PRS --set \"PSERN PD\" "
+               "--field long_name --pattern DISP --replace DSP")
+    p_rename.add_argument("file", help="PRS file path")
+    p_rename.add_argument("--set", required=True, dest="set_name",
+                           help="Set name to rename items in")
+    p_rename.add_argument("--pattern", required=True,
+                           help="Regex pattern to match")
+    p_rename.add_argument("--replace", required=True,
+                           help="Replacement string (supports \\1 backrefs)")
+    p_rename.add_argument("--type", choices=["group", "conv"],
+                           default="group", dest="set_type",
+                           help="Set type (default: group)")
+    p_rename.add_argument("--field", choices=["short_name", "long_name"],
+                           default="short_name",
+                           help="Name field to modify (default: short_name)")
+    p_rename.add_argument("-o", "--output", default=None,
+                           help="Output file (default: overwrite input)")
+
+    # sort -- sort channels/talkgroups in a set
+    p_sort = sub.add_parser("sort",
+                              help="Sort channels or talkgroups within "
+                                   "a set",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs sort radio.PRS --set MURS --key frequency\n"
+               "  quickprs sort radio.PRS --set \"PSERN PD\" --type group "
+               "--key id\n"
+               "  quickprs sort radio.PRS --set MURS --key name --reverse")
+    p_sort.add_argument("file", help="PRS file path")
+    p_sort.add_argument("--set", required=True, dest="set_name",
+                         help="Set name to sort")
+    p_sort.add_argument("--key",
+                         choices=["frequency", "name", "id", "tone"],
+                         default="name",
+                         help="Sort key (default: name)")
+    p_sort.add_argument("--type", choices=["conv", "group"],
+                         default="conv", dest="set_type",
+                         help="Set type (default: conv)")
+    p_sort.add_argument("--reverse", action="store_true",
+                         default=False,
+                         help="Reverse sort order")
+    p_sort.add_argument("-o", "--output", default=None,
+                         help="Output file (default: overwrite input)")
+
+    # diff-report -- personality change report
+    p_diffrpt = sub.add_parser("diff-report",
+                                help="Generate personality change report "
+                                     "between two PRS files",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs diff-report before.PRS after.PRS\n"
+               "  quickprs diff-report original.PRS modified.PRS "
+               "-o changes.txt")
+    p_diffrpt.add_argument("file_a", help="Original PRS file (before)")
+    p_diffrpt.add_argument("file_b", help="Modified PRS file (after)")
+    p_diffrpt.add_argument("-o", "--output", default=None,
+                            help="Output file path (default: print to stdout)")
+
+    # Suppress the auto-generated subparser listing since we have a
+    # curated categorized listing in the description above
+    for action_group in parser._action_groups:
+        if action_group.title == "positional arguments":
+            action_group._group_actions = []
+            action_group._actions = []
+            break
 
     parsed = parser.parse_args(args)
 
@@ -4556,7 +4922,13 @@ def run_cli(args=None):
                 p_freq.print_help()
                 return 1
             freq_val = getattr(parsed, 'freq', None)
-            return cmd_freq_tools(parsed.freq_cmd, freq=freq_val)
+            freq_list = None
+            if parsed.freq_cmd == "conflicts":
+                raw = getattr(parsed, 'freqs', '')
+                freq_list = [float(f.strip()) for f in raw.split(',')
+                             if f.strip()]
+            return cmd_freq_tools(parsed.freq_cmd, freq=freq_val,
+                                   freq_list=freq_list)
         elif parsed.command == "systems":
             if parsed.sys_cmd is None:
                 p_sys.print_help()
@@ -4645,6 +5017,31 @@ def run_cli(args=None):
                 list_backups=parsed.list_backups,
                 restore=bool(parsed.restore),
                 restore_index=restore_idx,
+            )
+        elif parsed.command == "rename":
+            return cmd_rename(
+                parsed.file,
+                parsed.set_name,
+                parsed.pattern,
+                parsed.replace,
+                set_type=parsed.set_type,
+                field=parsed.field,
+                output=parsed.output,
+            )
+        elif parsed.command == "sort":
+            return cmd_sort(
+                parsed.file,
+                parsed.set_name,
+                set_type=parsed.set_type,
+                key=parsed.key,
+                reverse=parsed.reverse,
+                output=parsed.output,
+            )
+        elif parsed.command == "diff-report":
+            return cmd_diff_report(
+                parsed.file_a,
+                parsed.file_b,
+                output=parsed.output,
             )
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)

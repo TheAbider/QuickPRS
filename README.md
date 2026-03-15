@@ -14,7 +14,7 @@ Generate and edit Harris XG-100P personality (.PRS) files without Harris RPM sof
 - Create PRS files from scratch or INI config files
 - Import from RadioReference (SOAP API or paste from website)
 - Import from scanner formats (CHIRP, Uniden Sentinel, SDRTrunk)
-- 30+ CLI commands for scripting and batch processing
+- 40+ CLI commands for scripting and batch processing
 - Full GUI with tree view, inline editing, drag-and-drop, RadioReference import
 - Built-in channel templates (MURS, GMRS, FRS, Marine, NOAA, Interop, Public Safety)
 - Built-in P25 system database (30 major US systems)
@@ -79,6 +79,7 @@ Or use the standalone EXE from [Releases](../../releases) (no Python required).
 |---------|-------------|
 | `create` | Create a new blank PRS file |
 | `build` | Build a complete PRS from an INI config file |
+| `wizard` | Interactive guided personality setup |
 | `fleet` | Batch-build for a fleet of radios with unique unit IDs |
 | `inject p25` | Add a P25 trunked system with frequencies and talkgroups |
 | `inject conv` | Add conventional channels (from CSV or built-in template) |
@@ -88,6 +89,8 @@ Or use the standalone EXE from [Releases](../../releases) (no Python required).
 | `merge` | Merge systems and channels from one PRS into another |
 | `remove` | Remove a system, trunk set, group set, or conv set |
 | `edit` | Edit personality metadata or rename sets |
+| `rename` | Batch rename channels/talkgroups with regex patterns |
+| `sort` | Sort channels or talkgroups by name, frequency, or ID |
 | `set-option` | Get/set radio options (GPS, audio, bluetooth, display, etc.) |
 | `encrypt` | Set/clear P25 encryption on talkgroups |
 | `set-nac` | Set Network Access Code on P25 conv channels |
@@ -100,12 +103,14 @@ Or use the standalone EXE from [Releases](../../releases) (no Python required).
 | `import-scanner` | Import from CHIRP, Uniden, or SDRTrunk CSV |
 | `import-json` | Create a PRS from a JSON file |
 | `systems` | Browse/search/add from built-in P25 system database |
+| `template-csv` | Generate blank CSV/INI templates for data entry |
 | `validate` | Validate PRS file against XG-100P hardware limits |
 | `capacity` | Show memory usage and remaining capacity |
 | `repair` | Fix corrupted PRS files or salvage data |
 | `info` | Print personality summary (`--detail` for full breakdown) |
 | `stats` | Show channel statistics and frequency band analysis |
 | `compare` | Compare two PRS files (`--detail` for semantic diff) |
+| `diff-report` | Generate personality change report between two files |
 | `export` | Export to CHIRP, Uniden, SDRTrunk, DSD+, or Markdown format |
 | `export-csv` | Export all data to CSV files |
 | `export-json` | Export PRS to structured JSON |
@@ -117,6 +122,9 @@ Or use the standalone EXE from [Releases](../../releases) (no Python required).
 | `dump` | Dump raw section structure and hex data |
 | `diff-options` | Compare radio options between two PRS files |
 | `iden-templates` | List standard IDEN frequency templates |
+| `cleanup` | Find and fix duplicates and unused sets |
+| `search` | Search across PRS files for frequencies, talkgroups, or names |
+| `backup` | Create, list, or restore timestamped backups |
 
 ## Config File Format
 

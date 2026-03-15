@@ -73,6 +73,7 @@ class QuickPRSApp:
         self.prs = None
         self.prs_path = None
         self.modified = False
+        self._last_saved_bytes = None  # bytes snapshot at last save/load
         self.settings = load_settings()
         self._undo_stack = UndoStack(max_levels=20)
 
@@ -208,6 +209,8 @@ class QuickPRSApp:
         tools_menu.add_command(label="Compare PRS...",
                                 command=self.compare_files,
                                 accelerator="Ctrl+D")
+        tools_menu.add_command(label="Change Report...",
+                                command=self._show_change_report)
         tools_menu.add_command(label="Export CSV...", command=self.export_csv)
         tools_menu.add_separator()
         tools_menu.add_command(label="Add Template Channels...",
@@ -587,6 +590,7 @@ class QuickPRSApp:
             self.prs = parse_prs(Path(path))
             self.prs_path = Path(path)
             self.modified = False
+            self._last_saved_bytes = self.prs.to_bytes()
             self._update_title()
             fg = "#e0e0e0" if self.dark_mode else "black"
             self.file_label.config(
@@ -634,6 +638,10 @@ class QuickPRSApp:
 
     def _do_save(self, path):
         try:
+            # Check if we have a previous state to diff against
+            has_changes = (self._last_saved_bytes is not None
+                           and self.prs.to_bytes() != self._last_saved_bytes)
+
             write_prs(self.prs, path, backup=True)
             self.prs_path = path
             self.modified = False
@@ -643,9 +651,82 @@ class QuickPRSApp:
             log_action("file_save",
                        path=str(path),
                        size=len(self.prs.to_bytes()))
+
+            # Offer to view change report if there were modifications
+            if has_changes:
+                self._offer_change_report()
+
+            # Update saved bytes snapshot
+            self._last_saved_bytes = self.prs.to_bytes()
         except Exception as e:
             log_error("file_save", str(e), path=str(path))
             messagebox.showerror("Error", f"Failed to save:\n{e}")
+
+    def _offer_change_report(self):
+        """Ask if the user wants to view a change report after save."""
+        result = messagebox.askyesno(
+            "Change Report",
+            "File saved. View a report of what changed?")
+        if result:
+            self._show_change_report()
+
+    def _show_change_report(self):
+        """Show a change report dialog comparing saved state to current."""
+        if not self._last_saved_bytes or not self.prs:
+            return
+        try:
+            from ..diff_report import generate_diff_report
+            report = generate_diff_report(self._last_saved_bytes, self.prs)
+            self._show_report_dialog("Personality Change Report", report)
+        except Exception as e:
+            log_error("change_report", str(e))
+            messagebox.showerror("Error",
+                                 f"Failed to generate report:\n{e}")
+
+    def _show_report_dialog(self, title, text):
+        """Show a scrollable text dialog with a report."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title(title)
+        dlg.geometry("700x500")
+        dlg.transient(self.root)
+
+        text_widget = tk.Text(dlg, wrap=tk.WORD, padx=8, pady=8)
+        scrollbar = ttk.Scrollbar(dlg, orient=tk.VERTICAL,
+                                   command=text_widget.yview)
+        text_widget.configure(yscrollcommand=scrollbar.set)
+
+        text_widget.insert("1.0", text)
+        text_widget.config(state=tk.DISABLED)
+
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=8)
+
+        def _copy():
+            dlg.clipboard_clear()
+            dlg.clipboard_append(text)
+            self.status_set("Report copied to clipboard")
+
+        def _save():
+            from tkinter import filedialog as fd
+            path = fd.asksaveasfilename(
+                parent=dlg,
+                title="Save Change Report",
+                defaultextension=".txt",
+                filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")],
+            )
+            if path:
+                Path(path).write_text(text, encoding='utf-8')
+                self.status_set(f"Report saved to {Path(path).name}")
+
+        ttk.Button(btn_frame, text="Copy to Clipboard",
+                    command=_copy).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_frame, text="Save As...",
+                    command=_save).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_frame, text="Close",
+                    command=dlg.destroy).pack(side=tk.RIGHT, padx=4)
 
     def save_undo_snapshot(self, description=""):
         """Save current PRS state for potential undo. Call BEFORE modifying."""

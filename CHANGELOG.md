@@ -2,6 +2,26 @@
 
 All notable changes to QuickPRS will be documented in this file.
 
+## [1.0.1] - 2026-03-15
+
+### Added
+- Interactive CLI wizard (`quickprs wizard`)
+- CSV template generator (`quickprs template-csv`)
+- Auto-backup system with timestamped copies (`quickprs backup`)
+- Duplicate detection and cleanup (`quickprs cleanup`)
+- Frequency/talkgroup search across files (`quickprs search`)
+- Import wizard in GUI (File > Import Wizard)
+- Batch rename with regex (`quickprs rename`)
+- Channel sorting (`quickprs sort`)
+- Personality change report (`quickprs diff-report`)
+- GitHub issue/PR templates
+
+### Improved
+- All validation messages now include actionable guidance
+- CLI help text includes usage examples for all commands
+- CLI help organized into categories for easier navigation
+- Tests skip gracefully when PRS test data not available (CI fix)
+
 ## [1.0.0] - 2026-03-14
 
 ### Added

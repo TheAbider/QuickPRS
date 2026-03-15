@@ -307,3 +307,305 @@ def format_channel_id(freq_mhz):
 
     service, ch_num = result
     return [f"{freq_mhz:.4f} MHz = {service} Channel {ch_num}"]
+
+
+# ─── Frequency Band Allocations ───────────────────────────────────
+
+_BAND_ALLOCATIONS = [
+    # (low, high, service, band_name, notes)
+    (26.965, 27.405, "CB Radio", "11m", "Citizens Band, 40 channels"),
+    (29.7, 50.0, "VHF Low Band", "VHF Low", "Public safety, business"),
+    (50.0, 54.0, "Amateur", "6m", "Amateur Radio"),
+    (72.0, 76.0, "Auxillary Services", "VHF", "Radio control, telemetry"),
+    (108.0, 117.975, "Aeronautical", "VHF Air Nav", "Navigation aids (VOR, ILS)"),
+    (118.0, 136.975, "Aeronautical", "VHF Air", "Aircraft communications"),
+    (137.0, 144.0, "Federal/Military", "VHF Federal", "Military, federal government"),
+    (144.0, 148.0, "Amateur", "2m", "Amateur Radio"),
+    (148.0, 150.8, "Federal/Military", "VHF Federal", "Military land mobile"),
+    (150.8, 154.0, "Public Safety", "VHF High", "Police, fire, EMS"),
+    (154.0, 156.0, "Business", "VHF High", "Business, industrial"),
+    (156.0, 157.425, "Marine", "VHF Marine", "Maritime mobile"),
+    (157.45, 161.575, "Public Safety", "VHF High", "Public safety, utilities"),
+    (161.575, 162.0, "Business", "VHF High", "Paging, business"),
+    (162.0, 174.0, "Federal/Government", "VHF High", "Federal, weather radio"),
+    (174.0, 216.0, "Broadcasting", "VHF TV", "Television channels 7-13"),
+    (216.0, 222.0, "Federal/Maritime", "1.25m", "Maritime, federal"),
+    (222.0, 225.0, "Amateur", "1.25m", "Amateur Radio"),
+    (225.0, 400.0, "Federal/Military", "UHF Military", "Military aviation, satellites"),
+    (400.0, 406.0, "Federal", "UHF Federal", "Meteorological aids"),
+    (406.0, 420.0, "Federal", "UHF Federal", "Government, land mobile"),
+    (420.0, 450.0, "Amateur", "70cm", "Amateur Radio"),
+    (450.0, 470.0, "Business/Public Safety", "UHF", "UHF land mobile"),
+    (470.0, 512.0, "Public Safety", "UHF T-Band", "T-Band public safety (select cities)"),
+    (746.0, 806.0, "Public Safety", "700 MHz", "FirstNet, public safety broadband"),
+    (806.0, 824.0, "Public Safety/SMR", "800 MHz", "Public safety, trunked systems"),
+    (824.0, 849.0, "Cellular", "800 MHz Cellular", "Cellular mobile transmit"),
+    (849.0, 869.0, "Public Safety/SMR", "800 MHz", "Public safety, SMR"),
+    (869.0, 894.0, "Cellular", "800 MHz Cellular", "Cellular base transmit"),
+    (894.0, 902.0, "Public Safety/SMR", "900 MHz", "SMR, narrowband PCS"),
+    (902.0, 928.0, "Amateur", "33cm", "Amateur Radio"),
+    (929.0, 960.0, "Paging/Federal", "900 MHz", "Paging, federal"),
+]
+
+# Known service frequencies (exact matches for specific services)
+_KNOWN_SERVICES = {
+    # FRS/GMRS (462-467 MHz range handled by channel lookup)
+    # MURS (151-154 MHz range handled by channel lookup)
+    # NOAA Weather Radio
+    162.400: ("NOAA Weather Radio", "WX1"),
+    162.425: ("NOAA Weather Radio", "WX2"),
+    162.450: ("NOAA Weather Radio", "WX3"),
+    162.475: ("NOAA Weather Radio", "WX4"),
+    162.500: ("NOAA Weather Radio", "WX5"),
+    162.525: ("NOAA Weather Radio", "WX6"),
+    162.550: ("NOAA Weather Radio", "WX7"),
+    # Common public safety / interop
+    155.475: ("Public Safety", "National calling/distress"),
+    156.800: ("Marine VHF", "Channel 16 - Distress/calling"),
+    121.500: ("Aeronautical", "Emergency/distress"),
+    243.000: ("Military", "Emergency/distress (UHF)"),
+}
+
+
+def calculate_all_offsets(freq_mhz):
+    """Calculate all possible repeater input frequencies for a given output.
+
+    Returns list of (input_freq, offset, band, standard) tuples.
+    Each entry describes a possible repeater pairing.
+
+    Covers amateur, GMRS, and commercial bands with standard offsets.
+    """
+    results = []
+
+    # 2m band (144-148 MHz)
+    if 144.0 <= freq_mhz <= 148.0:
+        for direction, sign in [("+", 1), ("-", -1)]:
+            input_f = freq_mhz + sign * 0.6
+            if 144.0 <= input_f <= 148.0:
+                results.append((
+                    round(input_f, 4), 0.6, "2m",
+                    f"{direction}0.6 MHz (standard amateur)"
+                ))
+        # Non-standard 1 MHz offset (some areas)
+        for direction, sign in [("+", 1), ("-", -1)]:
+            input_f = freq_mhz + sign * 1.0
+            if 144.0 <= input_f <= 148.0:
+                results.append((
+                    round(input_f, 4), 1.0, "2m",
+                    f"{direction}1.0 MHz (non-standard)"
+                ))
+
+    # 1.25m band (222-225 MHz)
+    if 222.0 <= freq_mhz <= 225.0:
+        input_f = freq_mhz - 1.6
+        if 222.0 <= input_f <= 225.0:
+            results.append((
+                round(input_f, 4), 1.6, "1.25m",
+                "-1.6 MHz (standard amateur)"
+            ))
+
+    # 70cm band (420-450 MHz)
+    if 420.0 <= freq_mhz <= 450.0:
+        for direction, sign in [("+", 1), ("-", -1)]:
+            input_f = freq_mhz + sign * 5.0
+            if 420.0 <= input_f <= 450.0:
+                results.append((
+                    round(input_f, 4), 5.0, "70cm",
+                    f"{direction}5.0 MHz (standard amateur)"
+                ))
+
+    # GMRS repeater pairs (462.550-462.725 output, +5.0 MHz input)
+    if 462.5500 <= freq_mhz <= 462.7250:
+        input_f = freq_mhz + 5.0
+        results.append((
+            round(input_f, 4), 5.0, "GMRS",
+            "+5.0 MHz (standard GMRS)"
+        ))
+
+    # 33cm band (902-928 MHz)
+    if 902.0 <= freq_mhz <= 928.0:
+        input_f = freq_mhz - 12.0
+        if 902.0 <= input_f <= 928.0:
+            results.append((
+                round(input_f, 4), 12.0, "33cm",
+                "-12.0 MHz (standard amateur)"
+            ))
+        # Also try +25 MHz (some areas)
+        input_f = freq_mhz + 25.0
+        if 902.0 <= input_f <= 928.0:
+            results.append((
+                round(input_f, 4), 25.0, "33cm",
+                "+25.0 MHz (non-standard)"
+            ))
+
+    # 800 MHz commercial/public safety (+/- 45 MHz)
+    if 806.0 <= freq_mhz <= 869.0:
+        for direction, sign in [("+", 1), ("-", -1)]:
+            input_f = freq_mhz + sign * 45.0
+            if 806.0 <= input_f <= 869.0:
+                results.append((
+                    round(input_f, 4), 45.0, "800 MHz",
+                    f"{direction}45.0 MHz (commercial/public safety)"
+                ))
+
+    return results
+
+
+def identify_service(freq_mhz):
+    """Identify what radio service a frequency belongs to.
+
+    Returns dict with: service, band, allocation, notes
+    Returns None if frequency is not in any known allocation.
+
+    Services include: Amateur, GMRS, FRS, MURS, Marine, NOAA, Business,
+    Public Safety, Federal, Aeronautical, etc.
+    """
+    result = {
+        "frequency": freq_mhz,
+        "service": "Unknown",
+        "band": "Unknown",
+        "allocation": "Not in known allocation table",
+        "notes": "",
+    }
+
+    # Check known service channel tables first
+    ch_info = freq_to_channel(freq_mhz)
+    if ch_info:
+        service, ch_num = ch_info
+        result["service"] = service
+        result["notes"] = f"Channel {ch_num}"
+
+    # Check known exact frequencies
+    key = round(freq_mhz, 4)
+    if key in _KNOWN_SERVICES:
+        svc, note = _KNOWN_SERVICES[key]
+        result["service"] = svc
+        result["notes"] = note
+
+    # Find band allocation
+    for low, high, svc, band, notes in _BAND_ALLOCATIONS:
+        if low <= freq_mhz <= high:
+            result["band"] = band
+            result["allocation"] = f"{low:.3f}-{high:.3f} MHz: {svc}"
+            if not result["notes"]:
+                result["notes"] = notes
+            # If we haven't identified a specific service yet, use the band
+            if result["service"] == "Unknown":
+                result["service"] = svc
+            break
+
+    return result
+
+
+def check_frequency_conflicts(freq_list):
+    """Check a list of frequencies for potential interference issues.
+
+    Args:
+        freq_list: list of frequencies in MHz
+
+    Returns list of warning strings for:
+    - Frequencies too close together (< 12.5 kHz for narrowband,
+      < 25 kHz for wideband)
+    - Harmonics that land on other frequencies in the list
+    - Potential intermod products (2A-B, A+B-C patterns)
+    """
+    warnings = []
+    freqs = sorted(freq_list)
+
+    if len(freqs) < 2:
+        return warnings
+
+    # Check for too-close frequencies (with 0.01 kHz tolerance for float math)
+    for i in range(len(freqs) - 1):
+        spacing_khz = (freqs[i + 1] - freqs[i]) * 1000.0
+        if spacing_khz < 12.5 - 0.01:
+            warnings.append(
+                f"Spacing conflict: {freqs[i]:.4f} and {freqs[i+1]:.4f} MHz "
+                f"are only {spacing_khz:.1f} kHz apart "
+                f"(minimum 12.5 kHz for narrowband)"
+            )
+        elif spacing_khz < 25.0 - 0.01:
+            warnings.append(
+                f"Tight spacing: {freqs[i]:.4f} and {freqs[i+1]:.4f} MHz "
+                f"are only {spacing_khz:.1f} kHz apart "
+                f"(may conflict in wideband mode)"
+            )
+
+    # Check for harmonic conflicts (2nd and 3rd harmonics)
+    freq_set = set(round(f, 4) for f in freqs)
+    for f in freqs:
+        for harmonic in [2, 3]:
+            h_freq = round(f * harmonic, 4)
+            if h_freq in freq_set:
+                warnings.append(
+                    f"Harmonic conflict: {f:.4f} MHz harmonic {harmonic} "
+                    f"= {h_freq:.4f} MHz (also in frequency list)"
+                )
+
+    # Check for two-signal intermod products (2A-B)
+    for i in range(len(freqs)):
+        for j in range(len(freqs)):
+            if i == j:
+                continue
+            intermod = round(2 * freqs[i] - freqs[j], 4)
+            if intermod in freq_set and intermod != round(freqs[i], 4):
+                warnings.append(
+                    f"Intermod product: 2x{freqs[i]:.4f} - {freqs[j]:.4f} "
+                    f"= {intermod:.4f} MHz (hits another frequency)"
+                )
+
+    # Deduplicate warnings
+    return list(dict.fromkeys(warnings))
+
+
+def format_service_id(freq_mhz):
+    """Format frequency identification as text lines.
+
+    Returns list of strings with service identification details.
+    """
+    info = identify_service(freq_mhz)
+    lines = [f"Frequency: {freq_mhz:.4f} MHz"]
+    lines.append(f"Service:   {info['service']}")
+    lines.append(f"Band:      {info['band']}")
+    lines.append(f"Allocation: {info['allocation']}")
+    if info['notes']:
+        lines.append(f"Notes:     {info['notes']}")
+    return lines
+
+
+def format_all_offsets(freq_mhz):
+    """Format all possible repeater offsets for a frequency.
+
+    Returns list of strings.
+    """
+    results = calculate_all_offsets(freq_mhz)
+    if not results:
+        return [f"{freq_mhz:.4f} MHz: no standard repeater offsets found"]
+
+    lines = [f"Possible repeater pairs for {freq_mhz:.4f} MHz output:"]
+    lines.append("-" * 60)
+    for input_freq, offset, band, standard in results:
+        lines.append(
+            f"  Input: {input_freq:.4f} MHz  "
+            f"({standard})"
+        )
+    return lines
+
+
+def format_conflict_check(freq_list):
+    """Format frequency conflict check results.
+
+    Args:
+        freq_list: list of frequencies in MHz
+
+    Returns list of strings.
+    """
+    warnings = check_frequency_conflicts(freq_list)
+    lines = [f"Checking {len(freq_list)} frequencies for conflicts..."]
+    if not warnings:
+        lines.append("No conflicts found.")
+    else:
+        lines.append(f"Found {len(warnings)} potential issue(s):")
+        for w in warnings:
+            lines.append(f"  - {w}")
+    return lines

@@ -16,7 +16,8 @@ import sys
 def main():
     # Check if any CLI subcommand is being used
     # CLI subcommands: info, validate, export-csv, compare, --version
-    cli_commands = {"info", "validate", "export-csv", "compare", "dump"}
+    cli_commands = {"info", "validate", "export-csv", "compare", "dump",
+                    "rename", "sort", "freq-tools"}
     cli_flags = {"--version", "-V"}
 
     has_cli = (len(sys.argv) > 1 and

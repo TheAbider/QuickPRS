@@ -2797,6 +2797,217 @@ def _compact_name(long_name):
     return result[:8]
 
 
+# ─── Batch Rename ────────────────────────────────────────────────
+
+def batch_rename(prs, set_name, pattern, replacement, set_type="group",
+                 field="short_name"):
+    """Rename items in a set using regex substitution.
+
+    Args:
+        prs: PRSFile object
+        set_name: name of the target set
+        pattern: regex pattern to match in names
+        replacement: replacement string (supports \\1, \\2 backreferences)
+        set_type: "group" for talkgroups, "conv" for channels
+        field: "short_name" or "long_name"
+
+    Returns: number of items renamed
+
+    Raises:
+        ValueError: if set_name not found or invalid set_type/field
+
+    Examples:
+        # Remove "PD " prefix from all TG names
+        batch_rename(prs, "PSERN PD", r"^PD ", "", set_type="group")
+
+        # Add zone prefix
+        batch_rename(prs, "PSERN PD", r"^(.+)$", r"Z1 \\1", set_type="group")
+
+        # Replace "DISP" with "DSP"
+        batch_rename(prs, "PSERN PD", "DISP", "DSP", set_type="group")
+    """
+    import re
+
+    if field not in ("short_name", "long_name"):
+        raise ValueError(f"Invalid field: {field} (must be 'short_name' or 'long_name')")
+
+    regex = re.compile(pattern)
+
+    if set_type == "group":
+        grp_sec = prs.get_section_by_class("CP25Group")
+        set_sec = prs.get_section_by_class("CP25GroupSet")
+        if not grp_sec or not set_sec:
+            raise ValueError("No existing group sections found")
+
+        byte1, byte2 = _get_header_bytes(grp_sec)
+        set_byte1, set_byte2 = _get_header_bytes(set_sec)
+        first_count = _get_first_count(prs, "CP25GroupSet")
+
+        existing_sets = _parse_section_data(grp_sec, parse_group_section,
+                                             first_count)
+
+        target = None
+        for s in existing_sets:
+            if s.name == set_name:
+                target = s
+                break
+        if not target:
+            raise ValueError(f"Group set '{set_name}' not found")
+
+        count = 0
+        max_len = 8 if field == "short_name" else 16
+        for grp in target.groups:
+            attr = "group_name" if field == "short_name" else "long_name"
+            old_val = getattr(grp, attr)
+            new_val = regex.sub(replacement, old_val)
+            if new_val != old_val:
+                setattr(grp, attr, new_val[:max_len])
+                count += 1
+
+        _replace_group_sections(prs, existing_sets, byte1, byte2,
+                                 set_byte1, set_byte2)
+
+    elif set_type == "conv":
+        ch_sec = prs.get_section_by_class("CConvChannel")
+        set_sec = prs.get_section_by_class("CConvSet")
+        if not ch_sec or not set_sec:
+            raise ValueError("No existing conv sections found")
+
+        byte1, byte2 = _get_header_bytes(ch_sec)
+        set_byte1, set_byte2 = _get_header_bytes(set_sec)
+        first_count = _get_first_count(prs, "CConvSet")
+
+        existing_sets = _parse_section_data(ch_sec, parse_conv_channel_section,
+                                             first_count)
+
+        target = None
+        for s in existing_sets:
+            if s.name == set_name:
+                target = s
+                break
+        if not target:
+            raise ValueError(f"Conv set '{set_name}' not found")
+
+        count = 0
+        max_len = 8 if field == "short_name" else 16
+        for ch in target.channels:
+            attr = field if field == "long_name" else "short_name"
+            old_val = getattr(ch, attr)
+            new_val = regex.sub(replacement, old_val)
+            if new_val != old_val:
+                setattr(ch, attr, new_val[:max_len])
+                count += 1
+
+        _replace_conv_sections(prs, existing_sets, byte1, byte2,
+                                set_byte1, set_byte2)
+
+    else:
+        raise ValueError(f"Invalid set_type: {set_type} "
+                         f"(must be 'group' or 'conv')")
+
+    logger.info("Batch-renamed %d items in set '%s'", count, set_name)
+    return count
+
+
+# ─── Channel Sorter ──────────────────────────────────────────────
+
+def sort_channels(prs, set_name, set_type="conv", key="frequency",
+                  reverse=False):
+    """Sort channels/talkgroups within a set.
+
+    Keys:
+    - "frequency": by TX frequency (ascending) — conv sets only
+    - "name": by short name (alphabetical)
+    - "id": by talkgroup ID — group sets only
+    - "tone": by CTCSS tone string — conv sets only
+
+    Args:
+        prs: PRSFile object
+        set_name: name of the target set
+        set_type: "conv" for conventional channels, "group" for talkgroups
+        key: sort key — "frequency", "name", "id", "tone"
+        reverse: if True, reverse sort order
+
+    Returns: True if sorted, False if set not found
+
+    Raises:
+        ValueError: if invalid key for the given set_type
+    """
+    if set_type == "conv":
+        if key not in ("frequency", "name", "tone"):
+            raise ValueError(f"Invalid sort key '{key}' for conv sets "
+                             f"(use 'frequency', 'name', or 'tone')")
+
+        ch_sec = prs.get_section_by_class("CConvChannel")
+        set_sec = prs.get_section_by_class("CConvSet")
+        if not ch_sec or not set_sec:
+            return False
+
+        byte1, byte2 = _get_header_bytes(ch_sec)
+        set_byte1, set_byte2 = _get_header_bytes(set_sec)
+        first_count = _get_first_count(prs, "CConvSet")
+
+        existing_sets = _parse_section_data(ch_sec, parse_conv_channel_section,
+                                             first_count)
+
+        target = None
+        for s in existing_sets:
+            if s.name == set_name:
+                target = s
+                break
+        if not target:
+            return False
+
+        if key == "frequency":
+            target.channels.sort(key=lambda c: c.tx_freq, reverse=reverse)
+        elif key == "name":
+            target.channels.sort(key=lambda c: c.short_name, reverse=reverse)
+        elif key == "tone":
+            target.channels.sort(key=lambda c: c.tx_tone, reverse=reverse)
+
+        _replace_conv_sections(prs, existing_sets, byte1, byte2,
+                                set_byte1, set_byte2)
+        return True
+
+    elif set_type == "group":
+        if key not in ("name", "id"):
+            raise ValueError(f"Invalid sort key '{key}' for group sets "
+                             f"(use 'name' or 'id')")
+
+        grp_sec = prs.get_section_by_class("CP25Group")
+        set_sec = prs.get_section_by_class("CP25GroupSet")
+        if not grp_sec or not set_sec:
+            return False
+
+        byte1, byte2 = _get_header_bytes(grp_sec)
+        set_byte1, set_byte2 = _get_header_bytes(set_sec)
+        first_count = _get_first_count(prs, "CP25GroupSet")
+
+        existing_sets = _parse_section_data(grp_sec, parse_group_section,
+                                             first_count)
+
+        target = None
+        for s in existing_sets:
+            if s.name == set_name:
+                target = s
+                break
+        if not target:
+            return False
+
+        if key == "name":
+            target.groups.sort(key=lambda g: g.group_name, reverse=reverse)
+        elif key == "id":
+            target.groups.sort(key=lambda g: g.group_id, reverse=reverse)
+
+        _replace_group_sections(prs, existing_sets, byte1, byte2,
+                                 set_byte1, set_byte2)
+        return True
+
+    else:
+        raise ValueError(f"Invalid set_type: {set_type} "
+                         f"(must be 'conv' or 'group')")
+
+
 def _department_name(long_name):
     """Generate a department-style short name.
 
