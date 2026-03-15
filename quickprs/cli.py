@@ -3226,6 +3226,177 @@ def cmd_search(filepaths, freq=None, tg=None, name=None):
     return 0
 
 
+def cmd_template_csv(template_type, output=None):
+    """Generate a blank CSV template file for user data entry.
+
+    Produces a CSV with headers and commented example rows for the
+    given data type: frequencies, talkgroups, channels, units, or config.
+
+    Args:
+        template_type: one of 'frequencies', 'talkgroups', 'channels',
+                       'units', 'config'
+        output: output file path (default: auto-named)
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    templates = {
+        'frequencies': {
+            'default_name': 'freqs.csv',
+            'content': (
+                "tx_freq,rx_freq\n"
+                "# Example: 851.0125,806.0125\n"
+                "# One frequency pair per line\n"
+            ),
+        },
+        'talkgroups': {
+            'default_name': 'tgs.csv',
+            'content': (
+                "id,short_name,long_name,tx,scan\n"
+                "# Example: 1000,PD DISP,Police Dispatch,false,true\n"
+            ),
+        },
+        'channels': {
+            'default_name': 'channels.csv',
+            'content': (
+                "short_name,tx_freq,rx_freq,tx_tone,rx_tone,long_name\n"
+                "# Example: RPT IN,147.000,147.600,100.0,100.0,"
+                "Repeater Input\n"
+            ),
+        },
+        'units': {
+            'default_name': 'units.csv',
+            'content': (
+                "unit_id,name,password\n"
+                "# Example: 1001,UNIT-1001,1234\n"
+            ),
+        },
+        'config': {
+            'default_name': 'config.ini',
+            'content': (
+                "# QuickPRS Config Template\n"
+                "# Build a PRS file: quickprs build config.ini\n"
+                "\n"
+                "[personality]\n"
+                "name = My Radio.PRS\n"
+                "author = QuickPRS\n"
+                "\n"
+                "# --- P25 Trunked System ---\n"
+                "# Uncomment and fill in to add a P25 system\n"
+                "#[system.MYSYS]\n"
+                "#type = p25_trunked\n"
+                "#long_name = MY SYSTEM\n"
+                "#system_id = 100\n"
+                "#wacn = 0\n"
+                "\n"
+                "#[system.MYSYS.frequencies]\n"
+                "#1 = 851.0125,806.0125\n"
+                "#2 = 851.0375,806.0375\n"
+                "\n"
+                "#[system.MYSYS.talkgroups]\n"
+                "#1 = 1,DISP,Dispatch\n"
+                "#2 = 2,TAC 1,Tactical 1\n"
+                "\n"
+                "# --- Conventional Channels ---\n"
+                "# Use a built-in template:\n"
+                "#[channels.MURS]\n"
+                "#template = murs\n"
+                "\n"
+                "#[channels.NOAA]\n"
+                "#template = noaa\n"
+                "\n"
+                "# Or define inline channels:\n"
+                "#[channels.CUSTOM]\n"
+                "#1 = CH 1,462.5625,462.5625,100.0,100.0,Custom 1\n"
+                "\n"
+                "# --- Radio Options ---\n"
+                "#[options]\n"
+                "#gps.gpsMode = ON\n"
+                "#misc.password = 1234\n"
+            ),
+        },
+    }
+
+    if template_type not in templates:
+        print(f"Error: unknown template type '{template_type}'. "
+              f"Available: {', '.join(sorted(templates.keys()))}",
+              file=sys.stderr)
+        return 1
+
+    tmpl = templates[template_type]
+    out_path = Path(output) if output else Path(tmpl['default_name'])
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(tmpl['content'], encoding='utf-8')
+
+    print(f"Created template: {out_path}")
+    return 0
+
+
+def cmd_wizard(modify_file=None):
+    """Launch the interactive wizard.
+
+    Args:
+        modify_file: optional path to an existing PRS file to modify.
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    from .wizard import run_wizard
+    return run_wizard(modify_file=modify_file)
+
+
+def cmd_backup(filepath, list_backups=False, restore=False,
+               restore_index=None):
+    """Manage timestamped backups of a PRS file.
+
+    Args:
+        filepath: PRS file path
+        list_backups: if True, list available backups
+        restore: if True, restore from most recent (or restore_index)
+        restore_index: specific backup number to restore (1 = newest)
+    """
+    from .backup import (
+        create_backup as do_create,
+        list_backups as do_list,
+        restore_backup as do_restore,
+    )
+
+    path = Path(filepath)
+
+    if list_backups:
+        entries = do_list(filepath)
+        if not entries:
+            print(f"No backups found for {path.name}")
+            return 0
+        print(f"Backups for {path.name}:")
+        for idx, bp, mtime in entries:
+            size = bp.stat().st_size
+            ts = mtime.strftime("%Y-%m-%d %H:%M:%S")
+            print(f"  {idx:>2}. {ts}  ({size:,} bytes)  {bp.name}")
+        return 0
+
+    if restore:
+        if not path.exists():
+            print(f"Error: {path} not found", file=sys.stderr)
+            return 1
+        idx = restore_index if restore_index else None
+        try:
+            restored = do_restore(filepath, index=idx)
+            print(f"Restored {path.name} from {Path(restored).name}")
+            return 0
+        except (FileNotFoundError, ValueError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    # Default: create a backup
+    if not path.exists():
+        print(f"Error: {path} not found", file=sys.stderr)
+        return 1
+    backup_path = do_create(filepath)
+    print(f"Backup created: {Path(backup_path).name}")
+    return 0
+
+
 def run_cli(args=None):
     """Parse CLI arguments and dispatch to the appropriate command.
 
@@ -4068,6 +4239,55 @@ def run_cli(args=None):
                               help="Name/string to search for "
                                    "(case-insensitive)")
 
+    # wizard -- interactive personality builder
+    p_wizard = sub.add_parser("wizard",
+                               help="Interactive wizard for building a "
+                                    "radio personality",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs wizard\n"
+               "  quickprs wizard --modify radio.PRS")
+    p_wizard.add_argument("--modify", default=None, metavar="FILE",
+                           help="Existing PRS file to use as base "
+                                "(optional)")
+
+    # template-csv -- generate blank CSV/INI templates
+    p_tmpl = sub.add_parser("template-csv",
+                              help="Generate blank CSV/INI templates "
+                                   "for data entry",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs template-csv frequencies -o freqs.csv\n"
+               "  quickprs template-csv talkgroups -o tgs.csv\n"
+               "  quickprs template-csv channels -o channels.csv\n"
+               "  quickprs template-csv units -o units.csv\n"
+               "  quickprs template-csv config -o config.ini")
+    p_tmpl.add_argument("type",
+                         choices=["frequencies", "talkgroups", "channels",
+                                  "units", "config"],
+                         help="Template type to generate")
+    p_tmpl.add_argument("-o", "--output", default=None,
+                         help="Output file path (default: auto-named)")
+
+    # backup -- manage timestamped backups
+    p_backup = sub.add_parser("backup",
+                               help="Create, list, or restore "
+                                    "timestamped backups",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs backup radio.PRS\n"
+               "  quickprs backup radio.PRS --list\n"
+               "  quickprs backup radio.PRS --restore\n"
+               "  quickprs backup radio.PRS --restore 2")
+    p_backup.add_argument("file", help="PRS file path")
+    p_backup.add_argument("--list", action="store_true",
+                           dest="list_backups",
+                           help="List available backups")
+    p_backup.add_argument("--restore", nargs='?', const=True,
+                           default=False, metavar="N",
+                           help="Restore from backup (optionally "
+                                "specify backup number, 1=newest)")
+
     parsed = parser.parse_args(args)
 
     # Shell completion script output
@@ -4408,6 +4628,23 @@ def run_cli(args=None):
                 freq=parsed.freq,
                 tg=parsed.tg,
                 name=parsed.search_name,
+            )
+        elif parsed.command == "wizard":
+            return cmd_wizard(modify_file=parsed.modify)
+        elif parsed.command == "template-csv":
+            return cmd_template_csv(
+                parsed.type,
+                output=parsed.output,
+            )
+        elif parsed.command == "backup":
+            restore_idx = None
+            if parsed.restore and parsed.restore is not True:
+                restore_idx = int(parsed.restore)
+            return cmd_backup(
+                parsed.file,
+                list_backups=parsed.list_backups,
+                restore=bool(parsed.restore),
+                restore_index=restore_idx,
             )
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
