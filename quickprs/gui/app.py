@@ -19,6 +19,7 @@ Layout:
   +----------------------------------------------+
 """
 
+import sys
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
@@ -80,6 +81,7 @@ class QuickPRSApp:
         # Build UI
         self._build_menu()
         self._build_toolbar()
+        self._build_welcome()
         self._build_main_area()
         self._build_status_bar()
 
@@ -324,11 +326,90 @@ class QuickPRSApp:
         self._capacity_label = ttk.Label(toolbar, text="")
         self._capacity_label.pack(side=tk.RIGHT, padx=8)
 
+    # ─── Welcome screen ─────────────────────────────────────────────
+
+    def _build_welcome(self):
+        """Build the welcome screen shown when no file is loaded."""
+        self._welcome_frame = ttk.Frame(self.root)
+
+        # Title
+        title = ttk.Label(self._welcome_frame, text="QuickPRS",
+                          font=("", 24, "bold"))
+        title.pack(pady=(40, 5))
+
+        subtitle = ttk.Label(self._welcome_frame,
+                             text="XG-100P Personality File Tool")
+        subtitle.pack(pady=(0, 30))
+
+        # Quick actions as big buttons
+        actions = ttk.Frame(self._welcome_frame)
+        actions.pack(pady=10)
+
+        ttk.Button(actions, text="Open PRS File",
+                   command=self.open_file, width=25).pack(pady=5)
+        ttk.Button(actions, text="Create New Personality",
+                   command=self.new_blank, width=25).pack(pady=5)
+        ttk.Button(actions, text="Build from Config File",
+                   command=self.build_from_config, width=25).pack(pady=5)
+        ttk.Button(actions, text="Interactive Wizard",
+                   command=self._launch_wizard, width=25).pack(pady=5)
+        ttk.Button(actions, text="Import from JSON",
+                   command=self.import_json, width=25).pack(pady=5)
+
+        # Recent files
+        recent = get_recent_files()
+        if recent:
+            ttk.Label(self._welcome_frame, text="Recent Files:",
+                      font=("", 11, "bold")).pack(pady=(20, 5))
+            for path in recent[:5]:
+                name = Path(path).name
+                btn = ttk.Button(self._welcome_frame, text=name,
+                                 command=lambda p=path: self._open_path(p),
+                                 width=30)
+                btn.pack(pady=2)
+
+        # Version info
+        ttk.Label(self._welcome_frame,
+                  text=f"v{__version__} \u2022 50+ CLI commands \u2022 quickprs --help",
+                  foreground="gray").pack(side=tk.BOTTOM, pady=10)
+
+        # Show the welcome screen initially
+        self._welcome_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+    def _launch_wizard(self):
+        """Launch the interactive wizard in a separate console window."""
+        import subprocess
+        import shutil
+
+        # Find the Python executable
+        python = sys.executable or shutil.which("python") or "python"
+
+        try:
+            subprocess.Popen(
+                [python, "-m", "quickprs", "wizard"],
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+            )
+            self.status_set("Launched wizard in new console window")
+        except Exception as e:
+            messagebox.showerror("Error",
+                                f"Failed to launch wizard:\n{e}")
+
+    def _show_welcome(self):
+        """Show the welcome screen and hide the main pane."""
+        self._main_pane.pack_forget()
+        self._welcome_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+    def _hide_welcome(self):
+        """Hide the welcome screen and show the main pane."""
+        self._welcome_frame.pack_forget()
+        self._main_pane.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
     # ─── Main area (paned) ───────────────────────────────────────────
 
     def _build_main_area(self):
-        paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        self._main_pane = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
+        paned = self._main_pane
+        # Don't pack yet — welcome screen is shown first
 
         # Left: personality tree
         left_frame = ttk.LabelFrame(paned, text="Personality", padding=4)
@@ -597,6 +678,7 @@ class QuickPRSApp:
             self.prs_path = Path(path)
             self.modified = False
             self._last_saved_bytes = self.prs.to_bytes()
+            self._hide_welcome()
             self._update_title()
             fg = "#e0e0e0" if self.dark_mode else "black"
             self.file_label.config(
@@ -1566,6 +1648,7 @@ class QuickPRSApp:
             self.prs_path = Path(path)
             self._do_save(self.prs_path)
             self.modified = False
+            self._hide_welcome()
             self._update_title()
             fg = "#e0e0e0" if self.dark_mode else "black"
             self.file_label.config(text=name, foreground=fg)
@@ -1622,6 +1705,7 @@ class QuickPRSApp:
             self.prs_path = Path(save_path)
             self._do_save(self.prs_path)
             self.modified = False
+            self._hide_welcome()
             self._update_title()
             fg = "#e0e0e0" if self.dark_mode else "black"
             self.file_label.config(
@@ -1740,6 +1824,7 @@ class QuickPRSApp:
             self.prs_path = Path(save_path)
             self._do_save(self.prs_path)
             self.modified = False
+            self._hide_welcome()
             self._update_title()
             fg = "#e0e0e0" if self.dark_mode else "black"
             self.file_label.config(

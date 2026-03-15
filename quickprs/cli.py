@@ -114,16 +114,34 @@ from .csv_export import (
 )
 
 
+def _load_prs(filepath):
+    """Load a PRS file, supporting '-' for stdin.
+
+    Args:
+        filepath: PRS file path, or '-' to read from stdin.
+
+    Returns:
+        Parsed PRSFile object.
+    """
+    if filepath == '-':
+        from .prs_parser import parse_prs_bytes
+        data = sys.stdin.buffer.read()
+        if not data:
+            raise ValueError("No data received on stdin")
+        return parse_prs_bytes(data)
+    return parse_prs(filepath)
+
+
 def cmd_info(filepath, detail=False):
     """Print personality summary to stdout.
 
     Args:
-        filepath: PRS file path
+        filepath: PRS file path, or '-' for stdin
         detail: if True, show verbose output with WAN entries, IDEN details,
                 conv channel frequencies, preferred entries, option section
                 listing, and file size breakdown by section type.
     """
-    prs = parse_prs(filepath)
+    prs = _load_prs(filepath)
     print(f"File: {filepath}")
     print(f"Size: {prs.file_size:,} bytes")
     print(f"Sections: {len(prs.sections)}")
@@ -514,6 +532,8 @@ def _print_radio_options(config):
 
 def cmd_validate(filepath):
     """Validate a PRS file, print issues. Exit code 1 if errors found."""
+    from .colors import red, yellow, cyan, green, bold
+
     prs = parse_prs(filepath)
     issues = validate_prs(prs)
 
@@ -521,31 +541,31 @@ def cmd_validate(filepath):
     warnings = [(s, m) for s, m in issues if s == WARNING]
     infos = [(s, m) for s, m in issues if s == INFO]
 
-    print(f"Validating: {filepath}")
+    print(bold(f"Validating: {filepath}"))
     print(f"Size: {prs.file_size:,} bytes | "
           f"Sections: {len(prs.sections)}")
     print()
 
     if not issues:
-        print("PASS: No issues found.")
+        print(green("PASS: No issues found."))
         return 0
 
     if errors:
-        print(f"ERRORS ({len(errors)}):")
+        print(red(f"ERRORS ({len(errors)}):"))
         for _, msg in errors:
-            print(f"  [ERROR] {msg}")
+            print(f"  {red('[ERROR]')} {msg}")
         print()
 
     if warnings:
-        print(f"WARNINGS ({len(warnings)}):")
+        print(yellow(f"WARNINGS ({len(warnings)}):"))
         for _, msg in warnings:
-            print(f"  [WARN]  {msg}")
+            print(f"  {yellow('[WARN]')}  {msg}")
         print()
 
     if infos:
-        print(f"INFO ({len(infos)}):")
+        print(cyan(f"INFO ({len(infos)}):"))
         for _, msg in infos:
-            print(f"  [INFO]  {msg}")
+            print(f"  {cyan('[INFO]')}  {msg}")
         print()
 
     print(f"Summary: {len(errors)} errors, {len(warnings)} warnings, "
@@ -563,11 +583,12 @@ def cmd_health(filepath):
         0 if no warnings/critical, 1 if warnings found
     """
     from .health_check import run_health_check, format_health_report, WARN
+    from .colors import bold
 
     prs = parse_prs(filepath)
     results = run_health_check(prs)
 
-    print(f"Health Check: {filepath}")
+    print(bold(f"Health Check: {filepath}"))
     print(f"Size: {prs.file_size:,} bytes | "
           f"Sections: {len(prs.sections)}")
     print()
@@ -592,6 +613,147 @@ def cmd_suggest(filepath):
     lines = format_suggestions(suggestions, filepath=filepath)
     print("\n".join(lines))
     return 0
+
+
+
+def cmd_favorites(parsed, subparser):
+    """Handle favorites subcommands."""
+    from .favorites import (
+        add_favorite, remove_favorite,
+        list_favorites, clear_favorites,
+    )
+
+    if parsed.fav_cmd is None:
+        subparser.print_help()
+        return 1
+
+    if parsed.fav_cmd == "list":
+        favorites = list_favorites(parsed.category)
+        if isinstance(favorites, dict):
+            any_items = False
+            for cat, items in sorted(favorites.items()):
+                if items:
+                    any_items = True
+                    print(f"{cat.title()} ({len(items)}):")
+                    for item in items:
+                        name = item.get('name', '?')
+                        note = item.get('note', '')
+                        extra = f"  -- {note}" if note else ""
+                        print(f"  {name}{extra}")
+                    print()
+            if not any_items:
+                print("No favorites saved yet.")
+                print("Use 'quickprs favorites add' to bookmark items.")
+        else:
+            if not favorites:
+                cat = parsed.category or "all"
+                print(f"No {cat} favorites saved.")
+            else:
+                for item in favorites:
+                    name = item.get('name', '?')
+                    note = item.get('note', '')
+                    extra_parts = []
+                    for k, v in item.items():
+                        if k not in ('name', 'note') and v is not None:
+                            extra_parts.append(f"{k}={v}")
+                    extra = ""
+                    if extra_parts:
+                        extra = f"  ({', '.join(extra_parts)})"
+                    if note:
+                        extra += f"  -- {note}"
+                    print(f"  {name}{extra}")
+        return 0
+
+    elif parsed.fav_cmd == "add":
+        cat_map = {
+            'system': 'systems', 'talkgroup': 'talkgroups',
+            'channel': 'channels', 'template': 'templates',
+        }
+        category = cat_map[parsed.category]
+        item = {'name': parsed.name}
+        if parsed.sysid is not None:
+            item['sysid'] = parsed.sysid
+        if parsed.freq is not None:
+            item['freq'] = parsed.freq
+        if parsed.tgid is not None:
+            item['tgid'] = parsed.tgid
+        if parsed.note is not None:
+            item['note'] = parsed.note
+        added = add_favorite(category, item)
+        if added:
+            print(f"Added '{parsed.name}' to {category} favorites.")
+        else:
+            print(f"'{parsed.name}' is already in {category} favorites.")
+        return 0
+
+    elif parsed.fav_cmd == "remove":
+        cat_map = {
+            'system': 'systems', 'talkgroup': 'talkgroups',
+            'channel': 'channels', 'template': 'templates',
+        }
+        category = cat_map[parsed.category]
+        removed = remove_favorite(category, parsed.name)
+        if removed:
+            print(f"Removed '{parsed.name}' from {category} favorites.")
+        else:
+            print(f"'{parsed.name}' not found in {category} favorites.")
+        return 0
+
+    elif parsed.fav_cmd == "clear":
+        clear_favorites(parsed.category)
+        if parsed.category:
+            print(f"Cleared {parsed.category} favorites.")
+        else:
+            print("Cleared all favorites.")
+        return 0
+
+    return 0
+
+
+def cmd_preset(parsed, subparser):
+    """Handle preset subcommands."""
+    from .favorites import list_presets, get_preset, apply_preset
+
+    if parsed.preset_cmd is None:
+        subparser.print_help()
+        return 1
+
+    if parsed.preset_cmd == "list":
+        presets = list_presets()
+        print("Available Presets:")
+        print()
+        for name, description in presets:
+            print(f"  {name:15s}  {description}")
+        print()
+        print("Use 'quickprs preset show <name>' for details.")
+        print("Use 'quickprs preset apply <name> <file>' to apply.")
+        return 0
+
+    elif parsed.preset_cmd == "show":
+        preset = get_preset(parsed.name)
+        print(f"Preset: {parsed.name}")
+        print(f"  {preset['description']}")
+        print()
+        print("  Options:")
+        for opt, val in sorted(preset['options'].items()):
+            print(f"    {opt} = {val}")
+        return 0
+
+    elif parsed.preset_cmd == "apply":
+        results = apply_preset(
+            parsed.file, parsed.name, output=parsed.output)
+        preset = get_preset(parsed.name)
+        print(f"Applied preset '{parsed.name}': {preset['description']}")
+        print()
+        for opt, val, ok in results:
+            status = "OK" if ok else "FAILED"
+            print(f"  {opt} = {val}  [{status}]")
+        out = parsed.output or parsed.file
+        print(f"\nSaved: {out}")
+        return 0
+
+    return 0
+
 
 
 def cmd_freq_map(filepath, band=None):
@@ -1588,25 +1750,35 @@ def cmd_auto_name(filepath, set_name, style="compact", output=None):
     return 0
 
 
-def cmd_export_json(filepath, output=None, compact=False):
+def cmd_export_json(filepath, output=None, compact=False, stdout=False):
     """Export a PRS file to structured JSON.
 
     Args:
-        filepath: input PRS file path
+        filepath: input PRS file path, or '-' for stdin
         output: output JSON file path (default: same name with .json)
         compact: if True, write compact single-line JSON
+        stdout: if True, write JSON to stdout instead of a file
 
     Returns:
         0 on success, 1 on error.
     """
     from .json_io import prs_to_dict, dict_to_json
 
-    prs = parse_prs(filepath)
+    prs = _load_prs(filepath)
     d = prs_to_dict(prs)
     text = dict_to_json(d, compact=compact)
 
+    if stdout:
+        sys.stdout.write(text)
+        if not text.endswith('\n'):
+            sys.stdout.write('\n')
+        return 0
+
     if output is None:
-        output = Path(filepath).with_suffix('.json')
+        if filepath == '-':
+            output = 'output.json'
+        else:
+            output = Path(filepath).with_suffix('.json')
 
     out = Path(output)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -3691,6 +3863,91 @@ def cmd_template_csv(template_type, output=None):
     return 0
 
 
+def cmd_convert(input_path, output_format, output_path=None):
+    """Convert between PRS and other formats.
+
+    Unified conversion wrapper that auto-detects input format from
+    file extension and dispatches to the appropriate export/import
+    function.
+
+    Args:
+        input_path: path to input file (PRS, JSON, or INI/CFG)
+        output_format: target format ('json', 'ini', 'csv', 'chirp',
+                       'markdown', 'prs')
+        output_path: output file path (auto-named if None)
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    input_ext = Path(input_path).suffix.lower()
+    stem = Path(input_path).stem
+
+    if input_ext == '.prs':
+        prs = parse_prs(input_path)
+
+        if output_format == 'json':
+            from .json_io import prs_to_dict, dict_to_json
+            d = prs_to_dict(prs)
+            text = dict_to_json(d)
+            out = Path(output_path or f"{stem}.json")
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(text, encoding='utf-8')
+            print(f"Converted: {input_path} -> {out}")
+            return 0
+
+        elif output_format == 'ini':
+            from .config_builder import export_config
+            out = str(output_path or f"{stem}.ini")
+            result = export_config(prs, out, source_path=str(input_path))
+            print(f"Converted: {input_path} -> {result}")
+            return 0
+
+        elif output_format == 'csv':
+            out_dir = str(output_path or f"{stem}_csv")
+            return cmd_export_csv(input_path, out_dir)
+
+        elif output_format == 'chirp':
+            from .export_formats import export_chirp_csv
+            out = str(output_path or f"{stem}_chirp.csv")
+            count = export_chirp_csv(prs, out)
+            print(f"Converted: {input_path} -> {out} ({count} channels)")
+            return 0
+
+        elif output_format == 'markdown':
+            from .export_formats import export_markdown
+            out = str(output_path or f"{stem}.md")
+            export_markdown(prs, out)
+            print(f"Converted: {input_path} -> {out}")
+            return 0
+
+        else:
+            print(f"Cannot convert PRS to '{output_format}'",
+                  file=sys.stderr)
+            return 1
+
+    elif input_ext == '.json':
+        if output_format == 'prs':
+            return cmd_import_json(input_path, output=output_path)
+        else:
+            print(f"Cannot convert JSON to '{output_format}' "
+                  f"(supported: prs)", file=sys.stderr)
+            return 1
+
+    elif input_ext in ('.ini', '.cfg'):
+        if output_format == 'prs':
+            return cmd_build(input_path, output=output_path)
+        else:
+            print(f"Cannot convert INI to '{output_format}' "
+                  f"(supported: prs)", file=sys.stderr)
+            return 1
+
+    else:
+        print(f"Unknown input format: {input_ext}", file=sys.stderr)
+        print("Supported input formats: .prs, .json, .ini, .cfg",
+              file=sys.stderr)
+        return 1
+
+
 def cmd_wizard(modify_file=None):
     """Launch the interactive wizard.
 
@@ -3819,7 +4076,8 @@ def run_cli(args=None):
         "  systems           Browse/search/add from built-in P25 database\n"
         "  template-csv      Generate blank CSV/INI templates for data entry\n"
         "\n"
-        "Export:\n"
+        "Export & Convert:\n"
+        "  convert           Convert between PRS, JSON, INI, CSV, CHIRP, Markdown\n"
         "  export            Export to CHIRP, Uniden, SDRTrunk, DSD+, Markdown\n"
         "  export-csv        Export all data to CSV files\n"
         "  export-json       Export PRS to structured JSON\n"
@@ -3858,20 +4116,44 @@ def run_cli(args=None):
         "  backup            Create, list, or restore timestamped backups\n"
         "  watch             Watch a PRS file and auto-validate on changes\n"
         "\n"
+        "Favorites & Presets:\n"
+        "  favorites         Bookmark systems, talkgroups, channels\n"
+        "  preset            Apply named radio option presets\n"
+        "\n"
         "Reference:\n"
         "  cheat-sheet       Print comprehensive CLI command cheat sheet\n"
         "\n"
         "Use 'quickprs <command> --help' for details on any command."
     )
 
+    # Build version string with platform info
+    import platform
+    py_ver = platform.python_version()
+    os_name = platform.system()
+    os_ver = platform.version()
+    if os_name == "Windows":
+        os_label = f"Windows {platform.win32_ver()[0]}"
+    elif os_name == "Darwin":
+        os_label = f"macOS {platform.mac_ver()[0]}"
+    else:
+        os_label = f"{os_name} {platform.release()}"
+    version_str = (
+        f"QuickPRS v{__version__}\n"
+        f"Python {py_ver} on {os_label}\n"
+        f"50+ CLI commands | quickprs cheat-sheet for reference"
+    )
+
     parser = argparse.ArgumentParser(
         prog="QuickPRS",
         description=categorized_help,
         formatter_class=fmt,
-        usage="quickprs [-h] [--version] <command> [options]",
+        usage="quickprs [-h] [--version] [--no-color] <command> [options]",
     )
     parser.add_argument("--version", action="version",
-                        version=f"QuickPRS v{__version__}")
+                        version=version_str)
+    parser.add_argument("--no-color", action="store_true",
+                        default=False, dest="no_color",
+                        help="Disable colored output")
     parser.add_argument("--completion", choices=["bash", "powershell"],
                         default=None, metavar="SHELL",
                         help="Output shell completion script "
@@ -3885,8 +4167,10 @@ def run_cli(args=None):
         epilog="Examples:\n"
                "  quickprs info radio.PRS\n"
                "  quickprs info radio.PRS --detail\n"
-               "  quickprs info *.PRS")
-    p_info.add_argument("file", nargs='+', help="PRS file path(s)")
+               "  quickprs info *.PRS\n"
+               "  cat radio.PRS | quickprs info -")
+    p_info.add_argument("file", nargs='+',
+                        help="PRS file path(s) (use '-' for stdin)")
     p_info.add_argument("-d", "--detail", action="store_true",
                         help="Show verbose output with WAN, IDEN freqs, "
                              "conv details, size breakdown")
@@ -3970,12 +4254,16 @@ def run_cli(args=None):
         epilog="Examples:\n"
                "  quickprs export-json radio.PRS\n"
                "  quickprs export-json radio.PRS -o config.json\n"
-               "  quickprs export-json radio.PRS --compact")
-    p_json_out.add_argument("file", help="PRS file path")
+               "  quickprs export-json radio.PRS --compact\n"
+               "  quickprs export-json radio.PRS --stdout\n"
+               "  cat radio.PRS | quickprs export-json - --stdout")
+    p_json_out.add_argument("file", help="PRS file path (use '-' for stdin)")
     p_json_out.add_argument("-o", "--output", default=None,
                              help="Output JSON path (default: same name .json)")
     p_json_out.add_argument("--compact", action="store_true",
                              help="Write compact single-line JSON")
+    p_json_out.add_argument("--stdout", action="store_true",
+                             help="Write output to stdout instead of a file")
 
     # import-json
     p_json_in = sub.add_parser("import-json",
@@ -4941,6 +5229,102 @@ def run_cli(args=None):
                     help="Print comprehensive CLI command cheat sheet",
         formatter_class=fmt)
 
+    # favorites
+    p_fav = sub.add_parser("favorites",
+                            help="Manage bookmarked systems, talkgroups, "
+                                 "channels, and templates",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs favorites list\n"
+               "  quickprs favorites list systems\n"
+               "  quickprs favorites add system PSERN --sysid 892\n"
+               "  quickprs favorites add template murs\n"
+               "  quickprs favorites remove system PSERN\n"
+               "  quickprs favorites clear")
+    fav_sub = p_fav.add_subparsers(dest="fav_cmd")
+
+    p_fav_list = fav_sub.add_parser("list", help="List favorites")
+    p_fav_list.add_argument("category", nargs='?', default=None,
+                             choices=["systems", "talkgroups",
+                                      "channels", "templates"],
+                             help="Category to list (default: all)")
+
+    p_fav_add = fav_sub.add_parser("add", help="Add a favorite")
+    p_fav_add.add_argument("category",
+                            choices=["system", "talkgroup",
+                                     "channel", "template"],
+                            help="Type of item to bookmark")
+    p_fav_add.add_argument("name", help="Name of the item")
+    p_fav_add.add_argument("--sysid", type=int, default=None,
+                            help="System ID (for system bookmarks)")
+    p_fav_add.add_argument("--freq", type=float, default=None,
+                            help="Frequency in MHz (for channel bookmarks)")
+    p_fav_add.add_argument("--tgid", type=int, default=None,
+                            help="Talkgroup ID (for talkgroup bookmarks)")
+    p_fav_add.add_argument("--note", default=None,
+                            help="Optional note or description")
+
+    p_fav_rm = fav_sub.add_parser("remove", help="Remove a favorite")
+    p_fav_rm.add_argument("category",
+                           choices=["system", "talkgroup",
+                                    "channel", "template"],
+                           help="Type of item to remove")
+    p_fav_rm.add_argument("name", help="Name to remove")
+
+    p_fav_clear = fav_sub.add_parser("clear",
+                                      help="Clear all favorites")
+    p_fav_clear.add_argument("category", nargs='?', default=None,
+                              choices=["systems", "talkgroups",
+                                       "channels", "templates"],
+                              help="Category to clear (default: all)")
+
+    # preset
+    p_preset = sub.add_parser("preset",
+                               help="Apply named configuration presets "
+                                    "(GPS, covert, training, etc.)",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs preset list\n"
+               "  quickprs preset apply field_ops radio.PRS\n"
+               "  quickprs preset apply covert radio.PRS\n"
+               "  quickprs preset show field_ops")
+    preset_sub = p_preset.add_subparsers(dest="preset_cmd")
+
+    preset_sub.add_parser("list", help="List available presets")
+
+    p_preset_show = preset_sub.add_parser("show",
+                                           help="Show preset details")
+    p_preset_show.add_argument("name", help="Preset name")
+
+    p_preset_apply = preset_sub.add_parser("apply",
+                                            help="Apply a preset to a "
+                                                 "PRS file")
+    p_preset_apply.add_argument("name", help="Preset name")
+    p_preset_apply.add_argument("file", help="PRS file path")
+    p_preset_apply.add_argument("-o", "--output", default=None,
+                                 help="Output file (default: overwrite)")
+
+    # convert -- unified format converter
+    p_convert = sub.add_parser("convert",
+                                help="Convert between PRS, JSON, INI, "
+                                     "CSV, CHIRP, and Markdown formats",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs convert radio.PRS --to json\n"
+               "  quickprs convert radio.PRS --to ini\n"
+               "  quickprs convert radio.PRS --to csv -o output_dir/\n"
+               "  quickprs convert radio.PRS --to chirp\n"
+               "  quickprs convert radio.PRS --to markdown\n"
+               "  quickprs convert config.json --to prs -o radio.PRS\n"
+               "  quickprs convert patrol.ini --to prs")
+    p_convert.add_argument("file", help="Input file path")
+    p_convert.add_argument("--to", required=True, dest="to_format",
+                            choices=["json", "ini", "csv", "chirp",
+                                     "markdown", "prs"],
+                            help="Output format")
+    p_convert.add_argument("-o", "--output", default=None,
+                            help="Output path (default: auto-named)")
+
     # Suppress the auto-generated subparser listing since we have a
     # curated categorized listing in the description above
     for action_group in parser._action_groups:
@@ -4950,6 +5334,11 @@ def run_cli(args=None):
             break
 
     parsed = parser.parse_args(args)
+
+    # Handle --no-color flag
+    if parsed.no_color:
+        from .colors import disable_color
+        disable_color()
 
     # Shell completion script output
     if parsed.completion:
@@ -5041,7 +5430,8 @@ def run_cli(args=None):
             return cmd_export_csv(parsed.file, parsed.output_dir)
         elif parsed.command == "export-json":
             return cmd_export_json(parsed.file, output=parsed.output,
-                                   compact=parsed.compact)
+                                   compact=parsed.compact,
+                                   stdout=parsed.stdout)
         elif parsed.command == "import-json":
             return cmd_import_json(parsed.file, output=parsed.output)
         elif parsed.command == "compare":
@@ -5381,6 +5771,13 @@ def run_cli(args=None):
             from .cheat_sheet import generate_cheat_sheet
             print(generate_cheat_sheet())
             return 0
+        elif parsed.command == "favorites":
+            return cmd_favorites(parsed, p_fav)
+        elif parsed.command == "preset":
+            return cmd_preset(parsed, p_preset)
+        elif parsed.command == "convert":
+            return cmd_convert(parsed.file, parsed.to_format,
+                               output_path=parsed.output)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

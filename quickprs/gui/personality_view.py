@@ -310,6 +310,7 @@ class PersonalityView(ttk.Frame):
                              values=(f"{len(prs.sections)} sections",),
                              open=True, meta={"type": "root"})
 
+        self._add_favorites(root)
         self._add_system_order(root, prs)
         self._add_systems(root, prs)
         self._add_trunk_sets(root, prs)
@@ -333,6 +334,50 @@ class PersonalityView(ttk.Frame):
         return iid
 
     # ─── Tree population ─────────────────────────────────────────────
+
+    def _add_favorites(self, parent):
+        """Show bookmarked items at the top of the tree."""
+        try:
+            from ..favorites import load_favorites
+        except ImportError:
+            return
+
+        favorites = load_favorites()
+        total = sum(len(v) for v in favorites.values())
+        if total == 0:
+            return
+
+        node = self._insert(parent, tk.END,
+                             text="Favorites",
+                             values=(f"{total} bookmarks",),
+                             meta={"type": "favorites_root"})
+
+        for category in ('systems', 'talkgroups', 'channels', 'templates'):
+            items = favorites.get(category, [])
+            if not items:
+                continue
+            cat_node = self._insert(node, tk.END,
+                                     text=category.title(),
+                                     values=(f"{len(items)}",),
+                                     meta={"type": "favorites_category",
+                                           "category": category})
+            for item in items:
+                name = item.get('name', '?')
+                note = item.get('note', '')
+                detail_parts = []
+                for k, v in item.items():
+                    if k not in ('name', 'note') and v is not None:
+                        detail_parts.append(f"{k}={v}")
+                detail = ', '.join(detail_parts) if detail_parts else ''
+                if note:
+                    detail = f"{detail}  {note}" if detail else note
+                self._insert(cat_node, tk.END,
+                              text=name,
+                              values=(detail,),
+                              meta={"type": "favorite_item",
+                                    "category": category,
+                                    "name": name,
+                                    "item_data": item})
 
     def _add_system_order(self, parent, prs):
         """Show systems in file order (matches radio display order).
@@ -2160,6 +2205,34 @@ class PersonalityView(ttk.Frame):
                                 d, title=f"Hex Viewer — {n} "
                                 f"({len(d)} bytes)"))
 
+        # Favorites: Add to Favorites for bookmarkable items
+        if item_type in ("system", "group_set", "trunk_set",
+                         "conv_set", "iden_set"):
+            fav_name = meta.get("name", "")
+            if fav_name:
+                fav_cat_map = {
+                    "system": "systems",
+                    "group_set": "talkgroups",
+                    "trunk_set": "channels",
+                    "conv_set": "channels",
+                    "iden_set": "channels",
+                }
+                fav_cat = fav_cat_map.get(item_type, "systems")
+                self.ctx_menu.add_separator()
+                self.ctx_menu.add_command(
+                    label=f"Add '{fav_name}' to Favorites",
+                    command=lambda n=fav_name, c=fav_cat:
+                        self._add_to_favorites(c, n))
+
+        # Remove from favorites for favorite items
+        if item_type == "favorite_item":
+            fav_name = meta.get("name", "")
+            fav_cat = meta.get("category", "")
+            self.ctx_menu.add_command(
+                label=f"Remove '{fav_name}' from Favorites",
+                command=lambda n=fav_name, c=fav_cat:
+                    self._remove_from_favorites(c, n))
+
         # Always add expand/collapse for branch nodes
         children = self.tree.get_children(iid)
         if children:
@@ -2176,6 +2249,37 @@ class PersonalityView(ttk.Frame):
                 self.ctx_menu.tk_popup(event.x_root, event.y_root)
             finally:
                 self.ctx_menu.grab_release()
+
+    def _add_to_favorites(self, category, name):
+        """Add an item to favorites and refresh tree."""
+        try:
+            from ..favorites import add_favorite
+            added = add_favorite(category, {'name': name})
+            if added:
+                self.app.status_set(f"Added '{name}' to favorites")
+                self.refresh()
+            else:
+                self.app.status_set(
+                    f"'{name}' is already in favorites")
+        except Exception as e:
+            log_error(f"Failed to add favorite: {e}")
+            messagebox.showerror("Error", f"Could not add favorite: {e}")
+
+    def _remove_from_favorites(self, category, name):
+        """Remove an item from favorites and refresh tree."""
+        try:
+            from ..favorites import remove_favorite
+            removed = remove_favorite(category, name)
+            if removed:
+                self.app.status_set(
+                    f"Removed '{name}' from favorites")
+                self.refresh()
+            else:
+                self.app.status_set(f"'{name}' not found in favorites")
+        except Exception as e:
+            log_error(f"Failed to remove favorite: {e}")
+            messagebox.showerror("Error",
+                                 f"Could not remove favorite: {e}")
 
     def _select_all_children(self, parent_iid):
         """Select all child items of the given tree node."""
