@@ -609,3 +609,206 @@ def format_conflict_check(freq_list):
         for w in warnings:
             lines.append(f"  - {w}")
     return lines
+
+
+# ─── Frequency Spectrum Map ────────────────────────────────────────
+
+# Band definitions for frequency mapping
+_FREQ_MAP_BANDS = [
+    ("VHF Low", 29.7, 50.0),
+    ("VHF", 136.0, 174.0),
+    ("UHF", 400.0, 512.0),
+    ("700 MHz", 746.0, 806.0),
+    ("800 MHz", 806.0, 870.0),
+    ("900 MHz", 894.0, 960.0),
+]
+
+# Short band aliases for CLI --band filter
+_BAND_ALIASES = {
+    "vhf": ("VHF Low", "VHF"),
+    "uhf": ("UHF",),
+    "700": ("700 MHz",),
+    "800": ("800 MHz",),
+    "900": ("900 MHz",),
+    "all": None,  # None = show all
+}
+
+
+def _classify_freq(freq_mhz):
+    """Classify a frequency into a band name."""
+    for band_name, low, high in _FREQ_MAP_BANDS:
+        if low <= freq_mhz <= high:
+            return band_name
+    return "Other"
+
+
+def generate_freq_map(prs, band=None):
+    """Generate a text-based frequency spectrum map from a PRS file.
+
+    Shows all frequencies in use grouped by band, with channel/set names.
+
+    Args:
+        prs: parsed PRSFile
+        band: optional band filter ('vhf', 'uhf', '700', '800', '900', 'all')
+              None or 'all' shows all bands.
+
+    Returns:
+        list of formatted strings for display
+    """
+    from .record_types import (
+        parse_trunk_channel_section,
+        parse_conv_channel_section, parse_sets_from_sections,
+    )
+
+    # Determine which bands to show
+    allowed_bands = None
+    if band and band.lower() in _BAND_ALIASES:
+        allowed_bands = _BAND_ALIASES[band.lower()]
+    # allowed_bands = None means show all
+
+    # Collect all frequencies with metadata
+    # Each entry: (freq_mhz, label, freq_type)
+    # freq_type: 'simplex', 'trunk', 'repeater'
+    entries = []
+
+    # Parse trunk sets
+    data_sec = prs.get_section_by_class("CTrunkChannel")
+    set_sec = prs.get_section_by_class("CTrunkSet")
+    if data_sec and set_sec:
+        trunk_sets = parse_sets_from_sections(
+            set_sec.raw, data_sec.raw, parse_trunk_channel_section)
+        for ts in trunk_sets:
+            for ch in ts.channels:
+                if ch.rx_freq > 0:
+                    entries.append((ch.rx_freq, ts.name, "trunk"))
+
+    # Parse conv sets
+    data_sec = prs.get_section_by_class("CConvChannel")
+    set_sec = prs.get_section_by_class("CConvSet")
+    if data_sec and set_sec:
+        conv_sets = parse_sets_from_sections(
+            set_sec.raw, data_sec.raw, parse_conv_channel_section)
+        for cs in conv_sets:
+            for ch in cs.channels:
+                if ch.rx_freq > 0:
+                    # Determine type
+                    if abs(ch.tx_freq - ch.rx_freq) < 0.001:
+                        ftype = "simplex"
+                    else:
+                        ftype = "repeater"
+                    # Build label
+                    tone_info = ""
+                    if ch.tx_tone:
+                        tone_info = f" (CTCSS {ch.tx_tone})"
+                    elif ch.rx_tone:
+                        tone_info = f" (CTCSS {ch.rx_tone})"
+                    label = f"{ch.short_name}{tone_info}"
+                    entries.append((ch.rx_freq, label, ftype))
+
+    if not entries:
+        return ["No frequencies found in this personality."]
+
+    # Group by band
+    band_entries = {}
+    for freq, label, ftype in entries:
+        band_name = _classify_freq(freq)
+        if allowed_bands is not None and band_name not in allowed_bands:
+            continue
+        band_entries.setdefault(band_name, []).append((freq, label, ftype))
+
+    if not band_entries:
+        return [f"No frequencies found in the '{band}' band."]
+
+    # Sort entries within each band by frequency
+    for b in band_entries:
+        band_entries[b].sort(key=lambda x: x[0])
+
+    # Find the display width needed
+    max_line_width = 56
+
+    # Build output with box drawing
+    lines = []
+
+    # Top border
+    lines.append(f"+{'=' * (max_line_width - 2)}+")
+
+    band_order = [b for b, _, _ in _FREQ_MAP_BANDS if b in band_entries]
+    # Add "Other" if present
+    if "Other" in band_entries:
+        band_order.append("Other")
+
+    for bi, band_name in enumerate(band_order):
+        items = band_entries[band_name]
+
+        # Find band range for display
+        band_low = None
+        band_high = None
+        for bname, low, high in _FREQ_MAP_BANDS:
+            if bname == band_name:
+                band_low = low
+                band_high = high
+                break
+
+        if band_low and band_high:
+            header = f" {band_name} ({band_low:.0f}-{band_high:.0f} MHz)"
+        else:
+            header = f" {band_name}"
+
+        # Band header
+        lines.append(f"|{header:<{max_line_width - 2}}|")
+        lines.append(f"|{'-' * (max_line_width - 2)}|")
+
+        # Deduplicate frequencies (show unique freq+label combos)
+        seen = set()
+        for freq, label, ftype in items:
+            key = (round(freq, 4), label)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            # Choose bar style based on type
+            bar = {"trunk": "////", "repeater": "####",
+                   "simplex": "===="}. get(ftype, "====")
+
+            # Format type label
+            type_label = {"trunk": "trunk", "repeater": "rptr",
+                          "simplex": "simplex"}.get(ftype, "")
+
+            if ftype == "trunk":
+                detail = f"{label} ({type_label})"
+            else:
+                # Conv channels already have tone info in label
+                if type_label and f"({type_label})" not in label:
+                    detail = f"{label} ({type_label})"
+                else:
+                    detail = label
+
+            freq_str = f"{freq:>10.4f}"
+            content = f" {freq_str} {bar} {detail}"
+            # Truncate if too long
+            max_content = max_line_width - 2
+            if len(content) > max_content:
+                content = content[:max_content - 3] + "..."
+            lines.append(f"|{content:<{max_line_width - 2}}|")
+
+        # Separator between bands (not after last)
+        if bi < len(band_order) - 1:
+            lines.append(f"|{'=' * (max_line_width - 2)}|")
+
+    # Bottom border
+    lines.append(f"+{'=' * (max_line_width - 2)}+")
+
+    # Summary
+    total_freqs = len(set(round(f, 4) for f, _, _ in entries
+                         if allowed_bands is None
+                         or _classify_freq(f) in allowed_bands))
+    bands_shown = len(band_order)
+    lines.append("")
+    lines.append(f"Total: {total_freqs} unique frequencies "
+                 f"across {bands_shown} band(s)")
+
+    # Legend
+    lines.append("")
+    lines.append("Legend: ==== simplex  #### repeater  //// trunked")
+
+    return lines

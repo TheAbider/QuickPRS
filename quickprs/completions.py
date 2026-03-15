@@ -23,6 +23,7 @@ SUBCOMMANDS = [
     "iden-templates", "report",
     "freq-tools", "auto-setup",
     "encrypt", "set-nac",
+    "health", "suggest", "freq-map",
 ]
 
 # Inject sub-subcommands
@@ -122,6 +123,9 @@ _SUBCOMMAND_FLAGS = {
         "--set", "--channel", "--nac", "--nac-rx",
         "-o", "--output",
     ],
+    "health": [],
+    "suggest": [],
+    "freq-map": ["--band"],
 }
 
 # Flags for inject sub-subcommands

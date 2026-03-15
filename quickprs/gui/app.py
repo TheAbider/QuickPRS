@@ -206,6 +206,10 @@ class QuickPRSApp:
         tools_menu = tk.Menu(menubar, tearoff=0)
         tools_menu.add_command(label="Validate", command=self.validate,
                                 accelerator="F5")
+        tools_menu.add_command(label="Health Check...",
+                                command=self._show_health_check)
+        tools_menu.add_command(label="Frequency Map...",
+                                command=self._show_freq_map)
         tools_menu.add_command(label="Summary", command=self.show_summary)
         tools_menu.add_separator()
         tools_menu.add_command(label="Compare PRS...",
@@ -923,6 +927,57 @@ class QuickPRSApp:
             self.status_set("Validation passed (no errors)")
         else:
             self.status_set(f"Validation: {total_errors} ERRORS found")
+
+    # ─── Health Check ─────────────────────────────────────────────────
+
+    def _show_health_check(self):
+        """Show configuration health check results in the details tab."""
+        if not self.prs:
+            messagebox.showwarning("Warning", "No file loaded.")
+            return
+
+        from ..health_check import (
+            run_health_check, format_health_report,
+            suggest_improvements, format_suggestions,
+        )
+
+        results = run_health_check(self.prs)
+        health_lines = format_health_report(results)
+
+        filepath = self.current_path or "file.PRS"
+        suggestions = suggest_improvements(self.prs, filepath=filepath)
+        suggest_lines = format_suggestions(suggestions, filepath=filepath)
+
+        self.notebook.select(2)  # Details tab
+        self.details_text.config(state=tk.NORMAL)
+        self.details_text.delete("1.0", tk.END)
+
+        self.details_text.insert(tk.END, "\n".join(health_lines))
+        self.details_text.insert(tk.END, "\n\n")
+        self.details_text.insert(tk.END, "\n".join(suggest_lines))
+        self.details_text.config(state=tk.DISABLED)
+
+        issue_count = len(results)
+        self.status_set(f"Health check: {issue_count} issue(s) found, "
+                        f"{len(suggestions)} suggestion(s)")
+
+    def _show_freq_map(self):
+        """Show frequency spectrum map in the details tab."""
+        if not self.prs:
+            messagebox.showwarning("Warning", "No file loaded.")
+            return
+
+        from ..freq_tools import generate_freq_map
+
+        lines = generate_freq_map(self.prs)
+
+        self.notebook.select(2)  # Details tab
+        self.details_text.config(state=tk.NORMAL)
+        self.details_text.delete("1.0", tk.END)
+        self.details_text.insert(tk.END, "\n".join(lines))
+        self.details_text.config(state=tk.DISABLED)
+
+        self.status_set("Frequency map generated")
 
     # ─── Summary ─────────────────────────────────────────────────────
 

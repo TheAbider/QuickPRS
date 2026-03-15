@@ -72,6 +72,9 @@ Non-GUI operations for scripting and batch processing:
     quickprs export-config file.PRS [-o config.ini]
     quickprs profiles list
     quickprs profiles build scanner_basic [-o scanner.PRS]
+    quickprs health file.PRS
+    quickprs suggest file.PRS
+    quickprs freq-map file.PRS [--band vhf|uhf|700|800|900|all]
 """
 
 import csv
@@ -547,6 +550,65 @@ def cmd_validate(filepath):
     print(f"Summary: {len(errors)} errors, {len(warnings)} warnings, "
           f"{len(infos)} info")
     return 1 if errors else 0
+
+
+def cmd_health(filepath):
+    """Run configuration health check on a PRS file.
+
+    Goes beyond hardware validation to identify common mistakes
+    and best practices.
+
+    Returns:
+        0 if no warnings/critical, 1 if warnings found
+    """
+    from .health_check import run_health_check, format_health_report, WARN
+
+    prs = parse_prs(filepath)
+    results = run_health_check(prs)
+
+    print(f"Health Check: {filepath}")
+    print(f"Size: {prs.file_size:,} bytes | "
+          f"Sections: {len(prs.sections)}")
+    print()
+
+    lines = format_health_report(results)
+    print("\n".join(lines))
+
+    warn_count = sum(1 for s, _, _, _ in results if s == WARN)
+    return 1 if warn_count > 0 else 0
+
+
+def cmd_suggest(filepath):
+    """Show configuration improvement suggestions for a PRS file.
+
+    Returns:
+        0 on success
+    """
+    from .health_check import suggest_improvements, format_suggestions
+
+    prs = parse_prs(filepath)
+    suggestions = suggest_improvements(prs, filepath=filepath)
+    lines = format_suggestions(suggestions, filepath=filepath)
+    print("\n".join(lines))
+    return 0
+
+
+def cmd_freq_map(filepath, band=None):
+    """Show frequency spectrum map for a PRS file.
+
+    Args:
+        filepath: PRS file path
+        band: optional band filter ('vhf', 'uhf', '700', '800', '900', 'all')
+
+    Returns:
+        0 on success
+    """
+    from .freq_tools import generate_freq_map
+
+    prs = parse_prs(filepath)
+    lines = generate_freq_map(prs, band=band)
+    print("\n".join(lines))
+    return 0
 
 
 def cmd_export_csv(filepath, output_dir):
@@ -3691,6 +3753,9 @@ def run_cli(args=None):
         "Inspect & Validate:\n"
         "  info              Print personality summary\n"
         "  validate          Validate against XG-100P hardware limits\n"
+        "  health            Configuration health check (best practices)\n"
+        "  suggest           Smart configuration improvement suggestions\n"
+        "  freq-map          Frequency spectrum map visualization\n"
         "  compare           Compare two PRS files\n"
         "  diff-report       Generate personality change report\n"
         "  diff-options      Compare radio options between two files\n"
@@ -3753,6 +3818,40 @@ def run_cli(args=None):
                "  quickprs validate radio.PRS\n"
                "  quickprs validate *.PRS")
     p_val.add_argument("file", nargs='+', help="PRS file path(s)")
+
+    # health
+    p_health = sub.add_parser("health",
+                               help="Configuration health check "
+                                    "(best practices)",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs health radio.PRS\n"
+               "  quickprs health *.PRS")
+    p_health.add_argument("file", nargs='+', help="PRS file path(s)")
+
+    # suggest
+    p_suggest = sub.add_parser("suggest",
+                                help="Smart configuration improvement "
+                                     "suggestions",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs suggest radio.PRS\n"
+               "  quickprs suggest PATROL.PRS")
+    p_suggest.add_argument("file", help="PRS file path")
+
+    # freq-map
+    p_fmap = sub.add_parser("freq-map",
+                             help="Frequency spectrum map visualization",
+        formatter_class=fmt,
+        epilog="Examples:\n"
+               "  quickprs freq-map radio.PRS\n"
+               "  quickprs freq-map radio.PRS --band vhf\n"
+               "  quickprs freq-map radio.PRS --band 800")
+    p_fmap.add_argument("file", help="PRS file path")
+    p_fmap.add_argument("--band",
+                          choices=["vhf", "uhf", "700", "800", "900", "all"],
+                          default=None,
+                          help="Filter to specific band (default: all)")
 
     # set-option
     p_setopt = sub.add_parser("set-option",
@@ -4788,6 +4887,25 @@ def run_cli(args=None):
                   f"{fail_count} failed, {error_count} errors "
                   f"({len(files)} files)")
             return 1 if (fail_count + error_count) > 0 else 0
+        elif parsed.command == "health":
+            files = parsed.file
+            if len(files) == 1:
+                return cmd_health(files[0])
+            worst = 0
+            for i, f in enumerate(files):
+                if i > 0:
+                    print("=" * 60)
+                try:
+                    rc = cmd_health(f)
+                    worst = max(worst, rc)
+                except (FileNotFoundError, ValueError) as e:
+                    print(f"Error: {f}: {e}", file=sys.stderr)
+                    worst = 1
+            return worst
+        elif parsed.command == "suggest":
+            return cmd_suggest(parsed.file)
+        elif parsed.command == "freq-map":
+            return cmd_freq_map(parsed.file, band=parsed.band)
         elif parsed.command == "set-option":
             return cmd_set_option(
                 parsed.file,
