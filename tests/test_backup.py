@@ -83,7 +83,7 @@ class TestCreateBackup:
             paths = []
             for i in range(3):
                 # Ensure distinct timestamps
-                time.sleep(0.05)
+                time.sleep(0.01)
                 src.write_bytes(f"version{i}".encode())
                 paths.append(create_backup(src))
             # All three should exist
@@ -94,7 +94,7 @@ class TestCreateBackup:
         with tempfile.TemporaryDirectory() as d:
             src = _make_test_prs(d)
             for i in range(MAX_BACKUPS + 5):
-                time.sleep(0.02)
+                time.sleep(0.01)
                 src.write_bytes(f"v{i}".encode())
                 create_backup(src)
             backup_dir = Path(d) / BACKUP_DIR_NAME
@@ -105,7 +105,7 @@ class TestCreateBackup:
         with tempfile.TemporaryDirectory() as d:
             src = _make_test_prs(d)
             for i in range(MAX_BACKUPS + 3):
-                time.sleep(0.02)
+                time.sleep(0.01)
                 src.write_bytes(f"v{i}".encode())
                 create_backup(src)
             backup_dir = Path(d) / BACKUP_DIR_NAME
@@ -142,7 +142,7 @@ class TestListBackups:
         with tempfile.TemporaryDirectory() as d:
             src = _make_test_prs(d)
             create_backup(src)
-            time.sleep(0.02)
+            time.sleep(0.01)
             create_backup(src)
             result = list_backups(src)
             assert len(result) == 2
@@ -152,7 +152,7 @@ class TestListBackups:
             src = _make_test_prs(d)
             src.write_bytes(b"old")
             create_backup(src)
-            time.sleep(0.05)
+            time.sleep(0.01)
             src.write_bytes(b"new")
             create_backup(src)
             result = list_backups(src)
@@ -201,7 +201,7 @@ class TestRestoreBackup:
         with tempfile.TemporaryDirectory() as d:
             src = _make_test_prs(d, content=b"original")
             create_backup(src)
-            time.sleep(0.02)
+            time.sleep(0.01)
             # Modify the file
             src.write_bytes(b"modified")
             # Restore
@@ -212,10 +212,10 @@ class TestRestoreBackup:
         with tempfile.TemporaryDirectory() as d:
             src = _make_test_prs(d, content=b"v1")
             create_backup(src)
-            time.sleep(0.05)
+            time.sleep(0.01)
             src.write_bytes(b"v2")
             create_backup(src)
-            time.sleep(0.05)
+            time.sleep(0.01)
             src.write_bytes(b"v3")
             # Restore from index 2 (second newest = v1)
             restore_backup(src, index=2)
@@ -225,10 +225,10 @@ class TestRestoreBackup:
         with tempfile.TemporaryDirectory() as d:
             src = _make_test_prs(d, content=b"v1")
             create_backup(src)
-            time.sleep(0.05)
+            time.sleep(0.01)
             src.write_bytes(b"v2")
             create_backup(src)
-            time.sleep(0.05)
+            time.sleep(0.01)
             src.write_bytes(b"v3")
             # Restore from index 1 (newest = v2)
             restore_backup(src, index=1)
@@ -282,10 +282,10 @@ class TestWriterIntegration:
     def test_write_creates_auto_backup(self):
         if not CLAUDE.exists():
             pytest.skip("test file not found")
-        from quickprs.prs_parser import parse_prs
+        from conftest import cached_parse_prs
         from quickprs.prs_writer import write_prs
 
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "out.PRS"
             # First write — no backup (file doesn't exist yet)
@@ -302,10 +302,10 @@ class TestWriterIntegration:
     def test_write_backup_false_no_auto_backup(self):
         if not CLAUDE.exists():
             pytest.skip("test file not found")
-        from quickprs.prs_parser import parse_prs
+        from conftest import cached_parse_prs
         from quickprs.prs_writer import write_prs
 
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "out.PRS"
             write_prs(prs, out)
@@ -369,10 +369,10 @@ class TestCLIBackup:
         with tempfile.TemporaryDirectory() as d:
             src = _make_test_prs(d, content=b"v1")
             create_backup(src)
-            time.sleep(0.05)
+            time.sleep(0.01)
             src.write_bytes(b"v2")
             create_backup(src)
-            time.sleep(0.05)
+            time.sleep(0.01)
             src.write_bytes(b"v3")
             rc = run_cli(["backup", str(src), "--restore", "2"])
             assert rc == 0

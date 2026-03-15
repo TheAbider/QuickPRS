@@ -3,7 +3,8 @@
 import pytest
 from pathlib import Path
 
-from quickprs.prs_parser import parse_prs, PRSFile, Section, parse_prs_bytes
+from quickprs.prs_parser import parse_prs, parse_prs_bytes, PRSFile, Section
+from conftest import cached_parse_prs
 from quickprs.repair import repair_prs, extract_salvageable_data
 from quickprs.validation import validate_structure, ERROR, WARNING
 from quickprs.builder import create_blank_prs
@@ -31,7 +32,7 @@ def test_repair_paws_no_changes():
     """PAWSOVERMAWS is valid and should not be modified."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     original_bytes = prs.to_bytes()
     _, repairs = repair_prs(prs)
     assert len(repairs) == 0
@@ -42,7 +43,7 @@ def test_repair_claude_test_no_changes():
     """claude test is valid and should not be modified."""
     if not CLAUDE_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
     original_bytes = prs.to_bytes()
     _, repairs = repair_prs(prs)
     assert len(repairs) == 0
@@ -113,7 +114,7 @@ def test_repair_orphan_data_section():
         pytest.skip("test file not found")
     from quickprs.record_types import P25TrkSystemConfig
     from quickprs.injector import add_p25_trunked_system, make_group_set, make_trunk_set
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
 
     # Create orphan data: insert a system config data section with
     # no preceding system header

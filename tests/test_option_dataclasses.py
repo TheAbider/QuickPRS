@@ -20,6 +20,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.option_maps import extract_section_data
 from quickprs.record_types import (
     GenRadioOpts, TimerOpts, ScanOpts, PowerUpOpts,
@@ -32,7 +33,7 @@ PAWSOVERMAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 
 def _get_section_data(class_name):
     """Helper: extract data payload from a named section in PAWSOVERMAWS."""
-    prs = parse_prs(PAWSOVERMAWS)
+    prs = cached_parse_prs(PAWSOVERMAWS)
     sec = prs.get_section_by_class(class_name)
     assert sec is not None, f"Section {class_name} not found"
     return extract_section_data(sec)

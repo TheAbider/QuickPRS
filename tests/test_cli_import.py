@@ -12,6 +12,7 @@ from quickprs.cli import (
     run_cli, cmd_import_rr, cmd_import_paste,
 )
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.validation import validate_prs, ERROR
 from quickprs.radioreference import (
     RRSystem, RRTalkgroup, RRSite, RRSiteFreq,
@@ -279,7 +280,7 @@ class TestImportRR:
         mock_api_cls.return_value = mock_api
 
         prs_file = _copy_prs(PAWS, tmp_path)
-        prs_before = parse_prs(str(PAWS))
+        prs_before = cached_parse_prs(str(PAWS))
         trunk_before = _count_trunk_sets(prs_before)
 
         result = cmd_import_rr(
@@ -552,7 +553,7 @@ class TestImportPaste:
         _write_tgs_paste(tgs_file)
         _write_freqs_paste(freqs_file)
 
-        prs_before = parse_prs(str(PAWS))
+        prs_before = cached_parse_prs(str(PAWS))
         trunk_before = _count_trunk_sets(prs_before)
 
         result = cmd_import_paste(

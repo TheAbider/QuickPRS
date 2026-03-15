@@ -608,8 +608,8 @@ def test_freq_validate_paws_no_crash():
     """Frequency validation runs on PAWSOVERMAWS without crash."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    from quickprs.prs_parser import parse_prs
-    prs = parse_prs(PAWS_PRS)
+    from conftest import cached_parse_prs
+    prs = cached_parse_prs(PAWS_PRS)
     issues = validate_frequencies(prs)
     assert isinstance(issues, list)
 
@@ -618,8 +618,8 @@ def test_freq_validate_claude_no_crash():
     """Frequency validation runs on claude test without crash."""
     if not CLAUDE_PRS.exists():
         pytest.skip("test file not found")
-    from quickprs.prs_parser import parse_prs
-    prs = parse_prs(CLAUDE_PRS)
+    from conftest import cached_parse_prs
+    prs = cached_parse_prs(CLAUDE_PRS)
     issues = validate_frequencies(prs)
     assert isinstance(issues, list)
 

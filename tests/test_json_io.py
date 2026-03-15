@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.builder import create_blank_prs
 from quickprs.json_io import (
     prs_to_dict, dict_to_json, export_json,
@@ -29,7 +30,7 @@ class TestExportPawsovermaws:
     def prs(self):
         if not PAWSOVERMAWS.exists():
             pytest.skip("PAWSOVERMAWS.PRS not found")
-        return parse_prs(PAWSOVERMAWS)
+        return cached_parse_prs(PAWSOVERMAWS)
 
     @pytest.fixture
     def exported(self, prs):
@@ -147,7 +148,7 @@ class TestExportClaudeTest:
     def prs(self):
         if not CLAUDE_TEST.exists():
             pytest.skip("claude test.PRS not found")
-        return parse_prs(CLAUDE_TEST)
+        return cached_parse_prs(CLAUDE_TEST)
 
     @pytest.fixture
     def exported(self, prs):
@@ -255,7 +256,7 @@ class TestFileExport:
     def test_export_pawsovermaws(self, tmp_path):
         if not PAWSOVERMAWS.exists():
             pytest.skip("PAWSOVERMAWS.PRS not found")
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         out = tmp_path / "paws.json"
         export_json(prs, out)
         data = json.loads(out.read_text(encoding='utf-8'))
@@ -607,7 +608,7 @@ class TestRoundtrip:
         if not PAWSOVERMAWS.exists():
             pytest.skip("PAWSOVERMAWS.PRS not found")
 
-        prs1 = parse_prs(PAWSOVERMAWS)
+        prs1 = cached_parse_prs(PAWSOVERMAWS)
         d1 = prs_to_dict(prs1)
 
         # Count original data

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.prs_writer import write_prs
 
 
@@ -19,7 +20,7 @@ def test_write_creates_file():
     """write_prs creates the output file."""
     if not CLAUDE.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE)
+    prs = cached_parse_prs(CLAUDE)
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.PRS"
         size = write_prs(prs, out)
@@ -32,7 +33,7 @@ def test_write_roundtrip_identical():
     if not CLAUDE.exists():
         pytest.skip("test file not found")
     original = CLAUDE.read_bytes()
-    prs = parse_prs(CLAUDE)
+    prs = cached_parse_prs(CLAUDE)
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.PRS"
         write_prs(prs, out)
@@ -45,7 +46,7 @@ def test_write_roundtrip_paws():
     if not PAWS.exists():
         pytest.skip("test file not found")
     original = PAWS.read_bytes()
-    prs = parse_prs(PAWS)
+    prs = cached_parse_prs(PAWS)
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.PRS"
         write_prs(prs, out)
@@ -57,7 +58,7 @@ def test_write_returns_size():
     """write_prs returns the number of bytes written."""
     if not CLAUDE.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE)
+    prs = cached_parse_prs(CLAUDE)
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.PRS"
         size = write_prs(prs, out)
@@ -68,7 +69,7 @@ def test_backup_created_when_file_exists():
     """Backup .bak file should be created when overwriting."""
     if not CLAUDE.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE)
+    prs = cached_parse_prs(CLAUDE)
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.PRS"
         # Write once
@@ -84,7 +85,7 @@ def test_no_backup_for_new_file():
     """No .bak should be created when writing a new file."""
     if not CLAUDE.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE)
+    prs = cached_parse_prs(CLAUDE)
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.PRS"
         write_prs(prs, out)
@@ -96,7 +97,7 @@ def test_backup_disabled():
     """backup=False should skip backup even if file exists."""
     if not CLAUDE.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE)
+    prs = cached_parse_prs(CLAUDE)
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.PRS"
         write_prs(prs, out)
@@ -109,7 +110,7 @@ def test_overwrite_preserves_content():
     """Overwriting with modified PRS should update file content."""
     if not CLAUDE.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE)
+    prs = cached_parse_prs(CLAUDE)
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.PRS"
         write_prs(prs, out)

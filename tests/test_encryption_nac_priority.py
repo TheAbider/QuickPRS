@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.prs_writer import write_prs
 from quickprs.binary_io import read_uint16_le
 from quickprs.record_types import (
@@ -108,7 +109,7 @@ class TestEncryptionInjector:
     def prs_with_groups(self):
         if not CLAUDE.exists():
             pytest.skip("test file not found")
-        return deepcopy(parse_prs(CLAUDE))
+        return deepcopy(cached_parse_prs(CLAUDE))
 
     def _get_group_sets(self, prs):
         grp_sec = prs.get_section_by_class("CP25Group")
@@ -287,7 +288,7 @@ class TestNACInjector:
     def prs_with_p25_conv(self):
         if not CLAUDE.exists():
             pytest.skip("test file not found")
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         if not prs.get_section_by_class("CP25ConvChannel"):
             pytest.skip("no P25 conv channels")
         return deepcopy(prs)
@@ -417,7 +418,7 @@ class TestScanPriorityReorder:
     def prs_with_preferred(self):
         if not PAWS.exists():
             pytest.skip("PAWSOVERMAWS not found")
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         entries, _, _ = get_preferred_entries(prs)
         if len(entries) < 2:
             pytest.skip("need at least 2 preferred entries")
@@ -463,7 +464,7 @@ class TestScanPriorityReorder:
     def test_reorder_no_preferred(self):
         if not CLAUDE.exists():
             pytest.skip("test file not found")
-        prs = deepcopy(parse_prs(CLAUDE))
+        prs = deepcopy(cached_parse_prs(CLAUDE))
         entries, _, _ = get_preferred_entries(prs)
         if entries:
             # claude test might have preferred entries
@@ -599,7 +600,7 @@ class TestSetNacCLI:
     def prs_file(self, tmp_path):
         if not CLAUDE.exists():
             pytest.skip("test file not found")
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         if not prs.get_section_by_class("CP25ConvChannel"):
             pytest.skip("no P25 conv channels")
         dest = tmp_path / "nac_test.PRS"

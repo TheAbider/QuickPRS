@@ -13,6 +13,7 @@ from quickprs.scanner_import import (
     import_chirp_csv,
 )
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 
 TESTDATA = Path(__file__).parent / "testdata"
 PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
@@ -961,7 +962,7 @@ class TestExportRealFiles:
         """Export PAWS PRS to CHIRP CSV — should not crash."""
         if not PAWS.exists():
             pytest.skip("testdata not available")
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         out = tmp_path / "chirp.csv"
         count = export_chirp_csv(prs, out)
         # May be 0 if PAWS has no conv channels — that's fine
@@ -972,7 +973,7 @@ class TestExportRealFiles:
         """Export PAWS PRS to Markdown — should not crash."""
         if not PAWS.exists():
             pytest.skip("testdata not available")
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         md = export_markdown(prs)
         assert '#' in md
         assert 'File Information' in md
@@ -981,7 +982,7 @@ class TestExportRealFiles:
         """Export PAWS PRS to SDRTrunk — should not crash."""
         if not PAWS.exists():
             pytest.skip("testdata not available")
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         out = tmp_path / "tgs.csv"
         count = export_sdrtrunk_csv(prs, out)
         assert count >= 0
@@ -990,7 +991,7 @@ class TestExportRealFiles:
         """Export PAWS PRS to DSD+ — should not crash."""
         if not PAWS.exists():
             pytest.skip("testdata not available")
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         out = tmp_path / "freqs.txt"
         count = export_dsd_freqs(prs, out)
         assert count >= 0

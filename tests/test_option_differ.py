@@ -8,6 +8,7 @@ import pytest
 from pathlib import Path
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.option_differ import (
     diff_options, diff_options_from_files, diff_section_bytes,
     format_option_diff, OptionDiff,
@@ -46,7 +47,7 @@ class TestIdenticalFiles:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_same_file_no_diffs(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         diffs = diff_options(prs, prs)
         assert len(diffs) == 0
 
@@ -128,8 +129,8 @@ class TestAudioDiffs:
         assert xml_diffs[0].new_value == "Enabled"
 
     def test_external_mic_gain(self):
-        prs_a = parse_prs(AUDIO_KEYPAD)
-        prs_b = parse_prs(AUDIO_MIC_GAIN)
+        prs_a = cached_parse_prs(AUDIO_KEYPAD)
+        prs_b = cached_parse_prs(AUDIO_MIC_GAIN)
         diffs = diff_options(prs_a, prs_b)
         xml_diffs = [d for d in diffs if d.source == "xml"]
         gain_diffs = [d for d in xml_diffs if "Gain" in d.field_name]
@@ -147,8 +148,8 @@ class TestBinarySectionDiffs:
                         reason="Accessory PTT test file not available")
     def test_accessory_ptt_change(self):
         """PTT mode change should show in binary section."""
-        prs_a = parse_prs(BASELINE)
-        prs_b = parse_prs(ACC_PTT)
+        prs_a = cached_parse_prs(BASELINE)
+        prs_b = cached_parse_prs(ACC_PTT)
         diffs = diff_options(prs_a, prs_b)
         binary_diffs = [d for d in diffs if d.source == "binary"]
         # Baseline doesn't have CAccessoryDevice section, ACC_PTT does
@@ -169,7 +170,7 @@ class TestRawByteDiffs:
 
     def test_no_section_returns_empty(self):
         """Baseline has no CAlertOpts, so byte diff should be empty."""
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         diffs = diff_section_bytes(prs, prs, "CAlertOpts")
         assert len(diffs) == 0
 
@@ -179,8 +180,8 @@ class TestRawByteDiffs:
         """Two files with CAccessoryDevice should produce byte diffs."""
         if not ACC_NOISE.exists():
             pytest.skip("Accessory noise test file not available")
-        prs_a = parse_prs(ACC_PTT)
-        prs_b = parse_prs(ACC_NOISE)
+        prs_a = cached_parse_prs(ACC_PTT)
+        prs_b = cached_parse_prs(ACC_NOISE)
         diffs = diff_section_bytes(prs_a, prs_b, "CAccessoryDevice")
         # These are sequential changes, should have some byte diffs
         assert isinstance(diffs, list)
@@ -345,7 +346,7 @@ class TestXmlEdgeCases:
     def test_malformed_xml_both(self):
         """If both files have unparseable XML, produce a parse error diff."""
         from copy import deepcopy
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         prs_a = deepcopy(prs)
         prs_b = deepcopy(prs)
         # Inject bad XML into the data blob by replacing platformConfig XML
@@ -364,8 +365,8 @@ class TestXmlEdgeCases:
         """If A has no XML and B does, report presence diff."""
         from quickprs.option_differ import _diff_platform_config
         import unittest.mock as mock
-        prs_a = parse_prs(BASELINE)
-        prs_b = parse_prs(BASELINE)
+        prs_a = cached_parse_prs(BASELINE)
+        prs_b = cached_parse_prs(BASELINE)
         with mock.patch("quickprs.option_differ.extract_platform_xml",
                         side_effect=[None, "<platformConfig/>"]):
             diffs = _diff_platform_config(prs_a, prs_b)
@@ -377,8 +378,8 @@ class TestXmlEdgeCases:
         """If A has XML and B doesn't, report presence diff."""
         from quickprs.option_differ import _diff_platform_config
         import unittest.mock as mock
-        prs_a = parse_prs(BASELINE)
-        prs_b = parse_prs(BASELINE)
+        prs_a = cached_parse_prs(BASELINE)
+        prs_b = cached_parse_prs(BASELINE)
         with mock.patch("quickprs.option_differ.extract_platform_xml",
                         side_effect=["<platformConfig/>", None]):
             diffs = _diff_platform_config(prs_a, prs_b)
@@ -390,8 +391,8 @@ class TestXmlEdgeCases:
         """If neither file has XML, no diffs."""
         from quickprs.option_differ import _diff_platform_config
         import unittest.mock as mock
-        prs_a = parse_prs(BASELINE)
-        prs_b = parse_prs(BASELINE)
+        prs_a = cached_parse_prs(BASELINE)
+        prs_b = cached_parse_prs(BASELINE)
         with mock.patch("quickprs.option_differ.extract_platform_xml",
                         return_value=None):
             diffs = _diff_platform_config(prs_a, prs_b)

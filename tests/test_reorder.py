@@ -6,9 +6,9 @@ including boundary conditions, no-op, invalid index, and roundtrip.
 
 import pytest
 from pathlib import Path
-from copy import deepcopy
 
 from quickprs.prs_parser import parse_prs, parse_prs_bytes
+from conftest import cached_parse_prs
 from quickprs.injector import (
     reorder_talkgroup, reorder_conv_channel, reorder_trunk_channel,
     add_talkgroups, make_p25_group, make_trunk_set, make_trunk_channel,
@@ -92,7 +92,7 @@ class TestReorderTalkgroup:
 
     def test_move_first_to_last(self):
         """Move talkgroup from position 0 to last position."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         set_name = sets[0].name
         _ensure_multi_tg(prs, set_name, 6)
@@ -109,7 +109,7 @@ class TestReorderTalkgroup:
 
     def test_move_last_to_first(self):
         """Move talkgroup from last position to 0."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         set_name = sets[0].name
         _ensure_multi_tg(prs, set_name, 6)
@@ -126,7 +126,7 @@ class TestReorderTalkgroup:
 
     def test_same_position_noop(self):
         """Move to same position is a no-op."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         set_name = sets[0].name
 
@@ -137,7 +137,7 @@ class TestReorderTalkgroup:
 
     def test_invalid_old_index(self):
         """Invalid old_index raises IndexError."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         set_name = sets[0].name
         n = len(sets[0].groups)
@@ -147,7 +147,7 @@ class TestReorderTalkgroup:
 
     def test_invalid_new_index(self):
         """Invalid new_index raises IndexError."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         set_name = sets[0].name
         n = len(sets[0].groups)
@@ -157,7 +157,7 @@ class TestReorderTalkgroup:
 
     def test_negative_index(self):
         """Negative index raises IndexError."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         set_name = sets[0].name
 
@@ -166,13 +166,13 @@ class TestReorderTalkgroup:
 
     def test_set_not_found(self):
         """Returns False for nonexistent set."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         result = reorder_talkgroup(prs, "NOPE_SET", 0, 1)
         assert result is False
 
     def test_preserves_all_groups(self):
         """All talkgroups survive the reorder."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         set_name = sets[0].name
         _ensure_multi_tg(prs, set_name, 6)
@@ -188,7 +188,7 @@ class TestReorderTalkgroup:
 
     def test_roundtrip_after_reorder(self):
         """File roundtrips cleanly after reorder."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         set_name = sets[0].name
         _ensure_multi_tg(prs, set_name, 3)
@@ -203,7 +203,7 @@ class TestReorderTalkgroup:
 
     def test_validates_after_reorder(self):
         """Reordered file should pass validation."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         set_name = sets[0].name
         _ensure_multi_tg(prs, set_name, 3)
@@ -222,7 +222,7 @@ class TestReorderTrunkChannel:
 
     def test_move_channel_down(self):
         """Move trunk channel from position 0 to position 5."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_trunk_sets(prs)
         if not sets or len(sets[0].channels) < 6:
             pytest.skip("Need at least 6 trunk channels")
@@ -237,7 +237,7 @@ class TestReorderTrunkChannel:
 
     def test_move_channel_up(self):
         """Move trunk channel from position 5 to position 0."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_trunk_sets(prs)
         if not sets or len(sets[0].channels) < 6:
             pytest.skip("Need at least 6 trunk channels")
@@ -252,7 +252,7 @@ class TestReorderTrunkChannel:
 
     def test_same_position_noop(self):
         """Same position is a no-op."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_trunk_sets(prs)
         if not sets:
             pytest.skip("No trunk sets")
@@ -265,7 +265,7 @@ class TestReorderTrunkChannel:
 
     def test_invalid_index(self):
         """Out-of-range index raises IndexError."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_trunk_sets(prs)
         if not sets:
             pytest.skip("No trunk sets")
@@ -277,13 +277,13 @@ class TestReorderTrunkChannel:
 
     def test_set_not_found(self):
         """Returns False for nonexistent set."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         result = reorder_trunk_channel(prs, "NOPE_SET", 0, 1)
         assert result is False
 
     def test_preserves_all_channels(self):
         """All channels survive the reorder."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_trunk_sets(prs)
         if not sets or len(sets[0].channels) < 3:
             pytest.skip("Need at least 3 trunk channels")
@@ -298,7 +298,7 @@ class TestReorderTrunkChannel:
 
     def test_roundtrip_after_reorder(self):
         """File roundtrips cleanly after trunk channel reorder."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_trunk_sets(prs)
         if not sets or len(sets[0].channels) < 2:
             pytest.skip("Need at least 2 trunk channels")
@@ -320,17 +320,17 @@ class TestReorderConvChannel:
 
     def _ensure_conv_set(self):
         """Return (prs, set_name) with a conv set with channels."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         sets = _get_conv_sets(prs)
         if sets and len(sets[0].channels) >= 2:
             return prs, sets[0].name
         # PAWS has conv sets, CLAUDE might not — try both
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_conv_sets(prs)
         if sets and len(sets[0].channels) >= 2:
             return prs, sets[0].name
         # Create one
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         channels_data = [
             {"short_name": "CH1", "tx_freq": 151.82000, "rx_freq": 151.82000},
             {"short_name": "CH2", "tx_freq": 151.88000, "rx_freq": 151.88000},
@@ -437,7 +437,7 @@ class TestReorderEdgeCases:
 
     def test_no_trunk_sections_returns_false(self):
         """reorder_trunk_channel on file with no trunk sections."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         # Remove trunk sections for test
         if not prs.get_section_by_class("CTrunkChannel"):
             result = reorder_trunk_channel(prs, "TEST", 0, 1)
@@ -449,7 +449,7 @@ class TestReorderEdgeCases:
 
     def test_no_conv_sections_returns_false(self):
         """reorder_conv_channel on file with no conv sections."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         if not prs.get_section_by_class("CConvChannel"):
             result = reorder_conv_channel(prs, "TEST", 0, 1)
             assert result is False
@@ -459,7 +459,7 @@ class TestReorderEdgeCases:
 
     def test_no_group_sections_returns_false(self):
         """reorder_talkgroup on file with no group sections."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         if not prs.get_section_by_class("CP25Group"):
             result = reorder_talkgroup(prs, "TEST", 0, 1)
             assert result is False
@@ -469,7 +469,7 @@ class TestReorderEdgeCases:
 
     def test_multiple_reorders(self):
         """Multiple sequential reorders produce correct result."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         set_name = sets[0].name
         _ensure_multi_tg(prs, set_name, 5)

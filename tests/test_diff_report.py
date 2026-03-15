@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.diff_report import (
     generate_diff_report,
     generate_diff_report_from_files,
@@ -23,7 +24,7 @@ PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_diff_report_identical():
     """Report for identical files should show 'No changes detected'."""
-    prs = parse_prs(CLAUDE)
+    prs = cached_parse_prs(CLAUDE)
     original_bytes = prs.to_bytes()
     report = generate_diff_report(original_bytes, prs)
     assert "No changes detected" in report
@@ -35,7 +36,7 @@ def test_diff_report_after_injection():
     """Report should show changes after adding a group set."""
     from quickprs.injector import add_group_set, make_group_set
 
-    prs = parse_prs(CLAUDE)
+    prs = cached_parse_prs(CLAUDE)
     original_bytes = prs.to_bytes()
 
     new_gset = make_group_set("DIFFTEST", [
@@ -54,7 +55,7 @@ def test_diff_report_after_injection():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_diff_report_contains_size_info():
     """Report should include file size information."""
-    prs = parse_prs(CLAUDE)
+    prs = cached_parse_prs(CLAUDE)
     original_bytes = prs.to_bytes()
     report = generate_diff_report(original_bytes, prs)
     assert "Before:" in report
@@ -65,7 +66,7 @@ def test_diff_report_contains_size_info():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_diff_report_output_to_file():
     """Report can be written to a file."""
-    prs = parse_prs(CLAUDE)
+    prs = cached_parse_prs(CLAUDE)
     original_bytes = prs.to_bytes()
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False,

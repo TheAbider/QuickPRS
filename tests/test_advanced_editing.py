@@ -6,9 +6,9 @@ frequency identification, and conflict detection.
 
 import pytest
 from pathlib import Path
-from copy import deepcopy
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.binary_io import read_uint16_le
 from quickprs.record_types import (
     parse_class_header, parse_group_section,
@@ -62,7 +62,7 @@ class TestBatchRenameGroups:
 
     def test_basic_substitution(self):
         """Simple string replacement in group names."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         # Add groups to have something to rename
         new_groups = [
@@ -85,7 +85,7 @@ class TestBatchRenameGroups:
 
     def test_regex_prefix_removal(self):
         """Remove prefix using regex anchor."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         new_groups = [
             make_p25_group(100, "PD DISP", "PD DISPATCH"),
@@ -106,7 +106,7 @@ class TestBatchRenameGroups:
 
     def test_regex_backreference(self):
         """Regex backreference substitution."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         new_groups = [
             make_p25_group(100, "ALPHA", "ALPHA"),
@@ -127,7 +127,7 @@ class TestBatchRenameGroups:
 
     def test_no_match_returns_zero(self):
         """Pattern that matches nothing returns 0."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         count = batch_rename(prs, "GROUP SE", "ZZZZZ", "XXXXX",
                               set_type="group")
@@ -135,7 +135,7 @@ class TestBatchRenameGroups:
 
     def test_long_name_field(self):
         """Rename long_name field instead of short_name."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         new_groups = [
             make_p25_group(100, "PD DISP", "PD DISPATCH"),
@@ -153,14 +153,14 @@ class TestBatchRenameGroups:
 
     def test_invalid_set_raises(self):
         """Non-existent set name raises ValueError."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         with pytest.raises(ValueError, match="not found"):
             batch_rename(prs, "NOPE", "a", "b", set_type="group")
 
     def test_invalid_field_raises(self):
         """Invalid field name raises ValueError."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         with pytest.raises(ValueError, match="Invalid field"):
             batch_rename(prs, "GROUP SE", "a", "b", set_type="group",
@@ -168,14 +168,14 @@ class TestBatchRenameGroups:
 
     def test_invalid_set_type_raises(self):
         """Invalid set_type raises ValueError."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         with pytest.raises(ValueError, match="Invalid set_type"):
             batch_rename(prs, "GROUP SE", "a", "b", set_type="trunk")
 
     def test_truncates_short_name_to_8(self):
         """Renamed short names are truncated to 8 characters."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         new_groups = [make_p25_group(100, "AB", "AB")]
         add_talkgroups(prs, "GROUP SE", new_groups)
@@ -190,7 +190,7 @@ class TestBatchRenameGroups:
 
     def test_truncates_long_name_to_16(self):
         """Renamed long names are truncated to 16 characters."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         new_groups = [make_p25_group(100, "X", "SHORT")]
         add_talkgroups(prs, "GROUP SE", new_groups)
@@ -215,7 +215,7 @@ class TestBatchRenameConv:
 
     def test_conv_rename_basic(self):
         """Basic rename on conv channels."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
 
         sets_before = _get_conv_sets(prs)
         assert len(sets_before) > 0, "No conv sets found in PAWS"
@@ -233,7 +233,7 @@ class TestBatchRenameConv:
 
     def test_conv_rename_no_match(self):
         """No match returns 0 for conv sets."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         sets = _get_conv_sets(prs)
         if not sets:
             pytest.skip("No conv sets in test file")
@@ -243,7 +243,7 @@ class TestBatchRenameConv:
 
     def test_conv_rename_long_name(self):
         """Rename long_name field on conv channels."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         sets = _get_conv_sets(prs)
         if not sets or not sets[0].channels:
             pytest.skip("No conv channels in test file")
@@ -267,7 +267,7 @@ class TestSortGroups:
 
     def test_sort_by_id_ascending(self):
         """Sort groups by talkgroup ID ascending."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         # Add groups in unsorted order
         new_groups = [
@@ -287,7 +287,7 @@ class TestSortGroups:
 
     def test_sort_by_id_descending(self):
         """Sort groups by talkgroup ID descending."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         new_groups = [
             make_p25_group(100, "ALPHA", "ALPHA"),
@@ -306,7 +306,7 @@ class TestSortGroups:
 
     def test_sort_by_name(self):
         """Sort groups by short name alphabetically."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         new_groups = [
             make_p25_group(100, "CHARLIE", "CHARLIE"),
@@ -325,20 +325,20 @@ class TestSortGroups:
 
     def test_sort_nonexistent_set_returns_false(self):
         """Sorting a non-existent set returns False."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         result = sort_channels(prs, "NOPE", set_type="group", key="id")
         assert result is False
 
     def test_sort_invalid_key_raises(self):
         """Invalid sort key for group set raises ValueError."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         with pytest.raises(ValueError, match="Invalid sort key"):
             sort_channels(prs, "GROUP SE", set_type="group",
                            key="frequency")
 
     def test_sort_invalid_set_type_raises(self):
         """Invalid set_type raises ValueError."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         with pytest.raises(ValueError, match="Invalid set_type"):
             sort_channels(prs, "GROUP SE", set_type="trunk", key="name")
 
@@ -350,7 +350,7 @@ class TestSortConv:
 
     def test_sort_by_frequency(self):
         """Sort conv channels by TX frequency."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         sets = _get_conv_sets(prs)
         if not sets:
             pytest.skip("No conv sets in test file")
@@ -372,7 +372,7 @@ class TestSortConv:
 
     def test_sort_by_name(self):
         """Sort conv channels by short name."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         sets = _get_conv_sets(prs)
         if not sets:
             pytest.skip("No conv sets in test file")
@@ -393,7 +393,7 @@ class TestSortConv:
 
     def test_sort_by_tone(self):
         """Sort conv channels by CTCSS tone."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         sets = _get_conv_sets(prs)
         if not sets:
             pytest.skip("No conv sets in test file")
@@ -414,7 +414,7 @@ class TestSortConv:
 
     def test_sort_reverse(self):
         """Sort conv channels by frequency descending."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         sets = _get_conv_sets(prs)
         if not sets:
             pytest.skip("No conv sets in test file")
@@ -436,14 +436,14 @@ class TestSortConv:
 
     def test_sort_conv_nonexistent(self):
         """Sorting non-existent conv set returns False."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = sort_channels(prs, "NOPE", set_type="conv",
                                 key="frequency")
         assert result is False
 
     def test_sort_conv_invalid_key(self):
         """Invalid sort key for conv set raises ValueError."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         with pytest.raises(ValueError, match="Invalid sort key"):
             sort_channels(prs, "x", set_type="conv", key="id")
 

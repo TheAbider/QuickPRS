@@ -9,6 +9,7 @@ from quickprs.cli import (
     run_cli, cmd_info, cmd_remove, cmd_edit,
 )
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.record_types import parse_personality_section
 
 TESTDATA = Path(__file__).parent / "testdata"
@@ -542,7 +543,7 @@ class TestInjectorRemoveFunctions:
     def test_remove_trunk_set_nonexistent(self):
         """remove_trunk_set returns False for nonexistent set."""
         from quickprs.injector import remove_trunk_set
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         result = remove_trunk_set(prs, "NOSET")
         assert result is False
 
@@ -550,7 +551,7 @@ class TestInjectorRemoveFunctions:
     def test_remove_group_set_direct(self, tmp_path):
         """Direct call to remove_group_set."""
         from quickprs.injector import remove_group_set
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         result = remove_group_set(prs, "PSERN PD")
         assert result is True
 
@@ -558,7 +559,7 @@ class TestInjectorRemoveFunctions:
     def test_remove_group_set_nonexistent(self):
         """remove_group_set returns False for nonexistent set."""
         from quickprs.injector import remove_group_set
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         result = remove_group_set(prs, "NOSET")
         assert result is False
 
@@ -566,7 +567,7 @@ class TestInjectorRemoveFunctions:
     def test_remove_conv_set_direct(self, tmp_path):
         """Direct call to remove_conv_set."""
         from quickprs.injector import remove_conv_set
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         result = remove_conv_set(prs, "FURRY NB")
         assert result is True
 
@@ -574,7 +575,7 @@ class TestInjectorRemoveFunctions:
     def test_remove_conv_set_nonexistent(self):
         """remove_conv_set returns False for nonexistent set."""
         from quickprs.injector import remove_conv_set
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         result = remove_conv_set(prs, "NOSET")
         assert result is False
 
@@ -582,7 +583,7 @@ class TestInjectorRemoveFunctions:
     def test_edit_personality_direct(self):
         """Direct call to edit_personality."""
         from quickprs.injector import edit_personality
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         result = edit_personality(prs, filename="NEW.PRS")
         assert result is True
         sec = prs.get_section_by_class("CPersonality")
@@ -593,7 +594,7 @@ class TestInjectorRemoveFunctions:
     def test_edit_personality_no_change(self):
         """edit_personality returns False when nothing changes."""
         from quickprs.injector import edit_personality
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sec = prs.get_section_by_class("CPersonality")
         p = parse_personality_section(sec.raw)
         result = edit_personality(prs, filename=p.filename)
@@ -603,7 +604,7 @@ class TestInjectorRemoveFunctions:
     def test_rename_trunk_set_direct(self):
         """Direct call to rename_trunk_set."""
         from quickprs.injector import rename_trunk_set
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         result = rename_trunk_set(prs, "PSERN", "RENAMED")
         assert result is True
 
@@ -611,7 +612,7 @@ class TestInjectorRemoveFunctions:
     def test_rename_group_set_direct(self):
         """Direct call to rename_group_set."""
         from quickprs.injector import rename_group_set
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         result = rename_group_set(prs, "PSERN PD", "NEW PD")
         assert result is True
 
@@ -619,7 +620,7 @@ class TestInjectorRemoveFunctions:
     def test_rename_conv_set_direct(self):
         """Direct call to rename_conv_set."""
         from quickprs.injector import rename_conv_set
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         result = rename_conv_set(prs, "FURRY NB", "NEW NB")
         assert result is True
 
@@ -627,7 +628,7 @@ class TestInjectorRemoveFunctions:
     def test_rename_nonexistent(self):
         """Rename returns False for nonexistent set."""
         from quickprs.injector import rename_trunk_set
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         result = rename_trunk_set(prs, "NOSET", "NEWNAME")
         assert result is False
 
@@ -635,7 +636,7 @@ class TestInjectorRemoveFunctions:
     def test_remove_wan_entry_direct(self):
         """Direct call to remove_wan_entry."""
         from quickprs.injector import remove_wan_entry
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         # PAWS has WAN entries
         wan_sec = prs.get_section_by_class("CP25TrkWan")
         assert wan_sec is not None
@@ -650,7 +651,7 @@ class TestInjectorRemoveFunctions:
     def test_remove_wan_entry_not_found(self):
         """remove_wan_entry returns False for nonexistent entry."""
         from quickprs.injector import remove_wan_entry
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         result = remove_wan_entry(prs, "NOWAN")
         assert result is False
 

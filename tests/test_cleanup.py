@@ -13,6 +13,7 @@ from quickprs.cleanup import (
     cleanup_report,
 )
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 
 TESTDATA = Path(__file__).parent / "testdata"
 PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
@@ -27,7 +28,7 @@ class TestFindDuplicates:
     """Test duplicate detection across set types."""
 
     def test_find_duplicates_returns_dict(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_duplicates(prs)
         assert isinstance(result, dict)
         assert 'duplicate_tgs' in result
@@ -36,40 +37,40 @@ class TestFindDuplicates:
         assert 'cross_set_tgs' in result
 
     def test_duplicate_tgs_list_type(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_duplicates(prs)
         assert isinstance(result['duplicate_tgs'], list)
 
     def test_duplicate_freqs_list_type(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_duplicates(prs)
         assert isinstance(result['duplicate_freqs'], list)
 
     def test_duplicate_channels_list_type(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_duplicates(prs)
         assert isinstance(result['duplicate_channels'], list)
 
     def test_cross_set_tgs_list_type(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_duplicates(prs)
         assert isinstance(result['cross_set_tgs'], list)
 
     def test_no_crash_on_paws(self):
         """Ensure duplicate detection doesn't crash on real files."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_duplicates(prs)
         assert result is not None
 
     def test_no_crash_on_claude(self):
         """Ensure duplicate detection works on multi-system files."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         result = find_duplicates(prs)
         assert result is not None
 
     def test_duplicate_tg_tuple_shape(self):
         """Each duplicate_tg entry should be (set_name, group_id, count)."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_duplicates(prs)
         for entry in result['duplicate_tgs']:
             assert len(entry) == 3
@@ -80,7 +81,7 @@ class TestFindDuplicates:
 
     def test_duplicate_freq_tuple_shape(self):
         """Each duplicate_freq entry should be (set_name, freq, count)."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_duplicates(prs)
         for entry in result['duplicate_freqs']:
             assert len(entry) == 3
@@ -91,7 +92,7 @@ class TestFindDuplicates:
 
     def test_duplicate_channel_tuple_shape(self):
         """Each duplicate_channel entry should be (set_name, name, count)."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_duplicates(prs)
         for entry in result['duplicate_channels']:
             assert len(entry) == 3
@@ -102,7 +103,7 @@ class TestFindDuplicates:
 
     def test_cross_set_tg_tuple_shape(self):
         """Each cross_set entry should be (group_id, [set_names])."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         result = find_duplicates(prs)
         for entry in result['cross_set_tgs']:
             assert len(entry) == 2
@@ -112,7 +113,7 @@ class TestFindDuplicates:
 
     def test_cross_set_tgs_contain_set_names(self):
         """Cross-set TG entries should have string set names."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         result = find_duplicates(prs)
         for gid, set_names in result['cross_set_tgs']:
             for name in set_names:
@@ -128,7 +129,7 @@ class TestRemoveDuplicates:
     """Test duplicate removal counting."""
 
     def test_remove_returns_dict(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = remove_duplicates(prs)
         assert isinstance(result, dict)
         assert 'tgs_removed' in result
@@ -136,25 +137,25 @@ class TestRemoveDuplicates:
         assert 'channels_removed' in result
 
     def test_remove_counts_nonnegative(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = remove_duplicates(prs)
         assert result['tgs_removed'] >= 0
         assert result['freqs_removed'] >= 0
         assert result['channels_removed'] >= 0
 
     def test_remove_keep_first(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = remove_duplicates(prs, keep='first')
         assert isinstance(result, dict)
 
     def test_remove_keep_last(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = remove_duplicates(prs, keep='last')
         assert isinstance(result, dict)
 
     def test_remove_consistent_with_find(self):
         """Remove counts should match find counts minus 1 per duplicate."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         dupes = find_duplicates(prs)
         counts = remove_duplicates(prs)
 
@@ -175,7 +176,7 @@ class TestFindUnusedSets:
     """Test unused set detection."""
 
     def test_returns_dict(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_unused_sets(prs)
         assert isinstance(result, dict)
         assert 'trunk_sets' in result
@@ -184,25 +185,25 @@ class TestFindUnusedSets:
         assert 'iden_sets' in result
 
     def test_values_are_lists(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_unused_sets(prs)
         for key in ('trunk_sets', 'group_sets', 'conv_sets', 'iden_sets'):
             assert isinstance(result[key], list)
 
     def test_unused_set_names_are_strings(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_unused_sets(prs)
         for key in ('trunk_sets', 'group_sets', 'conv_sets', 'iden_sets'):
             for name in result[key]:
                 assert isinstance(name, str)
 
     def test_no_crash_on_real_files(self):
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         result = find_unused_sets(prs)
         assert result is not None
 
     def test_no_crash_on_paws(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = find_unused_sets(prs)
         assert result is not None
 
@@ -289,7 +290,7 @@ class TestFormatFunctions:
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_cleanup_report_returns_lines(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         lines = cleanup_report(prs)
         assert isinstance(lines, list)
         assert len(lines) > 0
@@ -297,7 +298,7 @@ class TestFormatFunctions:
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_cleanup_report_has_summary(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         lines = cleanup_report(prs)
         assert any("Summary:" in line for line in lines)
 
@@ -311,7 +312,7 @@ class TestCleanupEdgeCases:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_empty_prs_no_crash(self):
         """File with no data sets should return empty results."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         # Force a minimal PRS with no data sections
         mock_prs = MagicMock()
         mock_prs.get_section_by_class.return_value = None

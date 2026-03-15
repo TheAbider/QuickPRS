@@ -14,20 +14,27 @@ Generate and edit Harris XG-100P personality (.PRS) files without Harris RPM sof
 - Create PRS files from scratch or INI config files
 - Import from RadioReference (SOAP API or paste from website)
 - Import from scanner formats (CHIRP, Uniden Sentinel, SDRTrunk)
-- 40+ CLI commands for scripting and batch processing
+- 45+ CLI commands for scripting and batch processing
 - Full GUI with tree view, inline editing, drag-and-drop, RadioReference import
 - Built-in channel templates (MURS, GMRS, FRS, Marine, NOAA, Interop, Public Safety)
 - Built-in P25 system database (30 major US systems)
 - JSON export/import for human-editable radio configs
-- Export to CHIRP CSV, Uniden CSV, SDRTrunk, DSD+, Markdown
+- Export to CHIRP CSV, Uniden CSV, SDRTrunk, DSD+, Markdown, INI
 - Merge, clone, and compare PRS files
 - Radio option editing (GPS, display, audio, bluetooth, buttons, etc.)
 - P25 encryption key management and NAC editing
 - Fleet batch processing (same config to multiple radios with unique unit IDs)
+- Fleet consistency checking across multiple radios
 - Zone planning, capacity estimation, and statistics
+- Configuration health check with best practice suggestions
+- Department-specific profiles (fire, law enforcement, EMS, search & rescue)
+- Frequency spectrum map visualization
+- Configuration snapshots for change tracking
+- File watcher with auto-validation
 - Comprehensive validation against XG-100P hardware limits
 - File repair and data salvage for damaged PRS files
 - Lossless binary roundtrip (parse and rewrite produces byte-identical output)
+- 4,000+ automated tests
 
 ## Quick Start
 
@@ -125,6 +132,15 @@ Or use the standalone EXE from [Releases](../../releases) (no Python required).
 | `cleanup` | Find and fix duplicates and unused sets |
 | `search` | Search across PRS files for frequencies, talkgroups, or names |
 | `backup` | Create, list, or restore timestamped backups |
+| `health` | Configuration health check with best practice suggestions |
+| `suggest` | Smart improvement suggestions with ready-to-run commands |
+| `freq-map` | Frequency spectrum map visualization |
+| `fleet-check` | Compare configs across multiple radios for consistency |
+| `snapshot` | Save/compare configuration snapshots for change tracking |
+| `profiles` | Department-specific profiles (fire, law, EMS, SAR) |
+| `export-config` | Export PRS to editable INI config file |
+| `watch` | File watcher with auto-validation on change |
+| `cheat-sheet` | Quick reference of common CLI workflows |
 
 ## Config File Format
 

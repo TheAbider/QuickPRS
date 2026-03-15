@@ -9,6 +9,7 @@ from quickprs.cli import (
     run_cli, cmd_inject_p25, cmd_inject_conv, cmd_inject_talkgroups,
 )
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.validation import validate_prs, ERROR
 
 TESTDATA = Path(__file__).parent / "testdata"
@@ -192,7 +193,7 @@ class TestInjectP25Paws:
     def test_inject_preserves_existing_groups(self, capsys, tmp_path):
         """Existing group sets should remain after injection."""
         prs_file = _copy_prs(PAWS, tmp_path)
-        prs_before = parse_prs(str(PAWS))
+        prs_before = cached_parse_prs(str(PAWS))
         groups_before = _count_group_sets(prs_before)
 
         cmd_inject_p25(
@@ -207,7 +208,7 @@ class TestInjectP25Paws:
     def test_inject_preserves_conv_sets(self, capsys, tmp_path):
         """Existing conv sets should be unaffected."""
         prs_file = _copy_prs(PAWS, tmp_path)
-        prs_before = parse_prs(str(PAWS))
+        prs_before = cached_parse_prs(str(PAWS))
         conv_before = _count_conv_sets(prs_before)
 
         cmd_inject_p25(
@@ -281,7 +282,7 @@ class TestInjectConv:
     def test_inject_conv_preserves_existing(self, capsys, tmp_path):
         """Inject into PAWS should preserve existing conv sets."""
         prs_file = _copy_prs(PAWS, tmp_path)
-        prs_before = parse_prs(str(PAWS))
+        prs_before = cached_parse_prs(str(PAWS))
         conv_before = _count_conv_sets(prs_before)
 
         cmd_inject_conv(prs_file, "MURS", str(CONV_CSV))
@@ -319,7 +320,7 @@ class TestInjectTalkgroups:
     def test_inject_tgs_into_paws(self, capsys, tmp_path):
         """Add talkgroups to existing PSERN PD set."""
         prs_file = _copy_prs(PAWS, tmp_path)
-        prs_before = parse_prs(str(PAWS))
+        prs_before = cached_parse_prs(str(PAWS))
         sets_before = _count_group_sets(prs_before)
         psern_before = [s for s in sets_before if s.name == "PSERN PD"][0]
         count_before = len(psern_before.groups)
@@ -345,7 +346,7 @@ class TestInjectTalkgroups:
     def test_inject_tgs_preserves_other_sets(self, capsys, tmp_path):
         """Other group sets should be unaffected."""
         prs_file = _copy_prs(PAWS, tmp_path)
-        prs_before = parse_prs(str(PAWS))
+        prs_before = cached_parse_prs(str(PAWS))
         sets_before = _count_group_sets(prs_before)
 
         cmd_inject_talkgroups(prs_file, "PSERN PD", str(TGS_CSV))

@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.validation import estimate_capacity, format_capacity, LIMITS
 from quickprs.builder import create_blank_prs
 from quickprs.injector import (
@@ -87,7 +88,7 @@ def test_capacity_paws_systems():
     """PAWSOVERMAWS has at least 2 system headers."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     cap = estimate_capacity(prs)
     # PAWSOVERMAWS has 1 CP25TrkSystem + 1 CConvSystem = 2 headers
     assert cap['systems']['used'] >= 2
@@ -97,7 +98,7 @@ def test_capacity_paws_talkgroups():
     """PAWSOVERMAWS has talkgroups in group sets."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     cap = estimate_capacity(prs)
     assert cap['talkgroups']['used'] > 0
     assert len(cap['talkgroups']['details']) > 0
@@ -107,7 +108,7 @@ def test_capacity_paws_trunk_freqs():
     """PAWSOVERMAWS has trunk frequencies."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     cap = estimate_capacity(prs)
     assert cap['trunk_freqs']['used'] > 0
     assert len(cap['trunk_freqs']['details']) > 0
@@ -117,7 +118,7 @@ def test_capacity_paws_conv_channels():
     """PAWSOVERMAWS has conv channels."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     cap = estimate_capacity(prs)
     assert cap['conv_channels']['used'] > 0
 
@@ -126,7 +127,7 @@ def test_capacity_paws_iden_sets():
     """PAWSOVERMAWS has IDEN sets."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     cap = estimate_capacity(prs)
     assert cap['iden_sets']['used'] > 0
     assert len(cap['iden_sets']['details']) > 0
@@ -136,7 +137,7 @@ def test_capacity_paws_scan_headroom():
     """PAWSOVERMAWS has scan headroom info for group sets."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     cap = estimate_capacity(prs)
     assert len(cap['scan_tg_headroom']) > 0
     for name, info in cap['scan_tg_headroom'].items():
@@ -149,7 +150,7 @@ def test_capacity_paws_file_size():
     """PAWSOVERMAWS file size is reported correctly."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     cap = estimate_capacity(prs)
     assert cap['file_size']['bytes'] > 0
     assert cap['file_size']['sections'] > 0
@@ -160,7 +161,7 @@ def test_capacity_paws_channels_combined():
     """Combined channel count is sum of talkgroups + conv."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     cap = estimate_capacity(prs)
     expected = cap['talkgroups']['used'] + cap['conv_channels']['used']
     assert cap['channels']['used'] == expected
@@ -170,7 +171,7 @@ def test_capacity_paws_zones():
     """PAWSOVERMAWS zone estimate is reasonable."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     cap = estimate_capacity(prs)
     zones = cap['zones_needed']
     assert zones['zones_min'] >= 1
@@ -275,7 +276,7 @@ def test_format_capacity_paws():
     """PAWSOVERMAWS format includes trunk, conv, groups, headroom."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     cap = estimate_capacity(prs)
     lines = format_capacity(cap, filename="PAWSOVERMAWS.PRS")
     text = "\n".join(lines)

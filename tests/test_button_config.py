@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.option_maps import (
     extract_platform_config, extract_platform_xml, write_platform_config,
     BUTTON_FUNCTION_NAMES, BUTTON_NAME_DISPLAY,
@@ -27,7 +28,7 @@ class TestButtonConfigData:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_read_prog_buttons_pawsovermaws(self):
         """PAWSOVERMAWS should have progButtons in its config."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         config = extract_platform_config(prs)
         assert config is not None
         prog = config.get("progButtons")
@@ -44,7 +45,7 @@ class TestButtonConfigData:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_read_prog_buttons_claude(self):
         """Claude test file may or may not have platform config."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         config = extract_platform_config(prs)
         # claude test.PRS has no platformConfig — this is expected
         # The test verifies that extract_platform_config handles it
@@ -109,7 +110,7 @@ class TestButtonConfigData:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_switch_values_readable(self):
         """Switch position values should be readable from config."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         config = extract_platform_config(prs)
         if config is None:
             pytest.skip("No platform config in PAWSOVERMAWS")
@@ -130,7 +131,7 @@ class TestButtonConfigData:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_short_menu_items_readable(self):
         """Short menu items should be readable from config."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         config = extract_platform_config(prs)
         if config is None:
             pytest.skip("No platform config in PAWSOVERMAWS")
@@ -179,7 +180,7 @@ class TestButtonConfigModify:
         """Changing a button function should persist in the XML."""
         import xml.etree.ElementTree as ET
 
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         xml_str = extract_platform_xml(prs)
         if xml_str is None:
             pytest.skip("No XML in PAWSOVERMAWS")
@@ -212,7 +213,7 @@ class TestButtonConfigModify:
         """Changing a switch function should persist."""
         import xml.etree.ElementTree as ET
 
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         xml_str = extract_platform_xml(prs)
         if xml_str is None:
             pytest.skip("No XML in PAWSOVERMAWS")
@@ -234,7 +235,7 @@ class TestButtonConfigModify:
         """Changing a short menu item should persist."""
         import xml.etree.ElementTree as ET
 
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         xml_str = extract_platform_xml(prs)
         if xml_str is None:
             pytest.skip("No XML in PAWSOVERMAWS")
@@ -265,7 +266,7 @@ class TestButtonConfigModify:
         """Changing switch position values should persist."""
         import xml.etree.ElementTree as ET
 
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         xml_str = extract_platform_xml(prs)
         if xml_str is None:
             pytest.skip("No XML in PAWSOVERMAWS")
@@ -295,8 +296,8 @@ class TestDiffViewerData:
 
     def test_detailed_comparison_identical(self):
         """Comparing a file to itself should show no diffs."""
-        prs_a = parse_prs(CLAUDE)
-        prs_b = parse_prs(CLAUDE)
+        prs_a = cached_parse_prs(CLAUDE)
+        prs_b = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_a, prs_b)
 
         assert detail['systems_a_only'] == []
@@ -307,8 +308,8 @@ class TestDiffViewerData:
 
     def test_detailed_comparison_different(self):
         """PAWSOVERMAWS vs claude test should show differences."""
-        prs_a = parse_prs(PAWS)
-        prs_b = parse_prs(CLAUDE)
+        prs_a = cached_parse_prs(PAWS)
+        prs_b = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_a, prs_b)
 
         # Should have some differences
@@ -324,8 +325,8 @@ class TestDiffViewerData:
 
     def test_detailed_comparison_structure(self):
         """detailed_comparison should return correct dict structure."""
-        prs_a = parse_prs(PAWS)
-        prs_b = parse_prs(CLAUDE)
+        prs_a = cached_parse_prs(PAWS)
+        prs_b = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_a, prs_b)
 
         assert 'systems_a_only' in detail
@@ -346,7 +347,7 @@ class TestDiffViewerData:
 
     def test_compare_prs_identical(self):
         """compare_prs with identical files has no ADDED/REMOVED."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs, prs)
         for dtype, cat, name, detail in diffs:
             assert dtype != "ADDED"
@@ -354,15 +355,15 @@ class TestDiffViewerData:
 
     def test_compare_prs_different(self):
         """compare_prs with different files should find diffs."""
-        prs_a = parse_prs(PAWS)
-        prs_b = parse_prs(CLAUDE)
+        prs_a = cached_parse_prs(PAWS)
+        prs_b = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs_a, prs_b)
         assert len(diffs) > 0
 
     def test_talkgroup_diff_structure(self):
         """Talkgroup diffs should have 'added' and 'removed' lists."""
-        prs_a = parse_prs(PAWS)
-        prs_b = parse_prs(CLAUDE)
+        prs_a = cached_parse_prs(PAWS)
+        prs_b = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_a, prs_b)
 
         for sys_name, td in detail['talkgroup_diffs'].items():
@@ -378,8 +379,8 @@ class TestDiffViewerData:
 
     def test_freq_diff_structure(self):
         """Frequency diffs should have 'added' and 'removed' lists."""
-        prs_a = parse_prs(PAWS)
-        prs_b = parse_prs(CLAUDE)
+        prs_a = cached_parse_prs(PAWS)
+        prs_b = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_a, prs_b)
 
         for set_name, fd in detail['freq_diffs'].items():
@@ -390,8 +391,8 @@ class TestDiffViewerData:
 
     def test_option_diff_structure(self):
         """Option diffs should be (field, val_a, val_b) tuples."""
-        prs_a = parse_prs(PAWS)
-        prs_b = parse_prs(CLAUDE)
+        prs_a = cached_parse_prs(PAWS)
+        prs_b = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_a, prs_b)
 
         for entry in detail['option_diffs']:
@@ -399,8 +400,8 @@ class TestDiffViewerData:
 
     def test_systems_both_are_in_both(self):
         """systems_both should only list systems present in both files."""
-        prs_a = parse_prs(PAWS)
-        prs_b = parse_prs(CLAUDE)
+        prs_a = cached_parse_prs(PAWS)
+        prs_b = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_a, prs_b)
 
         # systems_both should not overlap with a_only or b_only
@@ -414,8 +415,8 @@ class TestDiffViewerData:
 
     def test_comparison_symmetry(self):
         """Swapping A and B should swap a_only/b_only lists."""
-        prs_a = parse_prs(PAWS)
-        prs_b = parse_prs(CLAUDE)
+        prs_a = cached_parse_prs(PAWS)
+        prs_b = cached_parse_prs(CLAUDE)
         detail_ab = detailed_comparison(prs_a, prs_b)
         detail_ba = detailed_comparison(prs_b, prs_a)
 

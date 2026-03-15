@@ -6,6 +6,7 @@ import pytest
 from pathlib import Path
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.reports import generate_html_report
 
 TESTDATA = Path(__file__).parent / "testdata"
@@ -19,7 +20,7 @@ class TestReportGeneration:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_returns_html_string(self):
         """generate_html_report should return a non-empty HTML string."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs)
         assert isinstance(html, str)
         assert len(html) > 100
@@ -28,7 +29,7 @@ class TestReportGeneration:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_contains_html_structure(self):
         """Report should have proper HTML structure."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs, source_path=str(PAWS))
         assert "<html" in html
         assert "</html>" in html
@@ -39,7 +40,7 @@ class TestReportGeneration:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_contains_summary(self):
         """Report should contain a summary section."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs, source_path=str(PAWS))
         assert "Summary" in html
         assert "File Size" in html
@@ -48,14 +49,14 @@ class TestReportGeneration:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_contains_source_path(self):
         """Report should show the source file path."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs, source_path=str(PAWS))
         assert "PAWSOVERMAWS" in html
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_contains_talkgroups(self):
         """PAWSOVERMAWS report should contain talkgroup data."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs)
         assert "Group Sets" in html
         assert "talkgroups" in html
@@ -65,7 +66,7 @@ class TestReportGeneration:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_contains_trunk_sets(self):
         """PAWSOVERMAWS report should contain trunk frequency data."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs)
         assert "Trunk Sets" in html
         assert "frequencies" in html
@@ -74,35 +75,35 @@ class TestReportGeneration:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_contains_conv_sets(self):
         """PAWSOVERMAWS report should contain conv channel data."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs)
         assert "Conv Sets" in html
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_contains_iden_sets(self):
         """PAWSOVERMAWS report should contain IDEN set data."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs)
         assert "IDEN Sets" in html
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_contains_radio_options(self):
         """Report should show platformConfig radio options."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs)
         assert "Radio Options" in html
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_contains_capacity(self):
         """Report should include a capacity summary."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs)
         assert "Capacity Summary" in html
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_writes_to_file(self):
         """Report should write to file when filepath is given."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
             path = f.name
         try:
@@ -118,7 +119,7 @@ class TestReportGeneration:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_tg_counts_match(self):
         """Report should show correct TG counts."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs)
         # The report should mention talkgroup counts somewhere
         from quickprs.record_types import (
@@ -135,7 +136,7 @@ class TestReportGeneration:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_freq_counts_match(self):
         """Report should show correct frequency counts."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs)
         from quickprs.record_types import (
             parse_trunk_channel_section, parse_sets_from_sections,
@@ -161,7 +162,7 @@ class TestReportGeneration:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_report_for_claude_test(self):
         """Report should work for the claude test PRS."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         html = generate_html_report(prs, source_path=str(CLAUDE))
         assert "<!DOCTYPE html>" in html
         assert "Summary" in html
@@ -169,7 +170,7 @@ class TestReportGeneration:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_report_html_escaping(self):
         """Report should HTML-escape any special characters."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_html_report(prs)
         # Ensure the HTML is well-formed (no unescaped < or > in data)
         assert "<script>" not in html

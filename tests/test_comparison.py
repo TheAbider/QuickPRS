@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.comparison import (
     compare_prs, compare_prs_files, format_comparison,
     ADDED, REMOVED, CHANGED, SAME,
@@ -22,8 +23,8 @@ PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_compare_identical():
     """Comparing a file to itself should show no added/removed/changed."""
-    prs_a = parse_prs(CLAUDE)
-    prs_b = parse_prs(CLAUDE)
+    prs_a = cached_parse_prs(CLAUDE)
+    prs_b = cached_parse_prs(CLAUDE)
     diffs = compare_prs(prs_a, prs_b)
     for dtype, cat, name, detail in diffs:
         assert dtype != ADDED
@@ -45,8 +46,8 @@ def test_compare_different_files():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_compare_after_injection():
     """Adding a group set should show it as ADDED in comparison."""
-    prs_before = parse_prs(CLAUDE)
-    prs_after = parse_prs(CLAUDE)
+    prs_before = cached_parse_prs(CLAUDE)
+    prs_after = cached_parse_prs(CLAUDE)
 
     new_gset = make_group_set("TESTSET", [
         (100, "TEST 1", "TEST GROUP ONE"),
@@ -66,8 +67,8 @@ def test_compare_after_injection():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_compare_after_system_add():
     """Adding a full P25 system should show system as ADDED."""
-    prs_before = parse_prs(CLAUDE)
-    prs_after = parse_prs(CLAUDE)
+    prs_before = cached_parse_prs(CLAUDE)
+    prs_after = cached_parse_prs(CLAUDE)
 
     config = P25TrkSystemConfig(
         system_name="NEWCOMP",
@@ -113,8 +114,8 @@ def test_format_comparison():
 @pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
 def test_compare_pawsovermaws_has_systems():
     """PAWSOVERMAWS has systems that claude test doesn't."""
-    prs_paws = parse_prs(PAWS)
-    prs_claude = parse_prs(CLAUDE)
+    prs_paws = cached_parse_prs(PAWS)
+    prs_claude = cached_parse_prs(CLAUDE)
     diffs = compare_prs(prs_paws, prs_claude)
 
     # PAWSOVERMAWS has more group sets than claude test
@@ -167,7 +168,7 @@ class TestComparisonEdgeCases:
     def test_compare_group_set_content_change(self):
         """Modified group set should show CHANGED with TG diff."""
         from copy import deepcopy
-        prs_a = parse_prs(PAWS)
+        prs_a = cached_parse_prs(PAWS)
         prs_b = deepcopy(prs_a)
         # Add a talkgroup to an existing set
         new_gset = make_group_set("PSERN PD", [
@@ -183,7 +184,7 @@ class TestComparisonEdgeCases:
     def test_compare_trunk_set_content_change(self):
         """Modified trunk set should show CHANGED with freq diff."""
         from copy import deepcopy
-        prs_a = parse_prs(PAWS)
+        prs_a = cached_parse_prs(PAWS)
         prs_b = deepcopy(prs_a)
         new_tset = make_trunk_set("PSERN", [(999.0125, 999.0125)])
         add_trunk_set(prs_b, new_tset)
@@ -204,8 +205,8 @@ class TestComparisonEdgeCases:
     @pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
     def test_compare_iden_set_diff(self):
         """IDEN sets that differ should show active element counts."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs_paws, prs_claude)
         iden_diffs = [d for d in diffs if d[1] == "IDEN Set"]
         # PAWS has more IDEN sets than claude
@@ -214,8 +215,8 @@ class TestComparisonEdgeCases:
     @pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
     def test_compare_system_config_names(self):
         """System config comparison should find config long names."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs_paws, prs_claude)
         config_diffs = [d for d in diffs if d[1] == "System Config"]
         assert len(config_diffs) > 0

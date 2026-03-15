@@ -13,13 +13,13 @@ Tests cover:
 
 import sys
 from pathlib import Path
-from copy import deepcopy
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from quickprs.prs_parser import parse_prs, parse_prs_bytes, PRSFile, Section
+from conftest import cached_parse_prs
 from quickprs.comparison import (
     compare_prs, compare_prs_files, format_comparison,
     ADDED, REMOVED, CHANGED, SAME,
@@ -44,7 +44,7 @@ def claude_prs():
     """Parse claude test.PRS once for the module."""
     if not CLAUDE.exists():
         pytest.skip("claude test.PRS not found")
-    return parse_prs(CLAUDE)
+    return cached_parse_prs(CLAUDE)
 
 
 @pytest.fixture(scope="module")
@@ -52,7 +52,7 @@ def paws_prs():
     """Parse PAWSOVERMAWS.PRS once for the module."""
     if not PAWS.exists():
         pytest.skip("PAWSOVERMAWS.PRS not found")
-    return parse_prs(PAWS)
+    return cached_parse_prs(PAWS)
 
 
 @pytest.fixture(scope="module")
@@ -141,8 +141,8 @@ class TestCompareSystems:
 
     def test_added_p25_system_shows_added(self):
         """Adding a P25 system should produce ADDED diff."""
-        prs_before = parse_prs(CLAUDE)
-        prs_after = parse_prs(CLAUDE)
+        prs_before = cached_parse_prs(CLAUDE)
+        prs_after = cached_parse_prs(CLAUDE)
 
         config = P25TrkSystemConfig(
             system_name="CMPSYS",
@@ -163,8 +163,8 @@ class TestCompareSystems:
 
     def test_added_p25_system_name_in_diffs(self):
         """Added system's name appears in diff entries."""
-        prs_before = parse_prs(CLAUDE)
-        prs_after = parse_prs(CLAUDE)
+        prs_before = cached_parse_prs(CLAUDE)
+        prs_after = cached_parse_prs(CLAUDE)
 
         config = P25TrkSystemConfig(
             system_name="NEWSYS",
@@ -185,8 +185,8 @@ class TestCompareSystems:
 
     def test_removed_system_shows_removed(self):
         """Removing a system config produces REMOVED diff."""
-        prs_before = parse_prs(PAWS)
-        prs_after = parse_prs(PAWS)
+        prs_before = cached_parse_prs(PAWS)
+        prs_after = cached_parse_prs(PAWS)
 
         remove_system_config(prs_after, "PSERN SEATTLE")
 
@@ -198,8 +198,8 @@ class TestCompareSystems:
 
     def test_paws_vs_claude_has_many_removed(self):
         """PAWS has more systems, so comparing PAWS->CLAUDE shows REMOVED."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs_paws, prs_claude)
 
         removed = [d for d in diffs if d[0] == REMOVED]
@@ -217,8 +217,8 @@ class TestCompareSetLevel:
 
     def test_added_group_set_shows_added(self):
         """Adding a group set produces ADDED in group set category."""
-        prs_before = parse_prs(CLAUDE)
-        prs_after = parse_prs(CLAUDE)
+        prs_before = cached_parse_prs(CLAUDE)
+        prs_after = cached_parse_prs(CLAUDE)
 
         new_gset = make_group_set("NEWGRP", [
             (100, "GRP 1", "GROUP ONE"),
@@ -234,8 +234,8 @@ class TestCompareSetLevel:
 
     def test_added_trunk_set_shows_added(self):
         """Adding a trunk set produces ADDED in trunk set category."""
-        prs_before = parse_prs(CLAUDE)
-        prs_after = parse_prs(CLAUDE)
+        prs_before = cached_parse_prs(CLAUDE)
+        prs_after = cached_parse_prs(CLAUDE)
 
         new_tset = make_trunk_set("NEWTRK", [(851.0, 851.0), (852.0, 852.0)])
         add_trunk_set(prs_after, new_tset)
@@ -248,8 +248,8 @@ class TestCompareSetLevel:
 
     def test_added_group_set_detail_has_tg_count(self):
         """ADDED group set detail shows talkgroup count."""
-        prs_before = parse_prs(CLAUDE)
-        prs_after = parse_prs(CLAUDE)
+        prs_before = cached_parse_prs(CLAUDE)
+        prs_after = cached_parse_prs(CLAUDE)
 
         new_gset = make_group_set("DETSET", [
             (10, "D1", "DETAIL ONE"),
@@ -265,8 +265,8 @@ class TestCompareSetLevel:
 
     def test_paws_vs_claude_group_set_differences(self):
         """PAWS vs CLAUDE shows specific group set differences."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs_paws, prs_claude)
 
         gs_diffs = [d for d in diffs if d[1] == "Group Set"]
@@ -280,8 +280,8 @@ class TestCompareSetLevel:
 
     def test_paws_vs_claude_trunk_set_differences(self):
         """PAWS vs CLAUDE shows trunk set removals."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs_paws, prs_claude)
 
         ts_diffs = [d for d in diffs if d[1] == "Trunk Set"]
@@ -374,8 +374,8 @@ class TestCompareConvSets:
 
     def test_paws_vs_claude_conv_set_diffs(self):
         """PAWS has conv sets that claude does not (FURRY WB, WA WIDE)."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs_paws, prs_claude)
 
         conv_diffs = [d for d in diffs if d[1] == "Conv Set"]
@@ -386,8 +386,8 @@ class TestCompareConvSets:
 
     def test_conv_set_detail_has_channel_count(self):
         """REMOVED conv set detail shows channel count."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs_paws, prs_claude)
 
         wa_wide = [d for d in diffs
@@ -407,8 +407,8 @@ class TestCompareIdenSets:
 
     def test_paws_vs_claude_iden_set_diffs(self):
         """PAWS has IDEN sets that claude does not."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs_paws, prs_claude)
 
         iden_diffs = [d for d in diffs if d[1] == "IDEN Set"]
@@ -420,8 +420,8 @@ class TestCompareIdenSets:
 
     def test_claude_iden_set_added_in_reverse(self):
         """Claude's IDEN set appears as ADDED when comparing PAWS->CLAUDE."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs_paws, prs_claude)
 
         iden_added = [d for d in diffs
@@ -431,8 +431,8 @@ class TestCompareIdenSets:
 
     def test_iden_detail_has_active_count(self):
         """IDEN set detail shows active element count."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         diffs = compare_prs(prs_paws, prs_claude)
 
         bee00 = [d for d in diffs

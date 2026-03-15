@@ -9,6 +9,7 @@ from quickprs.cli import (
     run_cli, cmd_merge, cmd_create, cmd_clone, cmd_compare,
 )
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.prs_writer import write_prs
 from quickprs.validation import validate_prs, ERROR, WARNING
 from quickprs.injector import (
@@ -99,7 +100,7 @@ class TestCloneSystemFunction:
         """Clone PSERN SEATTLE from PAWSOVERMAWS into a blank PRS."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         result = clone_system(target, source, "PSERN SEATTLE")
 
@@ -111,7 +112,7 @@ class TestCloneSystemFunction:
         """Cloned system should appear in target config names."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         clone_system(target, source, "PSERN SEATTLE")
 
@@ -122,7 +123,7 @@ class TestCloneSystemFunction:
         """Cloned P25 system should have its trunk set in target."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         result = clone_system(target, source, "PSERN SEATTLE")
 
@@ -134,7 +135,7 @@ class TestCloneSystemFunction:
         """Cloned P25 system should have its group set in target."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         result = clone_system(target, source, "PSERN SEATTLE")
 
@@ -144,8 +145,8 @@ class TestCloneSystemFunction:
 
     def test_clone_skips_existing_system(self, tmp_path):
         """Cloning into a file that already has the system should skip."""
-        target = parse_prs(str(PAWS))
-        source = parse_prs(str(PAWS))
+        target = cached_parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         result = clone_system(target, source, "PSERN SEATTLE")
 
@@ -157,7 +158,7 @@ class TestCloneSystemFunction:
         """Cloning a nonexistent system should raise ValueError."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         with pytest.raises(ValueError, match="not found"):
             clone_system(target, source, "NONEXISTENT SYSTEM")
@@ -166,7 +167,7 @@ class TestCloneSystemFunction:
         """Cloned file should validate with no errors."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         clone_system(target, source, "PSERN SEATTLE")
 
@@ -178,7 +179,7 @@ class TestCloneSystemFunction:
         """Cloned file should roundtrip through parse/write."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         clone_system(target, source, "PSERN SEATTLE")
 
@@ -193,7 +194,7 @@ class TestCloneSystemFunction:
         """Clone a conventional system from PAWSOVERMAWS."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         # Find a conv system in PAWS
         conv_names = []
@@ -232,8 +233,8 @@ class TestCloneSystemFunction:
 
     def test_clone_preserves_target_data(self, tmp_path):
         """Cloning should not remove existing systems from target."""
-        target = deepcopy(parse_prs(str(CLAUDE)))
-        source = parse_prs(str(PAWS))
+        target = deepcopy(cached_parse_prs(str(CLAUDE)))
+        source = cached_parse_prs(str(PAWS))
         before_names = set(_get_config_long_names(target))
 
         clone_system(target, source, "PSERN SEATTLE")
@@ -247,7 +248,7 @@ class TestCloneSystemFunction:
         # First clone to populate target
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
         result1 = clone_system(target, source, "PSERN SEATTLE")
 
         # Remove the system config but keep the sets
@@ -268,7 +269,7 @@ class TestCloneSystemFunction:
         """clone_system result should have all expected keys."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         result = clone_system(target, source, "PSERN SEATTLE")
 
@@ -392,8 +393,8 @@ class TestDetailedComparison:
 
     def test_identical_files_no_diffs(self):
         """Comparing identical files should show no differences."""
-        prs_a = parse_prs(CLAUDE)
-        prs_b = parse_prs(CLAUDE)
+        prs_a = cached_parse_prs(CLAUDE)
+        prs_b = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_a, prs_b)
 
         assert detail['systems_a_only'] == []
@@ -404,8 +405,8 @@ class TestDetailedComparison:
 
     def test_different_files_show_systems(self):
         """PAWSOVERMAWS vs claude test should show system differences."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_paws, prs_claude)
 
         # PAWS has systems claude test doesn't
@@ -414,8 +415,8 @@ class TestDetailedComparison:
 
     def test_systems_both_populated(self):
         """Systems in both files should be listed."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_paws, prs_claude)
 
         # systems_both may or may not be empty depending on file contents
@@ -424,8 +425,8 @@ class TestDetailedComparison:
 
     def test_result_keys(self):
         """detailed_comparison result should have all expected keys."""
-        prs_a = parse_prs(CLAUDE)
-        prs_b = parse_prs(CLAUDE)
+        prs_a = cached_parse_prs(CLAUDE)
+        prs_b = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_a, prs_b)
 
         expected_keys = ['systems_a_only', 'systems_b_only',
@@ -436,7 +437,7 @@ class TestDetailedComparison:
 
     def test_talkgroup_diffs_after_add(self):
         """Adding talkgroups should show up in detailed comparison."""
-        prs_a = parse_prs(PAWS)
+        prs_a = cached_parse_prs(PAWS)
         prs_b = deepcopy(prs_a)
 
         # Add a talkgroup to an existing group set
@@ -457,7 +458,7 @@ class TestDetailedComparison:
 
     def test_freq_diffs_after_add(self):
         """Adding trunk frequencies should show up in detailed comparison."""
-        prs_a = parse_prs(PAWS)
+        prs_a = cached_parse_prs(PAWS)
         prs_b = deepcopy(prs_a)
 
         new_tset = make_trunk_set("PSERN", [(999.0125, 999.0125)])
@@ -469,8 +470,8 @@ class TestDetailedComparison:
 
     def test_option_diffs_between_files(self):
         """Different files should show option differences."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_paws, prs_claude)
 
         # option_diffs should be a list (may be empty if options are same)
@@ -626,8 +627,8 @@ class TestFormatDetailedComparison:
     @pytest.mark.skipif(not PAWS.exists() or not CLAUDE.exists(), reason="Test PRS data not available")
     def test_format_real_files(self):
         """Format detailed comparison between real PRS files."""
-        prs_paws = parse_prs(PAWS)
-        prs_claude = parse_prs(CLAUDE)
+        prs_paws = cached_parse_prs(PAWS)
+        prs_claude = cached_parse_prs(CLAUDE)
         detail = detailed_comparison(prs_paws, prs_claude)
         lines = format_detailed_comparison(detail, str(PAWS), str(CLAUDE))
         text = "\n".join(lines)

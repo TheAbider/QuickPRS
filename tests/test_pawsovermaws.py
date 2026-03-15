@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.binary_io import read_uint16_le
 from quickprs.record_types import (
     parse_class_header,
@@ -40,7 +41,7 @@ PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 def prs():
     if not PAWS.exists():
         pytest.skip("PAWSOVERMAWS.PRS not found")
-    return parse_prs(PAWS)
+    return cached_parse_prs(PAWS)
 
 
 @pytest.fixture(scope="module")

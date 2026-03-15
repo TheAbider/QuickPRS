@@ -6,6 +6,7 @@ from unittest.mock import patch
 import sys
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.health_check import (
     run_health_check, format_health_report,
     suggest_improvements, format_suggestions,
@@ -33,14 +34,14 @@ class TestRunHealthCheck:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_health_check_returns_list(self):
         """Health check returns a list of tuples."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         results = run_health_check(prs)
         assert isinstance(results, list)
 
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_health_check_tuple_format(self):
         """Each result is a (severity, category, message, suggestion) tuple."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         results = run_health_check(prs)
         for item in results:
             assert len(item) == 4
@@ -53,7 +54,7 @@ class TestRunHealthCheck:
     @pytest.mark.skipif(not PAWS_PRS.exists(), reason="Test data missing")
     def test_health_check_pawsovermaws(self):
         """Health check runs on PAWSOVERMAWS without error."""
-        prs = parse_prs(PAWS_PRS)
+        prs = cached_parse_prs(PAWS_PRS)
         results = run_health_check(prs)
         assert isinstance(results, list)
 
@@ -69,7 +70,7 @@ class TestRunHealthCheck:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_health_check_severity_valid(self):
         """All severities are recognized values."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         results = run_health_check(prs)
         valid = {CRITICAL, WARN, INFO}
         for sev, _, _, _ in results:
@@ -159,14 +160,14 @@ class TestHelpers:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_get_personality_name(self):
         """Personality name extraction works."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         name = _get_personality_name(prs)
         assert isinstance(name, str)
 
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_has_noaa_channels(self):
         """NOAA channel detection returns bool."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         conv_sets = _parse_conv_sets(prs)
         result = _has_noaa_channels(conv_sets)
         assert isinstance(result, bool)
@@ -174,7 +175,7 @@ class TestHelpers:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_has_interop_channels(self):
         """Interop channel detection returns bool."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         conv_sets = _parse_conv_sets(prs)
         trunk_sets = _parse_trunk_sets(prs)
         result = _has_interop_channels(conv_sets, trunk_sets)
@@ -183,7 +184,7 @@ class TestHelpers:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_has_emergency_tg(self):
         """Emergency TG detection returns bool."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         group_sets = _parse_group_sets(prs)
         result = _has_emergency_tg(group_sets)
         assert isinstance(result, bool)
@@ -198,14 +199,14 @@ class TestSuggestions:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_suggest_returns_list(self):
         """suggest_improvements returns a list."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         suggestions = suggest_improvements(prs)
         assert isinstance(suggestions, list)
 
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_suggest_tuple_format(self):
         """Each suggestion is (category, suggestion, command)."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         suggestions = suggest_improvements(prs)
         for item in suggestions:
             assert len(item) == 3
@@ -217,7 +218,7 @@ class TestSuggestions:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_suggest_commands_start_with_quickprs(self):
         """All CLI commands in suggestions start with 'quickprs'."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         suggestions = suggest_improvements(prs, filepath="test.PRS")
         for _, _, command in suggestions:
             assert command.startswith("quickprs"), \
@@ -226,7 +227,7 @@ class TestSuggestions:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_suggest_filepath_in_commands(self):
         """File path appears in suggestion commands."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         suggestions = suggest_improvements(prs, filepath="MY_RADIO.PRS")
         for _, _, command in suggestions:
             assert "MY_RADIO.PRS" in command
@@ -234,7 +235,7 @@ class TestSuggestions:
     @pytest.mark.skipif(not PAWS_PRS.exists(), reason="Test data missing")
     def test_suggest_pawsovermaws(self):
         """Suggestions work on PAWSOVERMAWS."""
-        prs = parse_prs(PAWS_PRS)
+        prs = cached_parse_prs(PAWS_PRS)
         suggestions = suggest_improvements(prs, filepath="PAWSOVERMAWS.PRS")
         assert isinstance(suggestions, list)
 
@@ -267,7 +268,7 @@ class TestFreqMap:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_freq_map_returns_list(self):
         """Freq map returns a list of strings."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         lines = generate_freq_map(prs)
         assert isinstance(lines, list)
         for line in lines:
@@ -276,7 +277,7 @@ class TestFreqMap:
     @pytest.mark.skipif(not PAWS_PRS.exists(), reason="Test data missing")
     def test_freq_map_pawsovermaws(self):
         """Freq map works on PAWSOVERMAWS (has trunk freqs)."""
-        prs = parse_prs(PAWS_PRS)
+        prs = cached_parse_prs(PAWS_PRS)
         lines = generate_freq_map(prs)
         assert isinstance(lines, list)
         assert len(lines) > 5  # should have content
@@ -286,7 +287,7 @@ class TestFreqMap:
     @pytest.mark.skipif(not PAWS_PRS.exists(), reason="Test data missing")
     def test_freq_map_band_filter(self):
         """Band filter limits output to specified band."""
-        prs = parse_prs(PAWS_PRS)
+        prs = cached_parse_prs(PAWS_PRS)
         lines = generate_freq_map(prs, band="800")
         text = "\n".join(lines)
         # Should have 800 MHz band
@@ -295,7 +296,7 @@ class TestFreqMap:
     @pytest.mark.skipif(not PAWS_PRS.exists(), reason="Test data missing")
     def test_freq_map_all_bands(self):
         """'all' band shows everything."""
-        prs = parse_prs(PAWS_PRS)
+        prs = cached_parse_prs(PAWS_PRS)
         lines_all = generate_freq_map(prs, band="all")
         lines_none = generate_freq_map(prs, band=None)
         # Both should produce same result
@@ -304,7 +305,7 @@ class TestFreqMap:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_freq_map_has_legend(self):
         """Freq map output includes a legend."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         lines = generate_freq_map(prs)
         text = "\n".join(lines)
         if "No frequencies" not in text:
@@ -313,7 +314,7 @@ class TestFreqMap:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_freq_map_has_total(self):
         """Freq map output includes a total count."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         lines = generate_freq_map(prs)
         text = "\n".join(lines)
         if "No frequencies" not in text:
@@ -362,7 +363,7 @@ class TestFreqMap:
     @pytest.mark.skipif(not PAWS_PRS.exists(), reason="Test data missing")
     def test_freq_map_invalid_band_no_crash(self):
         """Invalid band filter does not crash."""
-        prs = parse_prs(PAWS_PRS)
+        prs = cached_parse_prs(PAWS_PRS)
         # "vhf" band filter on a file with mostly 800MHz
         lines = generate_freq_map(prs, band="vhf")
         assert isinstance(lines, list)
@@ -476,7 +477,7 @@ class TestEdgeCases:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_health_check_categories_non_empty(self):
         """All categories in results are non-empty strings."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         results = run_health_check(prs)
         for _, cat, _, _ in results:
             assert len(cat) > 0
@@ -484,7 +485,7 @@ class TestEdgeCases:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_health_check_messages_non_empty(self):
         """All messages in results are non-empty strings."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         results = run_health_check(prs)
         for _, _, msg, _ in results:
             assert len(msg) > 0
@@ -492,7 +493,7 @@ class TestEdgeCases:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_suggestions_categories_non_empty(self):
         """All suggestion categories are non-empty."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         suggestions = suggest_improvements(prs)
         for cat, _, _ in suggestions:
             assert len(cat) > 0
@@ -517,7 +518,7 @@ class TestEdgeCases:
     @pytest.mark.skipif(not CLAUDE_PRS.exists(), reason="Test data missing")
     def test_freq_map_no_band_filter(self):
         """No band filter shows all available bands."""
-        prs = parse_prs(CLAUDE_PRS)
+        prs = cached_parse_prs(CLAUDE_PRS)
         lines = generate_freq_map(prs, band=None)
         assert isinstance(lines, list)
 

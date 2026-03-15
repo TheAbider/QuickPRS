@@ -19,6 +19,7 @@ from quickprs.cli import (
     cmd_bulk_edit_talkgroups, cmd_bulk_edit_channels,
 )
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 
 TESTDATA = Path(__file__).parent / "testdata"
 CLAUDE = TESTDATA / "claude test.PRS"
@@ -232,7 +233,7 @@ class TestCliBulkEditChannels:
     def _get_conv_set_name(self):
         """Get the name of the first conv set in PAWS."""
         from quickprs.cli import _parse_conv_sets
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv_sets = _parse_conv_sets(prs)
         if not conv_sets:
             pytest.skip("No conv sets in PAWS")

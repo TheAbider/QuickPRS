@@ -12,6 +12,7 @@ from quickprs.cli import (
     run_cli, cmd_info, cmd_validate, cmd_export_csv, cmd_compare, cmd_dump,
     cmd_diff_options, cmd_iden_templates, cmd_create,
 )
+from conftest import cached_parse_prs
 
 TESTDATA = Path(__file__).parent / "testdata"
 CLAUDE = TESTDATA / "claude test.PRS"
@@ -450,8 +451,7 @@ class TestSetParsingHelpers:
     def test_parse_group_sets_paws(self):
         """Should parse group sets from PAWSOVERMAWS."""
         from quickprs.cli import _parse_group_sets
-        from quickprs.prs_parser import parse_prs
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_group_sets(prs)
         assert len(sets) == 7
         names = {s.name for s in sets}
@@ -461,8 +461,7 @@ class TestSetParsingHelpers:
     def test_parse_trunk_sets_paws(self):
         """Should parse trunk sets from PAWSOVERMAWS."""
         from quickprs.cli import _parse_trunk_sets
-        from quickprs.prs_parser import parse_prs
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_trunk_sets(prs)
         assert len(sets) == 7
         total = sum(len(s.channels) for s in sets)
@@ -472,8 +471,7 @@ class TestSetParsingHelpers:
     def test_parse_conv_sets_paws(self):
         """Should parse conv sets from PAWSOVERMAWS."""
         from quickprs.cli import _parse_conv_sets
-        from quickprs.prs_parser import parse_prs
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_conv_sets(prs)
         assert len(sets) == 3
         total = sum(len(s.channels) for s in sets)
@@ -483,8 +481,7 @@ class TestSetParsingHelpers:
     def test_parse_iden_sets_paws(self):
         """Should parse IDEN sets from PAWSOVERMAWS."""
         from quickprs.cli import _parse_iden_sets
-        from quickprs.prs_parser import parse_prs
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_iden_sets(prs)
         assert len(sets) == 3
         names = {s.name for s in sets}
@@ -494,8 +491,7 @@ class TestSetParsingHelpers:
     def test_parse_group_sets_claude(self):
         """Should parse group sets from claude test."""
         from quickprs.cli import _parse_group_sets
-        from quickprs.prs_parser import parse_prs
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         sets = _parse_group_sets(prs)
         assert len(sets) == 1
 
@@ -774,8 +770,7 @@ class TestCmdDumpEdgeCases:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_dump_last_section(self, capsys):
         """Dumping the last section should work."""
-        from quickprs.prs_parser import parse_prs
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         last_idx = len(prs.sections) - 1
         result = cmd_dump(str(PAWS), section_idx=last_idx)
         assert result == 0

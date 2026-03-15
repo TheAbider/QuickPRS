@@ -7,6 +7,7 @@ from pathlib import Path
 
 from quickprs.cli import run_cli, cmd_info, cmd_validate, cmd_set_option
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.option_maps import (
     extract_platform_config, extract_platform_xml,
     find_platform_xml_location, set_platform_option,
@@ -119,7 +120,7 @@ class TestSetPlatformOption:
 
     def test_set_option_no_xml_auto_creates(self):
         """Setting an option on a file without XML should auto-create it."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         result = set_platform_option(prs, 'gps', 'gpsMode', 'ON')
         assert result is True
         # Verify XML was created
@@ -199,7 +200,7 @@ class TestListPlatformOptions:
 
     def test_list_returns_options(self):
         """List should return options for a file with XML."""
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         opts = list_platform_options(prs)
         assert len(opts) > 0
         # Each tuple is (friendly, element, attr, value)
@@ -209,34 +210,34 @@ class TestListPlatformOptions:
 
     def test_list_empty_for_no_xml(self):
         """List should return [] for a file without XML."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         opts = list_platform_options(prs)
         assert opts == []
 
     def test_list_contains_gps(self):
         """List should include GPS settings."""
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         opts = list_platform_options(prs)
         gps_attrs = [attr for f, e, attr, v in opts if 'gps' in f]
         assert 'gpsMode' in gps_attrs
 
     def test_list_contains_audio(self):
         """List should include audio settings."""
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         opts = list_platform_options(prs)
         audio_attrs = [attr for f, e, attr, v in opts if 'audio' in f]
         assert 'speakerMode' in audio_attrs
 
     def test_list_contains_bluetooth(self):
         """List should include bluetooth settings."""
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         opts = list_platform_options(prs)
         bt_attrs = [attr for f, e, attr, v in opts if 'bluetooth' in f]
         assert 'btMode' in bt_attrs
 
     def test_list_contains_timedate(self):
         """List should include time/date settings."""
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         opts = list_platform_options(prs)
         td_attrs = [attr for f, e, attr, v in opts if 'timedate' in f]
         assert 'zone' in td_attrs

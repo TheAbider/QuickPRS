@@ -10,9 +10,9 @@ Covers:
 import pytest
 import shutil
 from pathlib import Path
-from copy import deepcopy
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.prs_writer import write_prs
 from quickprs.validation import validate_prs, ERROR, WARNING
 from quickprs.binary_io import read_uint16_le
@@ -217,7 +217,7 @@ class TestRenumberChannelsConv:
 
     def test_renumber_conv_channels(self):
         """Renumber conv channels in a test file."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv_before = _get_conv_sets(prs)
         if not conv_before:
             pytest.skip("No conv sets in test file")
@@ -234,7 +234,7 @@ class TestRenumberChannelsConv:
 
     def test_renumber_start_offset(self):
         """Renumber starting at 10."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv = _get_conv_sets(prs)
         if not conv:
             pytest.skip("No conv sets in test file")
@@ -247,13 +247,13 @@ class TestRenumberChannelsConv:
 
     def test_renumber_no_set_returns_zero(self):
         """Renumbering non-existent set returns 0."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         count = renumber_channels(prs, set_name="NOTHERE", start=1)
         assert count == 0
 
     def test_renumber_all_conv_sets(self):
         """Renumber all conv sets when set_name is None."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv = _get_conv_sets(prs)
         if not conv:
             pytest.skip("No conv sets in test file")
@@ -264,7 +264,7 @@ class TestRenumberChannelsConv:
 
     def test_renumber_idempotent(self):
         """Renumbering twice still produces correct prefixes."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv = _get_conv_sets(prs)
         if not conv:
             pytest.skip("No conv sets in test file")
@@ -286,7 +286,7 @@ class TestRenumberChannelsConv:
 
     def test_renumber_short_names_within_limit(self):
         """Renumbered names are still 8 chars or less."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv = _get_conv_sets(prs)
         if not conv:
             pytest.skip("No conv sets in test file")
@@ -307,7 +307,7 @@ class TestRenumberChannelsGroup:
 
     def test_renumber_group_set(self):
         """Renumber talkgroups in a group set."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -323,7 +323,7 @@ class TestRenumberChannelsGroup:
 
     def test_renumber_group_no_set(self):
         """Renumbering non-existent group set returns 0."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         count = renumber_channels(prs, set_name="NOPE",
                                    set_type="group")
         assert count == 0
@@ -338,7 +338,7 @@ class TestAutoNameTalkgroups:
 
     def test_auto_name_compact_style(self):
         """Compact style generates abbreviations."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -353,7 +353,7 @@ class TestAutoNameTalkgroups:
 
     def test_auto_name_numbered_style(self):
         """Numbered style uses sequential numbers."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -368,7 +368,7 @@ class TestAutoNameTalkgroups:
 
     def test_auto_name_department_style(self):
         """Department style extracts department prefix."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -383,7 +383,7 @@ class TestAutoNameTalkgroups:
 
     def test_auto_name_nonexistent_set(self):
         """Auto-naming non-existent set returns 0."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         count = auto_name_talkgroups(prs, "NOTHERE")
         assert count == 0
 
@@ -397,7 +397,7 @@ class TestClonePersonality:
 
     def test_clone_exact_copy(self):
         """Cloning without modifications produces identical bytes."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         original_bytes = prs.to_bytes()
         cloned = clone_personality(prs)
         cloned_bytes = cloned.to_bytes()
@@ -405,7 +405,7 @@ class TestClonePersonality:
 
     def test_clone_is_independent(self):
         """Modifications to clone don't affect original."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         original_sections = len(prs.sections)
         cloned = clone_personality(prs)
         # Modify clone
@@ -415,19 +415,19 @@ class TestClonePersonality:
 
     def test_clone_with_no_mods(self):
         """Passing None for modifications returns exact copy."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         cloned = clone_personality(prs, modifications=None)
         assert cloned.to_bytes() == prs.to_bytes()
 
     def test_clone_with_empty_mods(self):
         """Passing empty dict returns exact copy."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         cloned = clone_personality(prs, modifications={})
         assert cloned.to_bytes() == prs.to_bytes()
 
     def test_clone_remove_conv_set(self):
         """Clone with remove_sets removes a conv set."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv = _get_conv_sets(prs)
         if not conv:
             pytest.skip("No conv sets in test file")
@@ -441,7 +441,7 @@ class TestClonePersonality:
 
     def test_clone_remove_group_set(self):
         """Clone with remove_sets removes a group set."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -455,7 +455,7 @@ class TestClonePersonality:
 
     def test_clone_enable_tx(self):
         """Clone with enable_tx_sets enables TX on all talkgroups."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -475,7 +475,7 @@ class TestClonePersonality:
 
     def test_clone_disable_tx(self):
         """Clone with disable_tx_sets disables TX on all talkgroups."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -495,7 +495,7 @@ class TestClonePersonality:
 
     def test_clone_add_talkgroups(self):
         """Clone with add_talkgroups adds new talkgroups."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -521,7 +521,7 @@ class TestClonePersonality:
 
     def test_clone_validates_ok(self):
         """Cloned personality passes validation."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         cloned = clone_personality(prs)
         issues = validate_prs(cloned)
         errors = [(s, m) for s, m in issues if s == ERROR]
@@ -554,7 +554,7 @@ class TestCLIClonePersonality:
 
     def test_cli_clone_remove_set(self, tmp_path):
         """CLI clone with --remove-set removes a set."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv = _get_conv_sets(prs)
         if not conv:
             pytest.skip("No conv sets in test file")
@@ -572,7 +572,7 @@ class TestCLIClonePersonality:
 
     def test_cli_clone_enable_tx(self, tmp_path):
         """CLI clone with --enable-tx modifies TX."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -601,7 +601,7 @@ class TestCLIRenumber:
 
     def test_cli_renumber_conv(self, tmp_path):
         """CLI renumber command works on conv channels."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv = _get_conv_sets(prs)
         if not conv:
             pytest.skip("No conv sets in test file")
@@ -623,7 +623,7 @@ class TestCLIRenumber:
 
     def test_cli_renumber_via_run_cli(self, tmp_path):
         """renumber works through run_cli dispatcher."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv = _get_conv_sets(prs)
         if not conv:
             pytest.skip("No conv sets in test file")
@@ -636,7 +636,7 @@ class TestCLIRenumber:
 
     def test_cli_renumber_start_offset(self, tmp_path):
         """CLI renumber with --start flag."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv = _get_conv_sets(prs)
         if not conv:
             pytest.skip("No conv sets in test file")
@@ -661,7 +661,7 @@ class TestCLIAutoName:
 
     def test_cli_auto_name_compact(self, tmp_path):
         """CLI auto-name with compact style."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -679,7 +679,7 @@ class TestCLIAutoName:
 
     def test_cli_auto_name_numbered(self, tmp_path):
         """CLI auto-name with numbered style."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -698,7 +698,7 @@ class TestCLIAutoName:
 
     def test_cli_auto_name_via_run_cli(self, tmp_path):
         """auto-name works through run_cli dispatcher."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets in test file")
@@ -719,7 +719,7 @@ class TestRenumberValidation:
 
     def test_renumbered_conv_validates(self):
         """Renumbered conv file passes validation."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv = _get_conv_sets(prs)
         if not conv:
             pytest.skip("No conv sets")
@@ -731,7 +731,7 @@ class TestRenumberValidation:
 
     def test_renumbered_groups_validates(self):
         """Renumbered group file passes validation."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets")
@@ -752,7 +752,7 @@ class TestAutoNameValidation:
 
     def test_auto_named_compact_validates(self):
         """Auto-named compact file passes validation."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets")
@@ -764,7 +764,7 @@ class TestAutoNameValidation:
 
     def test_auto_named_numbered_validates(self):
         """Auto-named numbered file passes validation."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets")
@@ -776,7 +776,7 @@ class TestAutoNameValidation:
 
     def test_auto_named_department_validates(self):
         """Auto-named department file passes validation."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         groups = _get_group_sets(prs)
         if not groups:
             pytest.skip("No group sets")

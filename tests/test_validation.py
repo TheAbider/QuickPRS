@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.validation import (
     validate_prs, validate_prs_detailed,
     validate_group_set, validate_trunk_set, validate_conv_set,
@@ -33,7 +34,7 @@ def test_validate_prs_no_crash():
     """validate_prs runs without crashing on both test files."""
     for f in (CLAUDE_PRS, PAWS_PRS):
         if f.exists():
-            prs = parse_prs(f)
+            prs = cached_parse_prs(f)
             issues = validate_prs(prs)
             assert isinstance(issues, list)
 
@@ -42,7 +43,7 @@ def test_validate_prs_includes_conv_check():
     """validate_prs now includes conv set validation."""
     if not CLAUDE_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
     # Should run without error; conv sets in claude test should be valid
     issues = validate_prs(prs)
     assert isinstance(issues, list)
@@ -54,7 +55,7 @@ def test_validate_detailed_returns_dict():
     """validate_prs_detailed returns a dict."""
     if not CLAUDE_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
     result = validate_prs_detailed(prs)
     assert isinstance(result, dict)
     for key, issues in result.items():
@@ -69,7 +70,7 @@ def test_validate_detailed_categorized():
     """Detailed results are grouped by set name."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     result = validate_prs_detailed(prs)
     # Keys should be like "Group Set: ...", "Trunk Set: ...", etc.
     for key in result:
@@ -260,7 +261,7 @@ def test_validate_system_counts():
     """System count check runs on test file."""
     if not CLAUDE_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
     from quickprs.validation import _validate_system_counts
     issues = _validate_system_counts(prs)
     assert isinstance(issues, list)
@@ -270,7 +271,7 @@ def test_validate_ecc_on_paws():
     """PAWSOVERMAWS has no ECC limit violations (max is 30 = limit)."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     from quickprs.validation import _validate_system_counts
     issues = _validate_system_counts(prs)
     ecc_issues = [msg for sev, msg in issues if "ECC entries" in msg]
@@ -285,7 +286,7 @@ def test_validate_ecc_over_limit():
     from quickprs.record_types import (
         P25TrkSystemConfig, EnhancedCCEntry,
     )
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
     # Create system with 31 ECC entries (over the 30 limit)
     ecc_list = [
         EnhancedCCEntry(channel_ref1=i, channel_ref2=i)
@@ -317,7 +318,7 @@ def test_validate_mixed_scanning_warning():
     """Personality with both trunked + conv gets mixed scanning info."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     from quickprs.validation import _validate_system_counts
     issues = _validate_system_counts(prs)
     info_msgs = [msg for sev, msg in issues if sev == INFO]
@@ -328,7 +329,7 @@ def test_validate_no_wacn_conflict_in_paws():
     """PAWSOVERMAWS systems have unique WACNs — no conflict warning."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     from quickprs.validation import _validate_system_counts
     issues = _validate_system_counts(prs)
     wacn_issues = [msg for sev, msg in issues if "share WACN" in msg]
@@ -341,7 +342,7 @@ def test_validate_wacn_conflict_detected():
         pytest.skip("test file not found")
     from quickprs.injector import add_p25_trunked_system, make_group_set, make_trunk_set
     from quickprs.record_types import P25TrkSystemConfig
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
     # Add two systems with the same WAN name
     for name, long in [("SYS1", "SYSTEM ONE"), ("SYS2", "SYSTEM TWO")]:
         config = P25TrkSystemConfig(
@@ -374,7 +375,7 @@ def test_parse_wan_name_paws():
         is_system_config_data, parse_system_long_name,
         parse_system_wan_name,
     )
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     wan_names = {}
     for sec in prs.sections:
         if not sec.class_name and is_system_config_data(sec.raw):
@@ -395,7 +396,7 @@ def test_validate_combined_channel_limit():
     """Combined TG+conv channel count is checked against personality limit."""
     if not CLAUDE_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
     issues = validate_prs(prs)
     # claude test is small — should not trigger combined limit
     combined_issues = [m for _, m in issues if "channels+talkgroups" in m]
@@ -408,7 +409,7 @@ def test_validate_duplicate_set_names():
         pytest.skip("test file not found")
     from quickprs.injector import add_p25_trunked_system, make_group_set, make_trunk_set
     from quickprs.record_types import P25TrkSystemConfig
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
     # Inject a system where trunk and group sets share the name "DUPE"
     config = P25TrkSystemConfig(
         system_name="DUPE",
@@ -432,7 +433,7 @@ def test_validate_zone_advisory_large_group_set():
     """Large group set gets zone limit advisory."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     from quickprs.validation import _validate_system_counts
     issues = _validate_system_counts(prs)
     zone_info = [m for s, m in issues if s == INFO and "zone limit" in m]
@@ -463,7 +464,7 @@ def test_parse_wan_name_conv_returns_none():
         is_system_config_data, parse_system_long_name,
         parse_system_wan_name,
     )
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     # FURRY TRASH systems are conventional — WAN name should be None
     for sec in prs.sections:
         if not sec.class_name and is_system_config_data(sec.raw):
@@ -483,7 +484,7 @@ def test_validate_iden_dedup_warning():
     if not CLAUDE_PRS.exists():
         pytest.skip("test file not found")
 
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
 
     # Add two identical IDEN sets with different names
     tmpl = get_template("800-TDMA")
@@ -506,7 +507,7 @@ def test_validate_iden_no_false_dedup():
     if not CLAUDE_PRS.exists():
         pytest.skip("test file not found")
 
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
 
     fdma = get_template("800-FDMA")
     tdma = get_template("800-TDMA")
@@ -526,7 +527,7 @@ def test_validate_platform_config_paws_clean():
     """PAWSOVERMAWS should have no platform config validation warnings."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     issues = validate_prs(prs)
     platform_warns = [msg for sev, msg in issues
                       if sev == WARNING and (
@@ -541,7 +542,7 @@ def test_validate_platform_config_no_xml_no_crash():
     """Files without platformConfig should not crash validation."""
     if not CLAUDE_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
     issues = validate_prs(prs)
     # Should not crash, just return normal issues
     assert isinstance(issues, list)
@@ -558,7 +559,7 @@ def test_validate_invalid_button_function():
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
 
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     xml_str = extract_platform_xml(prs)
     root = ET.fromstring(xml_str)
 
@@ -586,7 +587,7 @@ def test_validate_invalid_switch_function():
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
 
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     xml_str = extract_platform_xml(prs)
     root = ET.fromstring(xml_str)
 
@@ -614,7 +615,7 @@ def test_validate_invalid_menu_name():
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
 
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     xml_str = extract_platform_xml(prs)
     root = ET.fromstring(xml_str)
 
@@ -641,7 +642,7 @@ def test_validate_int_range_over_max():
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
 
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     xml_str = extract_platform_xml(prs)
     root = ET.fromstring(xml_str)
 
@@ -669,7 +670,7 @@ def test_validate_int_range_under_min():
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
 
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     xml_str = extract_platform_xml(prs)
     root = ET.fromstring(xml_str)
 
@@ -698,7 +699,7 @@ def test_validate_duplicate_menu_positions():
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
 
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     xml_str = extract_platform_xml(prs)
     root = ET.fromstring(xml_str)
 
@@ -721,7 +722,7 @@ def test_validate_crossref_paws_clean():
     """PAWSOVERMAWS should have no cross-reference warnings (valid refs)."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     issues = validate_prs(prs)
     crossref_msgs = [msg for _, msg in issues
                      if "doesn't exist" in msg]
@@ -737,7 +738,7 @@ def test_validate_crossref_ecc_iden_missing():
         parse_iden_section, parse_sets_from_sections,
     )
 
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
 
     # Rename ALL IDEN sets so every ECC reference becomes orphaned.
     # ECC entries reference names like "BEE00", "58544", "92738".
@@ -775,7 +776,7 @@ def test_parse_system_set_refs():
         is_system_config_data, parse_system_set_refs,
     )
 
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     found = False
     for sec in prs.sections:
         if not sec.class_name and is_system_config_data(sec.raw):
@@ -802,7 +803,7 @@ def test_structure_paws_clean():
     """PAWSOVERMAWS passes structural validation with no issues."""
     if not PAWS_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(PAWS_PRS)
+    prs = cached_parse_prs(PAWS_PRS)
     issues = validate_structure(prs)
     assert len(issues) == 0, f"Unexpected structural issues: {issues}"
 
@@ -811,7 +812,7 @@ def test_structure_claude_clean():
     """claude test passes structural validation with no issues."""
     if not CLAUDE_PRS.exists():
         pytest.skip("test file not found")
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
     issues = validate_structure(prs)
     assert len(issues) == 0, f"Unexpected structural issues: {issues}"
 
@@ -942,7 +943,7 @@ def test_structure_bad_set_crossref():
     from quickprs.injector import (
         add_p25_trunked_system, make_group_set, make_trunk_set,
     )
-    prs = parse_prs(CLAUDE_PRS)
+    prs = cached_parse_prs(CLAUDE_PRS)
     config = P25TrkSystemConfig(
         system_name="BAD", long_name="BAD REFS",
         trunk_set_name="NOEXIST", group_set_name="NOGRP",

@@ -7,7 +7,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 from pathlib import Path
 
+
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.option_maps import (
     extract_platform_xml, extract_platform_config, find_platform_xml_location,
     write_platform_config, config_to_xml,
@@ -60,20 +62,20 @@ PAWSOVERMAWS = TESTDATA / "PAWSOVERMAWS.PRS"
 class TestExtractPlatformXml:
 
     def test_baseline_has_xml(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         xml_str = extract_platform_xml(prs)
         assert xml_str is not None
         assert xml_str.startswith("<platformConfig>")
         assert xml_str.endswith("</platformConfig>")
 
     def test_battery_file_has_xml(self):
-        prs = parse_prs(BATTERY_NIMH)
+        prs = cached_parse_prs(BATTERY_NIMH)
         xml_str = extract_platform_xml(prs)
         assert xml_str is not None
         assert "batteryType" in xml_str
 
     def test_audio_file_has_xml(self):
-        prs = parse_prs(AUDIO_SPEAKER)
+        prs = cached_parse_prs(AUDIO_SPEAKER)
         xml_str = extract_platform_xml(prs)
         assert xml_str is not None
         assert "audioConfig" in xml_str
@@ -81,7 +83,7 @@ class TestExtractPlatformXml:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_pawsovermaws_has_xml(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         xml_str = extract_platform_xml(prs)
         assert xml_str is not None
         assert "<platformConfig>" in xml_str
@@ -91,7 +93,7 @@ class TestExtractPlatformXml:
 class TestExtractPlatformConfig:
 
     def test_baseline_config_keys(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         assert config is not None
         expected_keys = {
@@ -102,7 +104,7 @@ class TestExtractPlatformConfig:
         assert expected_keys.issubset(set(config.keys()))
 
     def test_baseline_audio_defaults(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         audio = config["audioConfig"]
         assert audio["speakerMode"] == "ON"
@@ -113,12 +115,12 @@ class TestExtractPlatformConfig:
         assert audio["pttAudio"] == "RADIO_ACCESSORY"
 
     def test_baseline_battery_default(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         assert config["miscConfig"]["batteryType"] == "LITHIUM_ION_POLY"
 
     def test_baseline_accessory_defaults(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         acc = config["accessoryConfig"]
         assert acc["noiseCancellation"] == "ON"
@@ -126,7 +128,7 @@ class TestExtractPlatformConfig:
         assert acc["pttMode"] == "BOTH"
 
     def test_baseline_mandown_defaults(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         md = config["manDownConfig"]
         assert md["sensitivity"] == "0"  # OFF
@@ -134,42 +136,42 @@ class TestExtractPlatformConfig:
         assert md["warningTime"] == "30"
 
     def test_battery_nimh(self):
-        prs = parse_prs(BATTERY_NIMH)
+        prs = cached_parse_prs(BATTERY_NIMH)
         config = extract_platform_config(prs)
         assert config["miscConfig"]["batteryType"] == "NIMH"
 
     def test_battery_alkaline(self):
-        prs = parse_prs(BATTERY_ALKALINE)
+        prs = cached_parse_prs(BATTERY_ALKALINE)
         config = extract_platform_config(prs)
         assert config["miscConfig"]["batteryType"] == "ALKALINE"
 
     def test_battery_primary_lithium(self):
-        prs = parse_prs(BATTERY_PRIMARY)
+        prs = cached_parse_prs(BATTERY_PRIMARY)
         config = extract_platform_config(prs)
         assert config["miscConfig"]["batteryType"] == "PRIMARY_LITHIUM"
 
     def test_audio_speaker_off(self):
-        prs = parse_prs(AUDIO_SPEAKER)
+        prs = cached_parse_prs(AUDIO_SPEAKER)
         config = extract_platform_config(prs)
         assert config["audioConfig"]["speakerMode"] == "OFF"
 
     def test_audio_noise_cancel_on(self):
-        prs = parse_prs(AUDIO_NOISE)
+        prs = cached_parse_prs(AUDIO_NOISE)
         config = extract_platform_config(prs)
         assert config["audioConfig"]["noiseCancellation"] == "ON"
 
     def test_audio_tones_on(self):
-        prs = parse_prs(AUDIO_TONES)
+        prs = cached_parse_prs(AUDIO_TONES)
         config = extract_platform_config(prs)
         assert config["audioConfig"]["tones"] == "ON"
 
     def test_audio_keypad_on(self):
-        prs = parse_prs(AUDIO_KEYPAD)
+        prs = cached_parse_prs(AUDIO_KEYPAD)
         config = extract_platform_config(prs)
         assert config["miscConfig"]["keypadTones"] == "ON"
 
     def test_external_mic_gain(self):
-        prs = parse_prs(AUDIO_MIC_GAIN)
+        prs = cached_parse_prs(AUDIO_MIC_GAIN)
         config = extract_platform_config(prs)
         # microphone children are in audioConfig
         audio = config["audioConfig"]
@@ -181,7 +183,7 @@ class TestExtractPlatformConfig:
         assert ext_mic["alc"] == "ON"
 
     def test_microphone_children_present(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         audio = config["audioConfig"]
         mics = audio.get("microphone", [])
@@ -196,7 +198,7 @@ class TestExtractPlatformConfig:
 class TestFindPlatformXmlLocation:
 
     def test_baseline_location(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         loc = find_platform_xml_location(prs)
         assert loc is not None
         sec_idx, start, end = loc
@@ -214,7 +216,7 @@ class TestWritePlatformConfig:
 
     def test_roundtrip_write(self):
         """Write new XML, verify it can be read back."""
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         original_xml = extract_platform_xml(prs)
         assert original_xml is not None
 
@@ -228,7 +230,7 @@ class TestWritePlatformConfig:
 
     def test_modify_and_read_back(self):
         """Change a value in XML, write back, verify change persists."""
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         xml_str = extract_platform_xml(prs)
 
         # Swap battery type
@@ -249,7 +251,7 @@ class TestConfigToXml:
 
     def test_simple_roundtrip(self):
         """parse → dict → xml → parse should preserve values."""
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         xml_str = config_to_xml(config)
         # Re-parse the generated XML
@@ -259,7 +261,7 @@ class TestConfigToXml:
 
     def test_full_roundtrip_preserves_values(self):
         """Dict roundtrip should preserve all audio settings."""
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         xml_str = config_to_xml(config)
         # Write back and re-extract
@@ -272,7 +274,7 @@ class TestConfigToXml:
 
     def test_prog_buttons_roundtrip(self):
         """Prog buttons with child elements should survive roundtrip."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         xml_str = config_to_xml(config)
         write_platform_config(prs, xml_str)
@@ -288,7 +290,7 @@ class TestConfigToXml:
 
     def test_short_menu_roundtrip(self):
         """Short menu with 16 items should survive roundtrip."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         xml_str = config_to_xml(config)
         write_platform_config(prs, xml_str)
@@ -300,7 +302,7 @@ class TestConfigToXml:
 
     def test_modify_button_roundtrip(self):
         """Modifying a button function should persist through roundtrip."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         # Change top side button to SCAN
         buttons = config["progButtons"]["progButton"]
@@ -315,7 +317,7 @@ class TestConfigToXml:
 
     def test_modify_short_menu_roundtrip(self):
         """Modifying a short menu slot should persist."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         items = config["shortMenu"]["shortMenuItem"]
         # Change slot 7 (empty) to siteDisplay
@@ -330,7 +332,7 @@ class TestConfigToXml:
 
     def test_modify_switch_function(self):
         """Modifying 2-pos switch function should persist."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         config["progButtons"]["_2PosFunction"] = "TALKAROUND"
         xml_str = config_to_xml(config)
@@ -340,7 +342,7 @@ class TestConfigToXml:
 
     def test_accessory_buttons_roundtrip(self):
         """Accessory buttons should survive roundtrip."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         xml_str = config_to_xml(config)
         write_platform_config(prs, xml_str)
@@ -353,7 +355,7 @@ class TestConfigToXml:
 
     def test_empty_string_attributes(self):
         """Empty string attributes should be preserved."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         xml_str = config_to_xml(config)
         write_platform_config(prs, xml_str)
@@ -376,7 +378,7 @@ class TestElementTreeEditing:
     def test_et_button_function_change(self):
         """Change a button function via ElementTree, verify roundtrip."""
         import xml.etree.ElementTree as ET
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         xml_str = extract_platform_xml(prs)
         root = ET.fromstring(xml_str)
 
@@ -399,7 +401,7 @@ class TestElementTreeEditing:
     def test_et_switch_function_change(self):
         """Change switch function via ElementTree."""
         import xml.etree.ElementTree as ET
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         xml_str = extract_platform_xml(prs)
         root = ET.fromstring(xml_str)
 
@@ -417,7 +419,7 @@ class TestElementTreeEditing:
     def test_et_short_menu_change(self):
         """Change short menu slots via ElementTree."""
         import xml.etree.ElementTree as ET
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         xml_str = extract_platform_xml(prs)
         root = ET.fromstring(xml_str)
 
@@ -438,7 +440,7 @@ class TestElementTreeEditing:
     def test_et_accessory_button_change(self):
         """Change accessory button via ElementTree."""
         import xml.etree.ElementTree as ET
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         xml_str = extract_platform_xml(prs)
         root = ET.fromstring(xml_str)
 
@@ -459,7 +461,7 @@ class TestElementTreeEditing:
     def test_et_multiple_edits_single_save(self):
         """Multiple edits in one save should all persist."""
         import xml.etree.ElementTree as ET
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         xml_str = extract_platform_xml(prs)
         root = ET.fromstring(xml_str)
 
@@ -492,7 +494,7 @@ class TestElementTreeEditing:
     def test_et_prs_still_valid_after_edit(self):
         """PRS file should still be parseable after edits."""
         import xml.etree.ElementTree as ET
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         xml_str = extract_platform_xml(prs)
         root = ET.fromstring(xml_str)
 
@@ -547,7 +549,7 @@ class TestOptionMapRegistry:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_alert_bool_values(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CAlertOpts")
         data = extract_section_data(sec)
         for name in ("alert_bool_8", "alert_bool_9", "alert_bool_12", "alert_bool_14"):
@@ -675,7 +677,7 @@ class TestExtractSectionData:
     def test_extract_from_named_section(self):
         """CAccessoryDevice section should have extractable data."""
         # Use a file that has CAccessoryDevice as a small section
-        prs = parse_prs(AUDIO_SPEAKER)
+        prs = cached_parse_prs(AUDIO_SPEAKER)
         sec = prs.get_section_by_class("CAccessoryDevice")
         if sec is not None:
             data = extract_section_data(sec)
@@ -761,7 +763,7 @@ class TestXmlFieldCatalog:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_pawsovermaws_passwords(self):
         """PAWSOVERMAWS has password fields in XML."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         misc = config["miscConfig"]
         assert misc["password"] == "1115"
@@ -772,35 +774,35 @@ class TestXmlFieldCatalog:
 class TestXg100pDefaults:
 
     def test_audio_defaults_match_baseline(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         audio = config["audioConfig"]
         for key, expected in XG100P_DEFAULTS["audioConfig"].items():
             assert audio.get(key) == expected, f"audioConfig.{key}"
 
     def test_misc_defaults_match_baseline(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         misc = config["miscConfig"]
         for key, expected in XG100P_DEFAULTS["miscConfig"].items():
             assert misc.get(key) == expected, f"miscConfig.{key}"
 
     def test_gps_defaults_match_baseline(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         gps = config["gpsConfig"]
         for key, expected in XG100P_DEFAULTS["gpsConfig"].items():
             assert gps.get(key) == expected, f"gpsConfig.{key}"
 
     def test_bluetooth_defaults_match_baseline(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         bt = config["bluetoothConfig"]
         for key, expected in XG100P_DEFAULTS["bluetoothConfig"].items():
             assert bt.get(key) == expected, f"bluetoothConfig.{key}"
 
     def test_accessory_defaults_match_baseline(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         acc = config["accessoryConfig"]
         for key, expected in XG100P_DEFAULTS["accessoryConfig"].items():
@@ -818,7 +820,7 @@ class TestProgButtons:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_prog_buttons_extracted(self):
         """PAWSOVERMAWS has progButtons in XML."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         assert "progButtons" in config
 
@@ -826,7 +828,7 @@ class TestProgButtons:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_prog_buttons_structure(self):
         """progButtons has switch configs and button list."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         prog = config["progButtons"]
 
@@ -843,7 +845,7 @@ class TestProgButtons:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_button_assignments(self):
         """Verify specific button assignments."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         buttons = config["progButtons"]["progButton"]
 
@@ -857,7 +859,7 @@ class TestProgButtons:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_accessory_buttons(self):
         """Verify accessory button structure."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         acc = config["accessoryConfig"]["accessoryButtons"]
         buttons = acc["accessoryButton"]
@@ -899,7 +901,7 @@ class TestShortMenu:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_short_menu_extracted(self):
         """PAWSOVERMAWS has shortMenu in XML."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         assert "shortMenu" in config
 
@@ -907,7 +909,7 @@ class TestShortMenu:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_short_menu_16_slots(self):
         """Short menu has 16 slots."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         items = config["shortMenu"]["shortMenuItem"]
         assert isinstance(items, list)
@@ -917,7 +919,7 @@ class TestShortMenu:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_short_menu_filled_slots(self):
         """First 7 slots should be filled, rest empty."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         config = extract_platform_config(prs)
         items = config["shortMenu"]["shortMenuItem"]
         filled = [i for i in items if i["name"] != "empty"]
@@ -936,7 +938,7 @@ class TestShortMenu:
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_short_menu(self):
         """Even baseline 'new radio' PRS has short menu in XML."""
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         config = extract_platform_config(prs)
         assert "shortMenu" in config
         items = config["shortMenu"]["shortMenuItem"]
@@ -1026,28 +1028,28 @@ class TestBlobPreamble:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_pawsovermaws_has_preamble(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         bp = extract_blob_preamble(prs)
         assert bp is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_pawsovermaws_filename(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         bp = extract_blob_preamble(prs)
         assert bp.filename == "PAWSOVERMAWS.PRS"
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_pawsovermaws_username(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         bp = extract_blob_preamble(prs)
         assert bp.username == "Abider"
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_pawsovermaws_oor_off(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         bp = extract_blob_preamble(prs)
         assert bp.oor_alert_interval == 0
         assert bp.oor_display == "Off"
@@ -1055,7 +1057,7 @@ class TestBlobPreamble:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_pawsovermaws_gps(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         bp = extract_blob_preamble(prs)
         assert len(bp.gps_doubles) == 4
         assert bp.gps_doubles[0] == 136.0
@@ -1064,13 +1066,13 @@ class TestBlobPreamble:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_pawsovermaws_marker(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         bp = extract_blob_preamble(prs)
         assert bp.marker_byte == 0x0E
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_preamble(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         bp = extract_blob_preamble(prs)
         assert bp is not None
         assert bp.oor_alert_interval == 0
@@ -1078,7 +1080,7 @@ class TestBlobPreamble:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_gps(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         bp = extract_blob_preamble(prs)
         assert len(bp.gps_doubles) >= 2
         assert bp.gps_doubles[0] == 136.0
@@ -1086,21 +1088,21 @@ class TestBlobPreamble:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_oor_slow(self):
-        prs = parse_prs(OOR_SLOW)
+        prs = cached_parse_prs(OOR_SLOW)
         bp = extract_blob_preamble(prs)
         assert bp.oor_alert_interval == 1
         assert bp.oor_display == "Slow"
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_oor_medium(self):
-        prs = parse_prs(OOR_MED)
+        prs = cached_parse_prs(OOR_MED)
         bp = extract_blob_preamble(prs)
         assert bp.oor_alert_interval == 2
         assert bp.oor_display == "Medium"
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_oor_fast(self):
-        prs = parse_prs(OOR_FAST)
+        prs = cached_parse_prs(OOR_FAST)
         bp = extract_blob_preamble(prs)
         assert bp.oor_alert_interval == 3
         assert bp.oor_display == "Fast"
@@ -1108,7 +1110,7 @@ class TestBlobPreamble:
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_oor_nonzero_clears_gps(self):
         """When OOR > 0, GPS doubles should be empty (byte overlap)."""
-        prs = parse_prs(OOR_FAST)
+        prs = cached_parse_prs(OOR_FAST)
         bp = extract_blob_preamble(prs)
         assert bp.gps_doubles == []
 
@@ -1124,7 +1126,7 @@ class TestBlobPreamble:
         for f in sorted(os.listdir(base)):
             if not f.endswith('.PRS'):
                 continue
-            prs = parse_prs(base / f)
+            prs = cached_parse_prs(base / f)
             bp = extract_blob_preamble(prs)
             assert bp is not None, f"No preamble for {f}"
             count += 1
@@ -1133,28 +1135,28 @@ class TestBlobPreamble:
     @pytest.mark.skipif(not CLAUDE_TEST.exists(), reason="Test PRS data not available")
     def test_claude_test_preamble_via_ct99(self):
         """claude test.PRS has no CProgButtons; metadata comes from CT99 tail."""
-        prs = parse_prs(CLAUDE_TEST)
+        prs = cached_parse_prs(CLAUDE_TEST)
         bp = extract_blob_preamble(prs)
         assert bp is not None
 
     @pytest.mark.skipif(not CLAUDE_TEST.exists(), reason="Test PRS data not available")
     def test_claude_test_filename(self):
         """CT99 fallback should extract the personality filename."""
-        prs = parse_prs(CLAUDE_TEST)
+        prs = cached_parse_prs(CLAUDE_TEST)
         bp = extract_blob_preamble(prs)
         assert bp.filename == "claude test.PRS"
 
     @pytest.mark.skipif(not CLAUDE_TEST.exists(), reason="Test PRS data not available")
     def test_claude_test_empty_username(self):
         """CT99 fallback with empty username LPS."""
-        prs = parse_prs(CLAUDE_TEST)
+        prs = cached_parse_prs(CLAUDE_TEST)
         bp = extract_blob_preamble(prs)
         assert bp.username == ""
 
     @pytest.mark.skipif(not CLAUDE_TEST.exists(), reason="Test PRS data not available")
     def test_claude_test_band_limits(self):
         """CT99 fallback should extract XG-100P band limits."""
-        prs = parse_prs(CLAUDE_TEST)
+        prs = cached_parse_prs(CLAUDE_TEST)
         bp = extract_blob_preamble(prs)
         assert len(bp.gps_doubles) == 4
         assert bp.gps_doubles[0] == 136.0  # TxMin
@@ -1165,14 +1167,14 @@ class TestBlobPreamble:
     @pytest.mark.skipif(not CLAUDE_TEST.exists(), reason="Test PRS data not available")
     def test_claude_test_marker(self):
         """CT99 fallback should read the 0x0E marker byte."""
-        prs = parse_prs(CLAUDE_TEST)
+        prs = cached_parse_prs(CLAUDE_TEST)
         bp = extract_blob_preamble(prs)
         assert bp.marker_byte == 0x0E
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_not_from_ct99(self):
         """PAWSOVERMAWS has CProgButtons, so CT99 fallback should not be used."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         # CProgButtons exists, so strategy 1 is used
         has_prog = any(s.class_name == "CProgButtons" for s in prs.sections)
         assert has_prog
@@ -1191,14 +1193,14 @@ class TestCT99Structure:
     def test_ct99_present_in_both_files(self):
         """CT99 section should be present in both test files."""
         for f in [CLAUDE_TEST, PAWSOVERMAWS]:
-            prs = parse_prs(f)
+            prs = cached_parse_prs(f)
             sec = prs.get_section_by_class("CT99")
             assert sec is not None, f"CT99 missing from {f.name}"
 
     def test_ct99_class_header(self):
         """CT99 class header should parse correctly."""
         from quickprs.record_types import parse_class_header
-        prs = parse_prs(CLAUDE_TEST)
+        prs = cached_parse_prs(CLAUDE_TEST)
         sec = prs.get_section_by_class("CT99")
         name, byte1, byte2, _ = parse_class_header(sec.raw, 0)
         assert name == "CT99"
@@ -1209,7 +1211,7 @@ class TestCT99Structure:
         """CT99 data should have at least 103 bytes (3 blocks + 2 seps)."""
         from quickprs.record_types import parse_class_header
         for f in [CLAUDE_TEST, PAWSOVERMAWS]:
-            prs = parse_prs(f)
+            prs = cached_parse_prs(f)
             sec = prs.get_section_by_class("CT99")
             _, _, _, cd = parse_class_header(sec.raw, 0)
             data = sec.raw[cd:]
@@ -1219,7 +1221,7 @@ class TestCT99Structure:
         """CT99 should have 2-byte separators at offsets 0x21 and 0x44."""
         from quickprs.record_types import parse_class_header
         for f in [CLAUDE_TEST, PAWSOVERMAWS]:
-            prs = parse_prs(f)
+            prs = cached_parse_prs(f)
             sec = prs.get_section_by_class("CT99")
             _, _, _, cd = parse_class_header(sec.raw, 0)
             data = sec.raw[cd:]
@@ -1235,7 +1237,7 @@ class TestCT99Structure:
         """In both test files, CT99 tone slots are all zeros (no tones)."""
         from quickprs.record_types import parse_class_header
         for f in [CLAUDE_TEST, PAWSOVERMAWS]:
-            prs = parse_prs(f)
+            prs = cached_parse_prs(f)
             sec = prs.get_section_by_class("CT99")
             _, _, _, cd = parse_class_header(sec.raw, 0)
             data = sec.raw[cd:]
@@ -1249,7 +1251,7 @@ class TestCT99Structure:
     def test_ct99_claude_has_metadata_tail(self):
         """claude test.PRS CT99 has metadata tail (no CProgButtons)."""
         from quickprs.record_types import parse_class_header
-        prs = parse_prs(CLAUDE_TEST)
+        prs = cached_parse_prs(CLAUDE_TEST)
         sec = prs.get_section_by_class("CT99")
         _, _, _, cd = parse_class_header(sec.raw, 0)
         data = sec.raw[cd:]
@@ -1260,7 +1262,7 @@ class TestCT99Structure:
     def test_ct99_pawsovermaws_no_metadata_tail(self):
         """PAWSOVERMAWS CT99 has exactly 103 bytes (no metadata tail)."""
         from quickprs.record_types import parse_class_header
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CT99")
         _, _, _, cd = parse_class_header(sec.raw, 0)
         data = sec.raw[cd:]
@@ -1269,7 +1271,7 @@ class TestCT99Structure:
     def test_ct99_separator_values(self):
         """CT99 separators differ between files (file-specific)."""
         from quickprs.record_types import parse_class_header
-        prs1 = parse_prs(CLAUDE_TEST)
+        prs1 = cached_parse_prs(CLAUDE_TEST)
         sec1 = prs1.get_section_by_class("CT99")
         _, _, _, cd1 = parse_class_header(sec1.raw, 0)
         data1 = sec1.raw[cd1:]
@@ -1277,7 +1279,7 @@ class TestCT99Structure:
         assert sep_claude == b'\x5e\x80'
 
         if PAWSOVERMAWS.exists():
-            prs2 = parse_prs(PAWSOVERMAWS)
+            prs2 = cached_parse_prs(PAWSOVERMAWS)
             sec2 = prs2.get_section_by_class("CT99")
             _, _, _, cd2 = parse_class_header(sec2.raw, 0)
             data2 = sec2.raw[cd2:]
@@ -1297,7 +1299,7 @@ class TestCGenRadioOpts:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_gen_radio_opts_present(self):
         """PAWSOVERMAWS has a CGenRadioOpts section."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = None
         for s in prs.sections:
             if s.class_name == "CGenRadioOpts":
@@ -1309,7 +1311,7 @@ class TestCGenRadioOpts:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_gen_radio_opts_data_size(self):
         """CGenRadioOpts data payload should be 41 bytes."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         for s in prs.sections:
             if s.class_name == "CGenRadioOpts":
                 data = extract_section_data(s)
@@ -1319,7 +1321,7 @@ class TestCGenRadioOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_edacs_min_lid(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         for s in prs.sections:
             if s.class_name == "CGenRadioOpts":
                 data = extract_section_data(s)
@@ -1331,7 +1333,7 @@ class TestCGenRadioOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_edacs_max_lid(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         for s in prs.sections:
             if s.class_name == "CGenRadioOpts":
                 data = extract_section_data(s)
@@ -1358,7 +1360,7 @@ class TestCGenRadioOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_npspac_override(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGenRadioOpts")
         data = extract_section_data(sec)
         fd = [f for f in GEN_RADIO_OPTS_MAP.fields
@@ -1368,7 +1370,7 @@ class TestCGenRadioOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_noise_cancellation_type(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGenRadioOpts")
         data = extract_section_data(sec)
         fd = [f for f in GEN_RADIO_OPTS_MAP.fields
@@ -1384,7 +1386,7 @@ class TestCGenRadioOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_gen_radio_byte_19(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGenRadioOpts")
         data = extract_section_data(sec)
         fd = [f for f in GEN_RADIO_OPTS_MAP.fields if f.name == "gen_radio_byte_19"][0]
@@ -1392,7 +1394,7 @@ class TestCGenRadioOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_gen_radio_byte_30(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGenRadioOpts")
         data = extract_section_data(sec)
         fd = [f for f in GEN_RADIO_OPTS_MAP.fields if f.name == "gen_radio_byte_30"][0]
@@ -1400,7 +1402,7 @@ class TestCGenRadioOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_gen_radio_byte_33(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGenRadioOpts")
         data = extract_section_data(sec)
         fd = [f for f in GEN_RADIO_OPTS_MAP.fields if f.name == "gen_radio_byte_33"][0]
@@ -1408,7 +1410,7 @@ class TestCGenRadioOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_gen_radio_byte_37(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGenRadioOpts")
         data = extract_section_data(sec)
         fd = [f for f in GEN_RADIO_OPTS_MAP.fields if f.name == "gen_radio_byte_37"][0]
@@ -1417,7 +1419,7 @@ class TestCGenRadioOpts:
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_gen_radio_opts(self):
         """Baseline test file should NOT have CGenRadioOpts."""
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CGenRadioOpts"
 
@@ -1430,14 +1432,14 @@ class TestCDTMFOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDTMFOpts")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDTMFOpts")
         data = extract_section_data(sec)
         assert len(data) == 56
@@ -1445,7 +1447,7 @@ class TestCDTMFOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_start_delay(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDTMFOpts")
         data = extract_section_data(sec)
         fd = [f for f in DTMF_OPTS_MAP.fields if f.name == "start_delay"][0]
@@ -1454,7 +1456,7 @@ class TestCDTMFOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_pause_delay(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDTMFOpts")
         data = extract_section_data(sec)
         fd = [f for f in DTMF_OPTS_MAP.fields if f.name == "pause_delay"][0]
@@ -1463,7 +1465,7 @@ class TestCDTMFOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_interdigit_delay(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDTMFOpts")
         data = extract_section_data(sec)
         fd = [f for f in DTMF_OPTS_MAP.fields if f.name == "interdigit_delay"][0]
@@ -1472,7 +1474,7 @@ class TestCDTMFOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_hang_delay(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDTMFOpts")
         data = extract_section_data(sec)
         fd = [f for f in DTMF_OPTS_MAP.fields if f.name == "hang_delay"][0]
@@ -1481,7 +1483,7 @@ class TestCDTMFOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_tone_length_0_9(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDTMFOpts")
         data = extract_section_data(sec)
         fd = [f for f in DTMF_OPTS_MAP.fields if f.name == "tone_length_0_9"][0]
@@ -1490,7 +1492,7 @@ class TestCDTMFOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_tone_length_star_hash(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDTMFOpts")
         data = extract_section_data(sec)
         fd = [f for f in DTMF_OPTS_MAP.fields if f.name == "tone_length_star_hash"][0]
@@ -1499,7 +1501,7 @@ class TestCDTMFOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_side_tone(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDTMFOpts")
         data = extract_section_data(sec)
         fd = [f for f in DTMF_OPTS_MAP.fields if f.name == "side_tone"][0]
@@ -1508,7 +1510,7 @@ class TestCDTMFOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_no_pre_emphasis_filter(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDTMFOpts")
         data = extract_section_data(sec)
         fd = [f for f in DTMF_OPTS_MAP.fields if f.name == "no_pre_emphasis_filter"][0]
@@ -1539,7 +1541,7 @@ class TestCDTMFOpts:
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_dtmf_opts(self):
         """Baseline test file should NOT have CDTMFOpts."""
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CDTMFOpts"
 
@@ -1562,14 +1564,14 @@ class TestCTimerOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CTimerOpts")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CTimerOpts")
         data = extract_section_data(sec)
         assert len(data) == 82
@@ -1577,7 +1579,7 @@ class TestCTimerOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_cct(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CTimerOpts")
         data = extract_section_data(sec)
         fd = [f for f in TIMER_OPTS_MAP.fields if f.name == "cct"][0]
@@ -1596,7 +1598,7 @@ class TestCTimerOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_timer_field_12(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CTimerOpts")
         data = extract_section_data(sec)
         fd = [f for f in TIMER_OPTS_MAP.fields if f.name == "timer_field_12"][0]
@@ -1604,7 +1606,7 @@ class TestCTimerOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_timer_byte_63(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CTimerOpts")
         data = extract_section_data(sec)
         fd = [f for f in TIMER_OPTS_MAP.fields if f.name == "timer_byte_63"][0]
@@ -1612,7 +1614,7 @@ class TestCTimerOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_timer_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CTimerOpts"
 
@@ -1625,14 +1627,14 @@ class TestCSupervisoryOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSupervisoryOpts")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSupervisoryOpts")
         data = extract_section_data(sec)
         assert len(data) == 36
@@ -1640,7 +1642,7 @@ class TestCSupervisoryOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_emergency_key_delay(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSupervisoryOpts")
         data = extract_section_data(sec)
         fd = [f for f in SUPERVISORY_OPTS_MAP.fields
@@ -1650,7 +1652,7 @@ class TestCSupervisoryOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_emergency_autokey_timeout(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSupervisoryOpts")
         data = extract_section_data(sec)
         fd = [f for f in SUPERVISORY_OPTS_MAP.fields
@@ -1660,7 +1662,7 @@ class TestCSupervisoryOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_emergency_autocycle_timeout(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSupervisoryOpts")
         data = extract_section_data(sec)
         fd = [f for f in SUPERVISORY_OPTS_MAP.fields
@@ -1691,7 +1693,7 @@ class TestCSupervisoryOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_supervisory_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CSupervisoryOpts"
 
@@ -1704,14 +1706,14 @@ class TestCPowerUpOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPowerUpOpts")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPowerUpOpts")
         data = extract_section_data(sec)
         assert len(data) == 36
@@ -1719,7 +1721,7 @@ class TestCPowerUpOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_squelch_level(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPowerUpOpts")
         data = extract_section_data(sec)
         fd = [f for f in POWER_UP_OPTS_MAP.fields
@@ -1729,7 +1731,7 @@ class TestCPowerUpOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_max_bad_pin_entries(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPowerUpOpts")
         data = extract_section_data(sec)
         fd = [f for f in POWER_UP_OPTS_MAP.fields
@@ -1739,7 +1741,7 @@ class TestCPowerUpOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_power_up_selection(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPowerUpOpts")
         data = extract_section_data(sec)
         fd = [f for f in POWER_UP_OPTS_MAP.fields
@@ -1756,7 +1758,7 @@ class TestCPowerUpOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_power_up_byte_11(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPowerUpOpts")
         data = extract_section_data(sec)
         fd = [f for f in POWER_UP_OPTS_MAP.fields if f.name == "power_up_byte_11"][0]
@@ -1764,7 +1766,7 @@ class TestCPowerUpOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_power_up_byte_13(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPowerUpOpts")
         data = extract_section_data(sec)
         fd = [f for f in POWER_UP_OPTS_MAP.fields if f.name == "power_up_byte_13"][0]
@@ -1772,7 +1774,7 @@ class TestCPowerUpOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_power_up_byte_20(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPowerUpOpts")
         data = extract_section_data(sec)
         fd = [f for f in POWER_UP_OPTS_MAP.fields if f.name == "power_up_byte_20"][0]
@@ -1780,7 +1782,7 @@ class TestCPowerUpOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_power_up_byte_22(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPowerUpOpts")
         data = extract_section_data(sec)
         fd = [f for f in POWER_UP_OPTS_MAP.fields if f.name == "power_up_byte_22"][0]
@@ -1788,7 +1790,7 @@ class TestCPowerUpOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_power_up_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CPowerUpOpts"
 
@@ -1801,14 +1803,14 @@ class TestCScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CScanOpts")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CScanOpts")
         data = extract_section_data(sec)
         assert len(data) == 33
@@ -1816,7 +1818,7 @@ class TestCScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_always_scan_selected_chan(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SCAN_OPTS_MAP.fields
@@ -1826,7 +1828,7 @@ class TestCScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_scan_after_ptt(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SCAN_OPTS_MAP.fields
@@ -1836,7 +1838,7 @@ class TestCScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_conv_pri_scan_hang_time(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SCAN_OPTS_MAP.fields
@@ -1846,7 +1848,7 @@ class TestCScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_band_hunt_interval(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SCAN_OPTS_MAP.fields
@@ -1856,7 +1858,7 @@ class TestCScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_scan_with_channel_guard(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SCAN_OPTS_MAP.fields
@@ -1866,7 +1868,7 @@ class TestCScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_alternate_scan(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SCAN_OPTS_MAP.fields
@@ -1876,7 +1878,7 @@ class TestCScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_conv_pri_scan_with_cg(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SCAN_OPTS_MAP.fields
@@ -1886,7 +1888,7 @@ class TestCScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_universal_hang_time(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SCAN_OPTS_MAP.fields
@@ -1910,7 +1912,7 @@ class TestCScanOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_scan_byte_19(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SCAN_OPTS_MAP.fields if f.name == "scan_byte_19"][0]
@@ -1918,7 +1920,7 @@ class TestCScanOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_scan_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CScanOpts"
 
@@ -1931,14 +1933,14 @@ class TestCDiagnosticOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDiagnosticOpts")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDiagnosticOpts")
         data = extract_section_data(sec)
         assert len(data) == 8
@@ -1946,7 +1948,7 @@ class TestCDiagnosticOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_ip_echo(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDiagnosticOpts")
         data = extract_section_data(sec)
         fd = [f for f in DIAGNOSTIC_OPTS_MAP.fields
@@ -1963,7 +1965,7 @@ class TestCDiagnosticOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_diagnostic_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CDiagnosticOpts"
 
@@ -1976,14 +1978,14 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         assert len(data) == 24
@@ -1991,7 +1993,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_system_pretime(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2001,7 +2003,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_interpacket_delay(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2011,7 +2013,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_mdc_hang_time(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2021,7 +2023,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_mdc_emergency_enable(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2031,7 +2033,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_mdc_emergency_ack_tone(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2041,7 +2043,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_send_preamble_during_pretime(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2051,7 +2053,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_enhanced_id_system_pretime(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2061,7 +2063,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_enhanced_id_hang_time(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2071,7 +2073,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_emergency_tone_volume(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2081,7 +2083,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_emergency_max_tx_power(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2091,7 +2093,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_enhanced_emergency_ack_tone(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2101,7 +2103,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_alternate_alert_tone(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2111,7 +2113,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_mdc_encode_trigger(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2121,7 +2123,7 @@ class TestCMdcOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_enhanced_id_encode_trigger(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields
@@ -2145,7 +2147,7 @@ class TestCMdcOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_mdc_bool_12(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMdcOpts")
         data = extract_section_data(sec)
         fd = [f for f in MDC_OPTS_MAP.fields if f.name == "mdc_bool_12"][0]
@@ -2153,7 +2155,7 @@ class TestCMdcOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_mdc_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CMdcOpts"
 
@@ -2166,14 +2168,14 @@ class TestCSecurityPolicy:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSecurityPolicy")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSecurityPolicy")
         data = extract_section_data(sec)
         assert len(data) == 2
@@ -2181,7 +2183,7 @@ class TestCSecurityPolicy:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_k_erasure_unit_disable(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSecurityPolicy")
         data = extract_section_data(sec)
         fd = [f for f in SECURITY_POLICY_MAP.fields
@@ -2191,7 +2193,7 @@ class TestCSecurityPolicy:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_k_erasure_zeroize(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSecurityPolicy")
         data = extract_section_data(sec)
         fd = [f for f in SECURITY_POLICY_MAP.fields
@@ -2219,7 +2221,7 @@ class TestCSecurityPolicy:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_security_policy(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CSecurityPolicy"
 
@@ -2232,14 +2234,14 @@ class TestCStatus:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CStatus")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CStatus")
         data = extract_section_data(sec)
         assert len(data) == 7
@@ -2247,7 +2249,7 @@ class TestCStatus:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_mode_hang_time(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CStatus")
         data = extract_section_data(sec)
         fd = [f for f in STATUS_OPTS_MAP.fields
@@ -2257,7 +2259,7 @@ class TestCStatus:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_select_time(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CStatus")
         data = extract_section_data(sec)
         fd = [f for f in STATUS_OPTS_MAP.fields
@@ -2267,7 +2269,7 @@ class TestCStatus:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_transmit_type(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CStatus")
         data = extract_section_data(sec)
         fd = [f for f in STATUS_OPTS_MAP.fields
@@ -2277,7 +2279,7 @@ class TestCStatus:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_reset_on_system_change(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CStatus")
         data = extract_section_data(sec)
         fd = [f for f in STATUS_OPTS_MAP.fields
@@ -2287,7 +2289,7 @@ class TestCStatus:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_p25_standard_status_format(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CStatus")
         data = extract_section_data(sec)
         fd = [f for f in STATUS_OPTS_MAP.fields
@@ -2311,7 +2313,7 @@ class TestCStatus:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_status_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CStatus"
 
@@ -2324,14 +2326,14 @@ class TestCSystemScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSystemScanOpts")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSystemScanOpts")
         data = extract_section_data(sec)
         assert len(data) == 24
@@ -2339,7 +2341,7 @@ class TestCSystemScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_scan_type_proscan(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSystemScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SYSTEM_SCAN_OPTS_MAP.fields
@@ -2349,7 +2351,7 @@ class TestCSystemScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_priority_scan(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSystemScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SYSTEM_SCAN_OPTS_MAP.fields
@@ -2359,7 +2361,7 @@ class TestCSystemScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_tone_suppress(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSystemScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SYSTEM_SCAN_OPTS_MAP.fields
@@ -2369,7 +2371,7 @@ class TestCSystemScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_cc_loop_count(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSystemScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SYSTEM_SCAN_OPTS_MAP.fields
@@ -2379,7 +2381,7 @@ class TestCSystemScanOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_priority_scan_time(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSystemScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SYSTEM_SCAN_OPTS_MAP.fields
@@ -2403,7 +2405,7 @@ class TestCSystemScanOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_sys_scan_byte_5(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSystemScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SYSTEM_SCAN_OPTS_MAP.fields if f.name == "sys_scan_byte_5"][0]
@@ -2411,7 +2413,7 @@ class TestCSystemScanOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_sys_scan_byte_6(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSystemScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in SYSTEM_SCAN_OPTS_MAP.fields if f.name == "sys_scan_byte_6"][0]
@@ -2419,7 +2421,7 @@ class TestCSystemScanOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_system_scan_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CSystemScanOpts"
 
@@ -2432,14 +2434,14 @@ class TestCVoiceAnnunciation:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVoiceAnnunciation")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVoiceAnnunciation")
         data = extract_section_data(sec)
         assert len(data) == 12
@@ -2447,7 +2449,7 @@ class TestCVoiceAnnunciation:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_enable_voice_annunciation(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVoiceAnnunciation")
         data = extract_section_data(sec)
         fd = [f for f in VOICE_ANNUNCIATION_MAP.fields
@@ -2457,7 +2459,7 @@ class TestCVoiceAnnunciation:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_enable_verbose_playback(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVoiceAnnunciation")
         data = extract_section_data(sec)
         fd = [f for f in VOICE_ANNUNCIATION_MAP.fields
@@ -2467,7 +2469,7 @@ class TestCVoiceAnnunciation:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_power_on(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVoiceAnnunciation")
         data = extract_section_data(sec)
         fd = [f for f in VOICE_ANNUNCIATION_MAP.fields
@@ -2477,7 +2479,7 @@ class TestCVoiceAnnunciation:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_minimum_volume(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVoiceAnnunciation")
         data = extract_section_data(sec)
         fd = [f for f in VOICE_ANNUNCIATION_MAP.fields
@@ -2487,7 +2489,7 @@ class TestCVoiceAnnunciation:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_maximum_volume(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVoiceAnnunciation")
         data = extract_section_data(sec)
         fd = [f for f in VOICE_ANNUNCIATION_MAP.fields
@@ -2511,7 +2513,7 @@ class TestCVoiceAnnunciation:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_va_byte_5(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVoiceAnnunciation")
         data = extract_section_data(sec)
         fd = [f for f in VOICE_ANNUNCIATION_MAP.fields if f.name == "va_byte_5"][0]
@@ -2519,7 +2521,7 @@ class TestCVoiceAnnunciation:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_voice_annunciation(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CVoiceAnnunciation"
 
@@ -2532,14 +2534,14 @@ class TestCType99Opts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CType99Opts")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CType99Opts")
         data = extract_section_data(sec)
         assert len(data) == 4
@@ -2547,7 +2549,7 @@ class TestCType99Opts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_disable_after_ptt(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CType99Opts")
         data = extract_section_data(sec)
         fd = [f for f in TYPE99_OPTS_MAP.fields
@@ -2557,7 +2559,7 @@ class TestCType99Opts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_auto_reset(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CType99Opts")
         data = extract_section_data(sec)
         fd = [f for f in TYPE99_OPTS_MAP.fields
@@ -2574,7 +2576,7 @@ class TestCType99Opts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_type99_byte_2(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CType99Opts")
         data = extract_section_data(sec)
         fd = [f for f in TYPE99_OPTS_MAP.fields if f.name == "type99_byte_2"][0]
@@ -2582,7 +2584,7 @@ class TestCType99Opts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_type99_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CType99Opts"
 
@@ -2593,7 +2595,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_data_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         assert sec is not None
 
@@ -2605,7 +2607,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_ptt_receive_data(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2614,7 +2616,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_ptt_transmit_data(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2623,7 +2625,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_tx_data_overrides(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2632,7 +2634,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_data_interface_protocol(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2641,7 +2643,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_gps_mic_sample_interval(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2650,7 +2652,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_dcs_max_frame_retries(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2659,7 +2661,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_dcs_ack_response_timeout(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2668,7 +2670,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_dcs_data_response_timeout(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2677,7 +2679,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_ppp_slip_retry_count(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2686,7 +2688,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_ppp_slip_retry_interval(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2695,7 +2697,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_ppp_slip_ttl(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2704,7 +2706,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_service_address(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2713,7 +2715,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_mdt_address(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2722,7 +2724,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_serial_baud_rate(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2731,7 +2733,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_serial_stop_bits(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDataOpts")
         data = extract_section_data(sec)
         fd = [f for f in DATA_OPTS_MAP.fields
@@ -2763,7 +2765,7 @@ class TestCDataOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_data_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CDataOpts"
 
@@ -2774,7 +2776,7 @@ class TestCSndcpOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_sndcp_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSndcpOpts")
         assert sec is not None
 
@@ -2783,7 +2785,7 @@ class TestCSndcpOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_holdoff_timer(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CSndcpOpts")
         data = extract_section_data(sec)
         fd = [f for f in SNDCP_OPTS_MAP.fields
@@ -2800,7 +2802,7 @@ class TestCSndcpOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_sndcp_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CSndcpOpts"
 
@@ -2811,7 +2813,7 @@ class TestCGEstarOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_gestar_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGEstarOpts")
         assert sec is not None
 
@@ -2820,7 +2822,7 @@ class TestCGEstarOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_start_delay(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGEstarOpts")
         data = extract_section_data(sec)
         fd = [f for f in GESTAR_OPTS_MAP.fields
@@ -2829,7 +2831,7 @@ class TestCGEstarOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_emer_repeat(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGEstarOpts")
         data = extract_section_data(sec)
         fd = [f for f in GESTAR_OPTS_MAP.fields
@@ -2838,7 +2840,7 @@ class TestCGEstarOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_p25c_repeat_emer_tone(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGEstarOpts")
         data = extract_section_data(sec)
         fd = [f for f in GESTAR_OPTS_MAP.fields
@@ -2863,7 +2865,7 @@ class TestCGEstarOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_gestar_byte_21(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGEstarOpts")
         data = extract_section_data(sec)
         fd = [f for f in GESTAR_OPTS_MAP.fields if f.name == "gestar_byte_21"][0]
@@ -2871,7 +2873,7 @@ class TestCGEstarOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_gestar_byte_22(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CGEstarOpts")
         data = extract_section_data(sec)
         fd = [f for f in GESTAR_OPTS_MAP.fields if f.name == "gestar_byte_22"][0]
@@ -2879,7 +2881,7 @@ class TestCGEstarOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_gestar_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CGEstarOpts"
 
@@ -2890,7 +2892,7 @@ class TestCProSoundOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_prosound_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProSoundOpts")
         assert sec is not None
 
@@ -2899,7 +2901,7 @@ class TestCProSoundOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_sensitivity(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProSoundOpts")
         data = extract_section_data(sec)
         fd = [f for f in PROSCAN_OPTS_MAP.fields
@@ -2908,7 +2910,7 @@ class TestCProSoundOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_system_sample_time(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProSoundOpts")
         data = extract_section_data(sec)
         fd = [f for f in PROSCAN_OPTS_MAP.fields
@@ -2933,7 +2935,7 @@ class TestCProSoundOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_proscan_param_17(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProSoundOpts")
         data = extract_section_data(sec)
         fd = [f for f in PROSCAN_OPTS_MAP.fields if f.name == "proscan_param_17"][0]
@@ -2941,7 +2943,7 @@ class TestCProSoundOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_proscan_param_19(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProSoundOpts")
         data = extract_section_data(sec)
         fd = [f for f in PROSCAN_OPTS_MAP.fields if f.name == "proscan_param_19"][0]
@@ -2949,7 +2951,7 @@ class TestCProSoundOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_proscan_param_21(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProSoundOpts")
         data = extract_section_data(sec)
         fd = [f for f in PROSCAN_OPTS_MAP.fields if f.name == "proscan_param_21"][0]
@@ -2957,7 +2959,7 @@ class TestCProSoundOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_proscan_param_23(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProSoundOpts")
         data = extract_section_data(sec)
         fd = [f for f in PROSCAN_OPTS_MAP.fields if f.name == "proscan_param_23"][0]
@@ -2965,7 +2967,7 @@ class TestCProSoundOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_proscan_param_25(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProSoundOpts")
         data = extract_section_data(sec)
         fd = [f for f in PROSCAN_OPTS_MAP.fields if f.name == "proscan_param_25"][0]
@@ -2973,7 +2975,7 @@ class TestCProSoundOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_proscan_param_27(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProSoundOpts")
         data = extract_section_data(sec)
         fd = [f for f in PROSCAN_OPTS_MAP.fields if f.name == "proscan_param_27"][0]
@@ -2981,7 +2983,7 @@ class TestCProSoundOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_prosound_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CProSoundOpts"
 
@@ -2992,7 +2994,7 @@ class TestCVgOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_vg_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVgOpts")
         assert sec is not None
 
@@ -3004,7 +3006,7 @@ class TestCVgOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_tx_data_polarity(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVgOpts")
         data = extract_section_data(sec)
         fd = [f for f in VG_OPTS_MAP.fields
@@ -3013,7 +3015,7 @@ class TestCVgOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_rx_data_polarity(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVgOpts")
         data = extract_section_data(sec)
         fd = [f for f in VG_OPTS_MAP.fields
@@ -3022,7 +3024,7 @@ class TestCVgOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_encryption_key_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVgOpts")
         data = extract_section_data(sec)
         fd = [f for f in VG_OPTS_MAP.fields
@@ -3031,7 +3033,7 @@ class TestCVgOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_encryption_mode(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVgOpts")
         data = extract_section_data(sec)
         fd = [f for f in VG_OPTS_MAP.fields
@@ -3040,7 +3042,7 @@ class TestCVgOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_max_key_bank(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVgOpts")
         data = extract_section_data(sec)
         fd = [f for f in VG_OPTS_MAP.fields
@@ -3065,7 +3067,7 @@ class TestCVgOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_vg_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CVgOpts"
 
@@ -3076,7 +3078,7 @@ class TestCConvScanOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_conv_scan_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CConvScanOpts")
         assert sec is not None
 
@@ -3088,7 +3090,7 @@ class TestCConvScanOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_conv_scan_booleans_stride2(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CConvScanOpts")
         data = extract_section_data(sec)
         # Original stride-2 bools at offsets 0,2,4,6 are True
@@ -3102,7 +3104,7 @@ class TestCConvScanOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_conv_scan_mode(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CConvScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in CONV_SCAN_OPTS_MAP.fields
@@ -3127,7 +3129,7 @@ class TestCConvScanOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_conv_scan_double_9(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CConvScanOpts")
         data = extract_section_data(sec)
         fd = [f for f in CONV_SCAN_OPTS_MAP.fields
@@ -3136,7 +3138,7 @@ class TestCConvScanOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_conv_scan_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CConvScanOpts"
 
@@ -3147,7 +3149,7 @@ class TestCDisplayOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_display_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDisplayOpts")
         assert sec is not None
 
@@ -3159,7 +3161,7 @@ class TestCDisplayOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_display_booleans_all_true(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDisplayOpts")
         data = extract_section_data(sec)
         for fd in DISPLAY_OPTS_MAP.fields:
@@ -3168,7 +3170,7 @@ class TestCDisplayOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_display_opt_byte_12(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDisplayOpts")
         data = extract_section_data(sec)
         fd = [f for f in DISPLAY_OPTS_MAP.fields
@@ -3177,7 +3179,7 @@ class TestCDisplayOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_display_opt_double_15(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CDisplayOpts")
         data = extract_section_data(sec)
         fd = [f for f in DISPLAY_OPTS_MAP.fields
@@ -3202,7 +3204,7 @@ class TestCDisplayOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_display_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CDisplayOpts"
 
@@ -3213,7 +3215,7 @@ class TestCIgnitionOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_ignition_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CIgnitionOpts")
         assert sec is not None
 
@@ -3225,7 +3227,7 @@ class TestCIgnitionOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_ignition_timer(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CIgnitionOpts")
         data = extract_section_data(sec)
         fd = IGNITION_OPTS_MAP.fields[0]
@@ -3241,7 +3243,7 @@ class TestCIgnitionOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_ignition_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CIgnitionOpts"
 
@@ -3252,7 +3254,7 @@ class TestCNetworkOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_network_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CNetworkOpts")
         assert sec is not None
 
@@ -3264,7 +3266,7 @@ class TestCNetworkOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_network_timer_1(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CNetworkOpts")
         data = extract_section_data(sec)
         fd = [f for f in NETWORK_OPTS_MAP.fields
@@ -3273,7 +3275,7 @@ class TestCNetworkOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_network_timer_2(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CNetworkOpts")
         data = extract_section_data(sec)
         fd = [f for f in NETWORK_OPTS_MAP.fields
@@ -3298,7 +3300,7 @@ class TestCNetworkOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_network_byte_5(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CNetworkOpts")
         data = extract_section_data(sec)
         fd = [f for f in NETWORK_OPTS_MAP.fields if f.name == "network_byte_5"][0]
@@ -3306,7 +3308,7 @@ class TestCNetworkOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_network_byte_10(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CNetworkOpts")
         data = extract_section_data(sec)
         fd = [f for f in NETWORK_OPTS_MAP.fields if f.name == "network_byte_10"][0]
@@ -3314,7 +3316,7 @@ class TestCNetworkOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_network_byte_13(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CNetworkOpts")
         data = extract_section_data(sec)
         fd = [f for f in NETWORK_OPTS_MAP.fields if f.name == "network_byte_13"][0]
@@ -3322,7 +3324,7 @@ class TestCNetworkOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_network_byte_15(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CNetworkOpts")
         data = extract_section_data(sec)
         fd = [f for f in NETWORK_OPTS_MAP.fields if f.name == "network_byte_15"][0]
@@ -3330,7 +3332,7 @@ class TestCNetworkOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_network_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CNetworkOpts"
 
@@ -3341,7 +3343,7 @@ class TestCMmsOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_mms_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMmsOpts")
         assert sec is not None
 
@@ -3353,7 +3355,7 @@ class TestCMmsOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_mms_retries(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMmsOpts")
         data = extract_section_data(sec)
         fd = [f for f in MMS_OPTS_MAP.fields
@@ -3362,7 +3364,7 @@ class TestCMmsOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_mms_param_1(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMmsOpts")
         data = extract_section_data(sec)
         fd = [f for f in MMS_OPTS_MAP.fields
@@ -3371,7 +3373,7 @@ class TestCMmsOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_mms_param_2(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMmsOpts")
         data = extract_section_data(sec)
         fd = [f for f in MMS_OPTS_MAP.fields
@@ -3380,7 +3382,7 @@ class TestCMmsOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_mms_timeout(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMmsOpts")
         data = extract_section_data(sec)
         fd = [f for f in MMS_OPTS_MAP.fields
@@ -3405,7 +3407,7 @@ class TestCMmsOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_mms_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CMmsOpts"
 
@@ -3416,7 +3418,7 @@ class TestCKeypadCtrlOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_keypad_ctrl_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CKeypadCtrlOpts")
         assert sec is not None
 
@@ -3428,7 +3430,7 @@ class TestCKeypadCtrlOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_keypad_booleans_all_true(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CKeypadCtrlOpts")
         data = extract_section_data(sec)
         for fd in KEYPAD_CTRL_OPTS_MAP.fields:
@@ -3453,7 +3455,7 @@ class TestCKeypadCtrlOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_keypad_ctrl_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CKeypadCtrlOpts"
 
@@ -3464,7 +3466,7 @@ class TestCMrkOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_mrk_opts_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMrkOpts")
         assert sec is not None
 
@@ -3476,7 +3478,7 @@ class TestCMrkOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_mrk_enable(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMrkOpts")
         data = extract_section_data(sec)
         fd = MRK_OPTS_MAP.fields[0]
@@ -3492,7 +3494,7 @@ class TestCMrkOpts:
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_mrk_byte_12(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CMrkOpts")
         data = extract_section_data(sec)
         fd = [f for f in MRK_OPTS_MAP.fields if f.name == "mrk_byte_12"][0]
@@ -3500,7 +3502,7 @@ class TestCMrkOpts:
 
     @pytest.mark.skipif(not BASELINE.exists(), reason="Test PRS data not available")
     def test_baseline_has_no_mrk_opts(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CMrkOpts"
 
@@ -3525,7 +3527,7 @@ class TestFullCoverage:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_all_reserved_bytes_zero(self):
         """All _rsv_ fields should read 0, except CVgOpts bytes 6-21 (0x41)."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         # CVgOpts bytes 6-21 are encryption key placeholder (0x41), not zero
         vg_exceptions = {f"vg_rsv_{i}" for i in range(6, 22)}
         failures = []
@@ -3548,7 +3550,7 @@ class TestFullCoverage:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(), reason="Test PRS data not available")
     def test_vg_opts_cue_data_reserved(self):
         """CVgOpts bytes 6-21 are 0x41 (encryption key placeholder), not zero."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CVgOpts")
         data = extract_section_data(sec)
         for off in range(6, 22):
@@ -3588,14 +3590,14 @@ class TestCICallStructure:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CICall")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CICall")
         data = extract_section_data(sec)
         assert len(data) == 238
@@ -3604,7 +3606,7 @@ class TestCICallStructure:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_10_entries_with_separators(self):
         """CICall = 10 entries x 22B + 9 separators x 2B = 238B."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CICall")
         data = extract_section_data(sec)
         # 10*22 + 9*2 = 238
@@ -3619,7 +3621,7 @@ class TestCICallStructure:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_entries_are_default(self):
         """All ICall entries in PAWSOVERMAWS are empty (default)."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CICall")
         data = extract_section_data(sec)
         for i in range(10):
@@ -3631,7 +3633,7 @@ class TestCICallStructure:
             assert all(b == 0 for b in non_flag), f"Entry {i} not default"
 
     def test_baseline_has_no_icall(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CICall"
 
@@ -3643,14 +3645,14 @@ class TestCPhoneCallStructure:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPhoneCall")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPhoneCall")
         data = extract_section_data(sec)
         assert len(data) == 98
@@ -3659,7 +3661,7 @@ class TestCPhoneCallStructure:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_10_entries_with_separators(self):
         """CPhoneCall = 10 entries x 8B + 9 separators x 2B = 98B."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPhoneCall")
         data = extract_section_data(sec)
         assert 10 * 8 + 9 * 2 == 98
@@ -3672,7 +3674,7 @@ class TestCPhoneCallStructure:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_entries_are_default(self):
         """All PhoneCall entries in PAWSOVERMAWS are default."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPhoneCall")
         data = extract_section_data(sec)
         default_entry = bytes([0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00])
@@ -3682,7 +3684,7 @@ class TestCPhoneCallStructure:
             assert entry == default_entry, f"Entry {i} not default"
 
     def test_baseline_has_no_phone_call(self):
-        prs = parse_prs(BASELINE)
+        prs = cached_parse_prs(BASELINE)
         for s in prs.sections:
             assert s.class_name != "CPhoneCall"
 
@@ -3693,7 +3695,7 @@ class TestCPrgrmCountSections:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_prgrm_icall_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPrgrmICall")
         assert sec is not None
 
@@ -3702,7 +3704,7 @@ class TestCPrgrmCountSections:
     def test_prgrm_icall_count_is_10(self):
         """CPrgrmICall stores uint16 entry count = 10."""
         import struct
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPrgrmICall")
         data = extract_section_data(sec)
         assert len(data) == 2
@@ -3714,7 +3716,7 @@ class TestCPrgrmCountSections:
     def test_prgrm_phone_call_count_is_10(self):
         """CPrgrmPhoneCall stores uint16 entry count = 10."""
         import struct
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CPrgrmPhoneCall")
         data = extract_section_data(sec)
         assert len(data) == 2
@@ -3728,14 +3730,14 @@ class TestCCustomScanList:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CCustomScanList")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CCustomScanList")
         data = extract_section_data(sec)
         assert len(data) == 8
@@ -3744,7 +3746,7 @@ class TestCCustomScanList:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_empty_scan_list(self):
         """CCustomScanList is all zeros when no custom scan lists configured."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CCustomScanList")
         data = extract_section_data(sec)
         assert all(b == 0 for b in data)
@@ -3756,14 +3758,14 @@ class TestCProFileOpts:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProFileOpts")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProFileOpts")
         data = extract_section_data(sec)
         assert len(data) == 3
@@ -3772,7 +3774,7 @@ class TestCProFileOpts:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_profile_values(self):
         """CProFileOpts stores profile config: [00 01 04]."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProFileOpts")
         data = extract_section_data(sec)
         assert data[0] == 0x00
@@ -3787,14 +3789,14 @@ class TestCProgButtonsStructure:
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_section_present(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProgButtons")
         assert sec is not None
 
     @pytest.mark.skipif(not PAWSOVERMAWS.exists(),
                         reason="PAWSOVERMAWS.PRS not available")
     def test_data_size(self):
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProgButtons")
         data = extract_section_data(sec)
         assert len(data) == 66
@@ -3803,7 +3805,7 @@ class TestCProgButtonsStructure:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_personality_name(self):
         """CProgButtons data[2] is LPS for personality filename."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProgButtons")
         data = extract_section_data(sec)
         fn_len = data[2]
@@ -3815,7 +3817,7 @@ class TestCProgButtonsStructure:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_username(self):
         """CProgButtons stores username after personality name."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProgButtons")
         data = extract_section_data(sec)
         # Skip: 2 nulls + LPS(16 chars) + 2 nulls = offset 21
@@ -3829,7 +3831,7 @@ class TestCProgButtonsStructure:
     def test_band_limits(self):
         """CProgButtons contains 4 band-limit doubles (136.0, 870.0 x2)."""
         import struct
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProgButtons")
         data = extract_section_data(sec)
         # Band limits at offset 30 (after name+user+marker+pad)
@@ -3846,7 +3848,7 @@ class TestCProgButtonsStructure:
                         reason="PAWSOVERMAWS.PRS not available")
     def test_trailer(self):
         """CProgButtons ends with 7e 00 XX 00 (XX = trunk set count)."""
-        prs = parse_prs(PAWSOVERMAWS)
+        prs = cached_parse_prs(PAWSOVERMAWS)
         sec = prs.get_section_by_class("CProgButtons")
         data = extract_section_data(sec)
         assert data[-4] == 0x7E
@@ -3856,6 +3858,6 @@ class TestCProgButtonsStructure:
 
     def test_baseline_has_no_prog_buttons(self):
         """Baseline (minimal) file has no CProgButtons section."""
-        prs = parse_prs(CLAUDE_TEST)
+        prs = cached_parse_prs(CLAUDE_TEST)
         for s in prs.sections:
             assert s.class_name != "CProgButtons"

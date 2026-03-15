@@ -11,9 +11,9 @@ interact correctly in real-world scenarios:
 
 import pytest
 from pathlib import Path
-from copy import deepcopy
 
 from quickprs.prs_parser import parse_prs, parse_prs_bytes
+from conftest import cached_parse_prs
 from quickprs.prs_writer import write_prs
 from quickprs.binary_io import read_uint16_le
 from quickprs.record_types import (
@@ -74,8 +74,8 @@ class TestSystemLifecycle:
 
     def test_add_validate_compare_remove(self):
         """Full lifecycle: inject P25 system, validate, compare, remove."""
-        prs_original = parse_prs(CLAUDE)
-        prs_modified = parse_prs(CLAUDE)
+        prs_original = cached_parse_prs(CLAUDE)
+        prs_modified = cached_parse_prs(CLAUDE)
 
         # Step 1: Inject a complete P25 trunked system
         config = P25TrkSystemConfig(
@@ -122,7 +122,7 @@ class TestSystemLifecycle:
 
     def test_add_conv_and_p25conv_systems(self):
         """Add both conventional and P25 conv systems."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         original_bytes = prs.to_bytes()
 
         # Add conventional analog system
@@ -158,7 +158,7 @@ class TestSystemLifecycle:
 
     def test_multiple_systems_then_remove_one(self):
         """Add 3 systems, remove the middle one, verify others intact."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         names = ["ALPHA", "BRAVO", "CHARLI"]
         for name in names:
@@ -223,7 +223,7 @@ class TestStressScenarios:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_large_group_set_injection(self):
         """Inject 100 TGs into claude test and verify roundtrip."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         tgs = [make_p25_group(i, f"TG{i:05d}", f"TG {i:05d} NAME")
                for i in range(100)]
         add_talkgroups(prs, "GROUP SE", tgs)
@@ -239,7 +239,7 @@ class TestStressScenarios:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_large_trunk_set_injection(self):
         """Inject 50 trunk channels."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         channels = [make_trunk_channel(851.0 + i * 0.025, 806.0 + i * 0.025)
                      for i in range(50)]
         tsets = _get_trunk_sets(prs)
@@ -255,7 +255,7 @@ class TestStressScenarios:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_many_sets_injection(self):
         """Add 5 group sets and 5 trunk sets."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         for i in range(5):
             gset = make_group_set(f"GS{i}", [(i * 100 + j, f"T{i}{j:02d}",
                                                f"TEST SET {i} TG {j}")
@@ -309,7 +309,7 @@ class TestUndoWorkflow:
 
     def test_undo_via_bytes_snapshot(self):
         """Simulate undo: save bytes before modify, restore after."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         snapshot = prs.to_bytes()
 
         # Modify
@@ -329,7 +329,7 @@ class TestUndoWorkflow:
 
     def test_multiple_undo_levels(self):
         """Simulate multi-level undo with multiple snapshots."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         snapshots = [prs.to_bytes()]
 
         # Level 1: add 1 TG
@@ -363,8 +363,8 @@ class TestComparisonIntegration:
 
     def test_compare_before_after_group_add(self):
         """Adding groups shows CHANGED in comparison."""
-        prs_before = parse_prs(CLAUDE)
-        prs_after = parse_prs(CLAUDE)
+        prs_before = cached_parse_prs(CLAUDE)
+        prs_after = cached_parse_prs(CLAUDE)
 
         add_talkgroups(prs_after, "GROUP SE",
                         [make_p25_group(500, "COMP TG", "COMPARE TG")])
@@ -376,8 +376,8 @@ class TestComparisonIntegration:
 
     def test_compare_before_after_system_add(self):
         """Adding full system shows multiple ADDED entries."""
-        prs_before = parse_prs(CLAUDE)
-        prs_after = parse_prs(CLAUDE)
+        prs_before = cached_parse_prs(CLAUDE)
+        prs_after = cached_parse_prs(CLAUDE)
 
         config = P25TrkSystemConfig(
             system_name="DIFFSYS",
@@ -397,7 +397,7 @@ class TestComparisonIntegration:
 
     def test_compare_pawsovermaws_vs_claude(self):
         """PAWSOVERMAWS has significantly more data than claude test."""
-        diffs = compare_prs(parse_prs(PAWS), parse_prs(CLAUDE))
+        diffs = compare_prs(cached_parse_prs(PAWS), cached_parse_prs(CLAUDE))
 
         removed = [d for d in diffs if d[0] == REMOVED]
         assert len(removed) >= 5  # Many sets/systems in PAWS not in claude
@@ -417,21 +417,21 @@ class TestValidationIntegration:
 
     def test_pawsovermaws_validates_clean(self):
         """PAWSOVERMAWS has no validation errors."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         issues = validate_prs(prs)
         errors = [i for i in issues if i[0] == ERROR]
         assert len(errors) == 0
 
     def test_claude_test_validates_clean(self):
         """claude test.PRS has no validation errors."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         issues = validate_prs(prs)
         errors = [i for i in issues if i[0] == ERROR]
         assert len(errors) == 0
 
     def test_detailed_validation_categorized(self):
         """validate_prs_detailed groups issues by set name."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         result = validate_prs_detailed(prs)
         assert isinstance(result, dict)
         for key in result:
@@ -439,7 +439,7 @@ class TestValidationIntegration:
 
     def test_validation_after_injection(self):
         """Modified file still validates after injection."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         config = P25TrkSystemConfig(
             system_name="VALID",
             long_name="VALIDATION TEST",
@@ -466,7 +466,7 @@ class TestFileIO:
 
     def test_write_modified_and_reread(self, tmp_path):
         """Inject → write to disk → re-read → verify data intact."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         add_talkgroups(prs, "GROUP SE",
                         [make_p25_group(777, "IO TEST", "IO TEST TG")])
 
@@ -483,7 +483,7 @@ class TestFileIO:
 
     def test_write_pawsovermaws_modified(self, tmp_path):
         """Modify PAWSOVERMAWS, write, re-read, verify."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         gset = make_group_set("IOTEST", [(999, "IO TG", "IO TEST TG")])
         add_group_set(prs, gset)
 
@@ -498,7 +498,7 @@ class TestFileIO:
 
     def test_backup_creation(self, tmp_path):
         """write_prs creates a .bak backup file."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         outpath = tmp_path / "backup_test.PRS"
         outpath.write_bytes(prs.to_bytes())
 
@@ -523,7 +523,7 @@ class TestPreferredIntegration:
     def test_preferred_roundtrip_after_add(self):
         """Add preferred entries, verify they survive roundtrip."""
         from quickprs.record_types import PreferredSystemEntry
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         orig_entries, orig_iden, orig_chain = get_preferred_entries(prs)
 
@@ -558,7 +558,7 @@ class TestIdenDedup:
             find_matching_iden_set, get_template,
         )
 
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         template = get_template("800-TDMA")
         iset = make_iden_set("8TDMA", template.entries)
         add_iden_set(prs, iset)
@@ -573,7 +573,7 @@ class TestIdenDedup:
             find_matching_iden_set, get_template,
         )
 
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         template = get_template("800-FDMA")
         iset = make_iden_set("8FDMA", template.entries)
         add_iden_set(prs, iset)
@@ -604,7 +604,7 @@ class TestIdenDedup:
             find_matching_iden_set, get_template,
         )
 
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         # First system with IDEN
         template = get_template("800-TDMA")
@@ -662,7 +662,7 @@ class TestImportEdgeCases:
 
     def test_empty_talkgroup_list_still_injects_freqs(self):
         """System with frequencies but no talkgroups should still inject."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         config = P25TrkSystemConfig(
             system_name="NOGROUPS",
             long_name="NO GROUPS SYS",
@@ -685,7 +685,7 @@ class TestImportEdgeCases:
         """System with both ECC entries and IDEN set roundtrips."""
         from quickprs.iden_library import get_template
 
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         ecc = [
             EnhancedCCEntry(entry_type=3, system_id=892,
@@ -947,7 +947,7 @@ class TestModifyExisting:
 
     def test_modify_pawsovermaws_add_system(self):
         """Add a new P25 system to PAWSOVERMAWS, verify all existing data preserved."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         original_bytes = prs.to_bytes()
 
         # Count existing data before modification
@@ -1015,7 +1015,7 @@ class TestModifyExisting:
 
     def test_modify_pawsovermaws_add_and_remove(self):
         """Add a system then remove it, verify file returns to near-original state."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         original_bytes = prs.to_bytes()
 
         # Snapshot original group/trunk data
@@ -1065,7 +1065,7 @@ class TestModifyExisting:
             parse_p25_conv_channel_section, parse_sets_from_sections,
         )
 
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         # Capture original P25ConvChannel data before modification
         pc_sec = prs.get_section_by_class("CP25ConvChannel")
@@ -1164,7 +1164,7 @@ class TestEdgeCases:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_max_trunk_channels(self):
         """Inject 1024 trunk frequencies in one set."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         channels = [make_trunk_channel(851.0 + i * 0.00625, 806.0 + i * 0.00625)
                      for i in range(1024)]
         tsets = _get_trunk_sets(prs)
@@ -1193,7 +1193,7 @@ class TestEdgeCases:
         assert channel.long_name == "TESTCH"
 
         # Inject group with empty name and verify roundtrip
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         add_talkgroups(prs, "GROUP SE", [group])
         modified = prs.to_bytes()
         prs2 = parse_prs_bytes(modified)
@@ -1205,7 +1205,7 @@ class TestEdgeCases:
         # P25Group names are written as LPS (length-prefixed string).
         # Non-ASCII characters may raise or be silently truncated.
         # The important thing is that it doesn't crash and roundtrips.
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         # Short names are encoded to bytes — non-ASCII will fail at encode time
         # or be mangled. Test that we at least handle ASCII-safe truncation.
@@ -1259,7 +1259,7 @@ class TestEdgeCases:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_duplicate_talkgroup_ids_different_sets(self):
         """Same talkgroup ID in different sets should be OK."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
 
         # Add two group sets with overlapping TG IDs
         gset1 = make_group_set("SET1", [(100, "SET1TG", "SET 1 TG 100")])
@@ -1346,7 +1346,7 @@ class TestRoundtripStress:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_modify_write_reparse(self):
         """Open PAWSOVERMAWS, modify every section type, write, re-parse, verify."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
 
         # 1. Add a talkgroup to an existing group set
         add_talkgroups(prs, "PSERN PD",
@@ -1707,7 +1707,7 @@ class TestCrossValidation:
     def test_pawsovermaws_original_roundtrip(self):
         """PAWSOVERMAWS should be byte-for-byte identical after parse->to_bytes."""
         original = PAWS.read_bytes()
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         reassembled = prs.to_bytes()
         assert reassembled == original, \
             f"Roundtrip mismatch: {len(original)} vs {len(reassembled)} bytes"
@@ -1716,7 +1716,7 @@ class TestCrossValidation:
     def test_claude_test_original_roundtrip(self):
         """claude test.PRS should be byte-for-byte identical after parse->to_bytes."""
         original = CLAUDE.read_bytes()
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         reassembled = prs.to_bytes()
         assert reassembled == original, \
             f"Roundtrip mismatch: {len(original)} vs {len(reassembled)} bytes"

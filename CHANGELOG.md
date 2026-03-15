@@ -2,6 +2,29 @@
 
 All notable changes to QuickPRS will be documented in this file.
 
+## [1.0.2] - 2026-03-15
+
+### Added
+- Configuration health check with 15+ best practice checks (`quickprs health`)
+- Smart improvement suggestions with CLI commands (`quickprs suggest`)
+- Frequency spectrum map visualization (`quickprs freq-map`)
+- Fleet consistency checker for comparing radio configs (`quickprs fleet-check`)
+- Configuration snapshots for change tracking (`quickprs snapshot`)
+- Department-specific profiles: fire, law enforcement, EMS, search & rescue
+- Export PRS to editable INI config (`quickprs export-config`)
+- File watcher with auto-validation (`quickprs watch`)
+- CLI cheat sheet (`quickprs cheat-sheet`)
+- 4,000+ automated tests
+
+### Fixed
+- Duplicate cmd_rename/cmd_sort definitions causing backup skips
+- Unicode crash in write_lps and build_personality_section
+- run.py only routing 10 of 45 CLI commands
+- 8 missing hidden imports in build.py
+
+### Improved
+- Test suite optimized with session-scoped PRS parsing cache
+
 ## [1.0.1] - 2026-03-15
 
 ### Added

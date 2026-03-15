@@ -13,6 +13,7 @@ from quickprs.config_builder import (
     _build_template_cache, _detect_template, _flatten_config,
 )
 from quickprs.prs_parser import parse_prs, parse_prs_bytes
+from conftest import cached_parse_prs
 from quickprs.json_io import prs_to_dict
 from quickprs.validation import validate_prs, ERROR
 from quickprs.profile_templates import (
@@ -154,7 +155,7 @@ class TestExportPawsovermaws:
     def paws_prs(self):
         if not PAWS.exists():
             pytest.skip("PAWSOVERMAWS.PRS not found")
-        return parse_prs(PAWS)
+        return cached_parse_prs(PAWS)
 
     def test_paws_exports(self, paws_prs, tmp_path):
         """PAWSOVERMAWS exports without error."""
@@ -312,7 +313,7 @@ class TestExportRoundtrip:
     def paws_prs(self):
         if not PAWS.exists():
             pytest.skip("PAWSOVERMAWS.PRS not found")
-        return parse_prs(PAWS)
+        return cached_parse_prs(PAWS)
 
     def test_paws_roundtrip_exports_and_rebuilds(self, paws_prs, tmp_path):
         """PAWSOVERMAWS export -> rebuild produces valid PRS."""

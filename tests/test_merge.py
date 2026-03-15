@@ -8,6 +8,7 @@ from quickprs.cli import (
     run_cli, cmd_merge, cmd_inject_conv, cmd_create,
 )
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.validation import validate_prs, ERROR, WARNING
 from quickprs.injector import merge_prs
 
@@ -75,7 +76,7 @@ class TestMergePrsFunction:
         """Merge PAWSOVERMAWS into a blank PRS — all systems copied."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         stats = merge_prs(target, source)
 
@@ -86,7 +87,7 @@ class TestMergePrsFunction:
         """merge_prs should return a stats dict."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         stats = merge_prs(target, source)
 
@@ -99,7 +100,7 @@ class TestMergePrsFunction:
         """Merge with include_channels=False should only add P25 systems."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         stats = merge_prs(target, source,
                           include_systems=True, include_channels=False)
@@ -111,7 +112,7 @@ class TestMergePrsFunction:
         """Merge with include_systems=False should only add conv systems."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         stats = merge_prs(target, source,
                           include_systems=False, include_channels=True)
@@ -123,7 +124,7 @@ class TestMergePrsFunction:
         """Merging same source twice should skip on second merge."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         stats1 = merge_prs(target, source)
         first_added = stats1['p25_added'] + stats1['conv_added']
@@ -140,7 +141,7 @@ class TestMergePrsFunction:
         """Merge with both disabled should do nothing."""
         blank_path = _create_blank(tmp_path)
         target = parse_prs(blank_path)
-        source = parse_prs(str(PAWS))
+        source = cached_parse_prs(str(PAWS))
 
         stats = merge_prs(target, source,
                           include_systems=False, include_channels=False)
@@ -346,7 +347,7 @@ class TestMergeDataIntegrity:
     def test_merge_preserves_target_data(self, capsys, tmp_path):
         """Merging into PAWS should preserve its existing systems."""
         target = _copy_prs(PAWS, tmp_path, "target.PRS")
-        prs_before = parse_prs(str(PAWS))
+        prs_before = cached_parse_prs(str(PAWS))
         p25_before = _get_system_names(prs_before, "CP25TrkSystem")
 
         cmd_merge(target, str(CLAUDE))

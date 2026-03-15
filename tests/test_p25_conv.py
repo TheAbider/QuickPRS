@@ -16,6 +16,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from quickprs.prs_parser import parse_prs, parse_prs_bytes
+from conftest import cached_parse_prs
 from quickprs.binary_io import read_uint16_le
 from quickprs.record_types import (
     P25ConvChannel, P25ConvSet,
@@ -36,7 +37,7 @@ CLAUDE = TESTDATA / "claude test.PRS"
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_p25_conv_set_parse():
     """CP25ConvSet section parses correctly (header + channel count)."""
-    prs = parse_prs(TESTDATA / "claude test.PRS")
+    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
     sec = prs.get_section_by_class("CP25ConvSet")
     assert sec is not None
 
@@ -50,7 +51,7 @@ def test_p25_conv_set_parse():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_p25_conv_set_roundtrip():
     """CP25ConvSet section rebuilds byte-identically."""
-    prs = parse_prs(TESTDATA / "claude test.PRS")
+    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
     sec = prs.get_section_by_class("CP25ConvSet")
     _, _, _, ds = parse_class_header(sec.raw, 0)
     count, _ = read_uint16_le(sec.raw, ds)
@@ -65,7 +66,7 @@ def test_p25_conv_set_roundtrip():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_p25_conv_channel_header():
     """CP25ConvChannel section has correct header bytes."""
-    prs = parse_prs(TESTDATA / "claude test.PRS")
+    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
     sec = prs.get_section_by_class("CP25ConvChannel")
     assert sec is not None
 
@@ -77,7 +78,7 @@ def test_p25_conv_channel_header():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_p25_conv_channel_parse_fields():
     """Parse P25ConvChannel fields from claude test.PRS."""
-    prs = parse_prs(TESTDATA / "claude test.PRS")
+    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
     set_sec = prs.get_section_by_class("CP25ConvSet")
     ch_sec = prs.get_section_by_class("CP25ConvChannel")
 
@@ -106,7 +107,7 @@ def test_p25_conv_channel_parse_fields():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_p25_conv_channel_flags():
     """P25ConvChannel flags decode correctly."""
-    prs = parse_prs(TESTDATA / "claude test.PRS")
+    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
     set_sec = prs.get_section_by_class("CP25ConvSet")
     ch_sec = prs.get_section_by_class("CP25ConvChannel")
 
@@ -127,7 +128,7 @@ def test_p25_conv_channel_flags():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_p25_conv_set_metadata():
     """P25ConvSet metadata fields parse correctly."""
-    prs = parse_prs(TESTDATA / "claude test.PRS")
+    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
     set_sec = prs.get_section_by_class("CP25ConvSet")
     ch_sec = prs.get_section_by_class("CP25ConvChannel")
 
@@ -152,7 +153,7 @@ def test_p25_conv_set_metadata():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_p25_conv_channel_section_roundtrip():
     """CP25ConvChannel section rebuilds byte-identically."""
-    prs = parse_prs(TESTDATA / "claude test.PRS")
+    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
     set_sec = prs.get_section_by_class("CP25ConvSet")
     ch_sec = prs.get_section_by_class("CP25ConvChannel")
 
@@ -170,7 +171,7 @@ def test_p25_conv_channel_section_roundtrip():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_p25_conv_channel_record_roundtrip():
     """Individual P25ConvChannel record roundtrips."""
-    prs = parse_prs(TESTDATA / "claude test.PRS")
+    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
     set_sec = prs.get_section_by_class("CP25ConvSet")
     ch_sec = prs.get_section_by_class("CP25ConvChannel")
 
@@ -197,7 +198,7 @@ def test_p25_conv_channel_record_roundtrip():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_p25_conv_full_file_roundtrip():
     """Full file roundtrip with P25 conv channel sections intact."""
-    prs = parse_prs(TESTDATA / "claude test.PRS")
+    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
     raw_original = prs.to_bytes()
     prs2 = parse_prs_bytes(raw_original)
     raw_rebuilt = prs2.to_bytes()
@@ -210,7 +211,7 @@ def test_p25_conv_full_file_roundtrip():
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_p25_conv_parse_sets_from_sections():
     """parse_sets_from_sections works with P25 conv sections."""
-    prs = parse_prs(TESTDATA / "claude test.PRS")
+    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
     set_sec = prs.get_section_by_class("CP25ConvSet")
     ch_sec = prs.get_section_by_class("CP25ConvChannel")
 

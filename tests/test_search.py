@@ -10,6 +10,7 @@ from quickprs.search import (
     format_search_results,
 )
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 
 TESTDATA = Path(__file__).parent / "testdata"
 PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
@@ -73,7 +74,7 @@ class TestSearchFreqReal:
     def test_find_known_freq_in_paws(self):
         """Search for a frequency that exists in PAWS test file."""
         # Parse first to find a real frequency
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         from quickprs.record_types import (
             parse_trunk_channel_section, parse_conv_channel_section,
             parse_sets_from_sections,
@@ -231,7 +232,7 @@ class TestSearchNameReal:
     def test_find_paws_system(self):
         """PAWS file should match its system name."""
         # Check what systems exist in the file
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         from quickprs.record_types import parse_system_short_name
         for cls in ('CP25TrkSystem', 'CConvSystem', 'CP25ConvSystem'):
             for sec in prs.get_sections_by_class(cls):
@@ -245,7 +246,7 @@ class TestSearchNameReal:
 
     def test_partial_name_match(self):
         """Partial name matches should work."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         from quickprs.record_types import parse_system_short_name
         for cls in ('CP25TrkSystem', 'CConvSystem'):
             for sec in prs.get_sections_by_class(cls):

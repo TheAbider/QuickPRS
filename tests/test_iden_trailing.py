@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.binary_io import read_uint16_le
 from quickprs.record_types import (
     IdenElement, IdenDataSet,
@@ -44,7 +45,7 @@ class TestExtractIdenTrailingData:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_size(self):
         """PAWSOVERMAWS has 3 IDEN sets, trailing = 3126 bytes."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CDefaultIdenElem")
         first_count = _get_first_count(prs, "CIdenDataSet")
         trailing = extract_iden_trailing_data(sec.raw, first_count)
@@ -53,7 +54,7 @@ class TestExtractIdenTrailingData:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_starts_with_zeros(self):
         """Trailing data begins with 6 zero-byte padding."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CDefaultIdenElem")
         first_count = _get_first_count(prs, "CIdenDataSet")
         trailing = extract_iden_trailing_data(sec.raw, first_count)
@@ -62,7 +63,7 @@ class TestExtractIdenTrailingData:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_has_ff_marker(self):
         """Trailing data has ff marker at byte 6."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CDefaultIdenElem")
         first_count = _get_first_count(prs, "CIdenDataSet")
         trailing = extract_iden_trailing_data(sec.raw, first_count)
@@ -71,7 +72,7 @@ class TestExtractIdenTrailingData:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_xml_length(self):
         """uint16 LE at byte 7 gives XML length = 3035."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CDefaultIdenElem")
         first_count = _get_first_count(prs, "CIdenDataSet")
         trailing = extract_iden_trailing_data(sec.raw, first_count)
@@ -81,7 +82,7 @@ class TestExtractIdenTrailingData:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_has_platform_xml(self):
         """Trailing data contains <platformConfig> XML."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CDefaultIdenElem")
         first_count = _get_first_count(prs, "CIdenDataSet")
         trailing = extract_iden_trailing_data(sec.raw, first_count)
@@ -91,7 +92,7 @@ class TestExtractIdenTrailingData:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_has_passwords(self):
         """Trailing data contains LPS password strings '1115'."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CDefaultIdenElem")
         first_count = _get_first_count(prs, "CIdenDataSet")
         trailing = extract_iden_trailing_data(sec.raw, first_count)
@@ -101,7 +102,7 @@ class TestExtractIdenTrailingData:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_has_guid(self):
         """Trailing data contains the radio GUID."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CDefaultIdenElem")
         first_count = _get_first_count(prs, "CIdenDataSet")
         trailing = extract_iden_trailing_data(sec.raw, first_count)
@@ -109,7 +110,7 @@ class TestExtractIdenTrailingData:
 
     def test_claude_test_trailing_size(self):
         """claude test.PRS has 1 IDEN set, trailing = 39 bytes."""
-        prs = parse_prs(TESTDATA / "claude test.PRS")
+        prs = cached_parse_prs(TESTDATA / "claude test.PRS")
         sec = prs.get_section_by_class("CDefaultIdenElem")
         first_count = _get_first_count(prs, "CIdenDataSet")
         trailing = extract_iden_trailing_data(sec.raw, first_count)
@@ -117,7 +118,7 @@ class TestExtractIdenTrailingData:
 
     def test_claude_test_trailing_all_zeros(self):
         """claude test.PRS trailing data is all zeros."""
-        prs = parse_prs(TESTDATA / "claude test.PRS")
+        prs = cached_parse_prs(TESTDATA / "claude test.PRS")
         sec = prs.get_section_by_class("CDefaultIdenElem")
         first_count = _get_first_count(prs, "CIdenDataSet")
         trailing = extract_iden_trailing_data(sec.raw, first_count)
@@ -133,7 +134,7 @@ class TestIdenInjectionPreservesTrailing:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_xml_preserved(self):
         """After IDEN injection on PAWSOVERMAWS, platformConfig XML is intact."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         xml_before = extract_platform_xml(prs)
         assert xml_before is not None, "XML missing before injection"
 
@@ -151,7 +152,7 @@ class TestIdenInjectionPreservesTrailing:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_passwords_preserved(self):
         """After IDEN injection on PAWSOVERMAWS, passwords are intact."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         prs2 = deepcopy(prs)
         iset = make_iden_set("TEST", [
             {"base_freq_hz": 851012500, "chan_spacing_hz": 12500,
@@ -166,7 +167,7 @@ class TestIdenInjectionPreservesTrailing:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_guid_preserved(self):
         """After IDEN injection on PAWSOVERMAWS, radio GUID is intact."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         prs2 = deepcopy(prs)
         iset = make_iden_set("TEST", [
             {"base_freq_hz": 851012500, "chan_spacing_hz": 12500,
@@ -180,7 +181,7 @@ class TestIdenInjectionPreservesTrailing:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_trailing_bytes_exact(self):
         """Trailing data is byte-for-byte identical after injection."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         first_count = _get_first_count(prs, "CIdenDataSet")
         sec_before = prs.get_section_by_class("CDefaultIdenElem")
         trailing_before = extract_iden_trailing_data(sec_before.raw, first_count)
@@ -203,7 +204,7 @@ class TestIdenInjectionPreservesTrailing:
 
     def test_claude_test_trailing_zeros_preserved(self):
         """After IDEN injection on claude test.PRS, trailing zeros preserved."""
-        prs = parse_prs(TESTDATA / "claude test.PRS")
+        prs = cached_parse_prs(TESTDATA / "claude test.PRS")
         first_count = _get_first_count(prs, "CIdenDataSet")
         sec_before = prs.get_section_by_class("CDefaultIdenElem")
         trailing_before = extract_iden_trailing_data(sec_before.raw, first_count)
@@ -225,7 +226,7 @@ class TestIdenInjectionPreservesTrailing:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_section_grew(self):
         """After adding an IDEN set, section is larger (new set + preserved trailing)."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec_before = prs.get_section_by_class("CDefaultIdenElem")
         size_before = len(sec_before.raw)
 
@@ -245,7 +246,7 @@ class TestIdenInjectionPreservesTrailing:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_pawsovermaws_iden_sets_parse_after_injection(self):
         """All IDEN sets (original + injected) still parse correctly."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         prs2 = deepcopy(prs)
         iset = make_iden_set("NEWIDN", [
             {"base_freq_hz": 851012500, "chan_spacing_hz": 12500,

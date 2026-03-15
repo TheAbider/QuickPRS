@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.binary_io import read_uint16_le
 import pytest
 from quickprs.record_types import (
@@ -36,7 +37,7 @@ class TestPersonalityPawsovermaws:
     """CPersonality tests using PAWSOVERMAWS.PRS (saved by RPM)."""
 
     def setup_method(self):
-        self.prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        self.prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         self.sec = self.prs.get_section_by_class("CPersonality")
 
     def test_section_exists(self):
@@ -115,7 +116,7 @@ class TestPersonalityClaudeTest:
     """CPersonality tests using claude test.PRS (never saved by user)."""
 
     def setup_method(self):
-        self.prs = parse_prs(TESTDATA / "claude test.PRS")
+        self.prs = cached_parse_prs(TESTDATA / "claude test.PRS")
         self.sec = self.prs.get_section_by_class("CPersonality")
 
     def test_section_exists(self):
@@ -307,14 +308,14 @@ class TestWanOpts:
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_parse_pawsovermaws_count(self):
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CP25tWanOpts")
         assert sec is not None
         count = parse_wan_opts_section(sec.raw)
         assert count == 9
 
     def test_parse_claude_test_count(self):
-        prs = parse_prs(TESTDATA / "claude test.PRS")
+        prs = cached_parse_prs(TESTDATA / "claude test.PRS")
         sec = prs.get_section_by_class("CP25tWanOpts")
         assert sec is not None
         count = parse_wan_opts_section(sec.raw)
@@ -328,14 +329,14 @@ class TestWanOpts:
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_build_roundtrip_pawsovermaws(self):
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CP25tWanOpts")
         count = parse_wan_opts_section(sec.raw)
         rebuilt = build_wan_opts_section(count)
         assert rebuilt == sec.raw
 
     def test_build_roundtrip_claude_test(self):
-        prs = parse_prs(TESTDATA / "claude test.PRS")
+        prs = cached_parse_prs(TESTDATA / "claude test.PRS")
         sec = prs.get_section_by_class("CP25tWanOpts")
         count = parse_wan_opts_section(sec.raw)
         rebuilt = build_wan_opts_section(count)
@@ -358,7 +359,7 @@ class TestWanSectionPawsovermaws:
     """CP25TrkWan tests using PAWSOVERMAWS.PRS (9 WAN entries)."""
 
     def setup_method(self):
-        self.prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        self.prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         self.sec = self.prs.get_section_by_class("CP25TrkWan")
         self.entries = parse_wan_section(self.sec.raw)
 
@@ -455,7 +456,7 @@ class TestWanSectionClaudeTest:
     """CP25TrkWan tests using claude test.PRS (1 WAN entry)."""
 
     def setup_method(self):
-        self.prs = parse_prs(TESTDATA / "claude test.PRS")
+        self.prs = cached_parse_prs(TESTDATA / "claude test.PRS")
         self.sec = self.prs.get_section_by_class("CP25TrkWan")
         self.entries = parse_wan_section(self.sec.raw)
 
@@ -651,7 +652,7 @@ class TestWanSeparator:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_separator_in_pawsovermaws(self):
         """PAWSOVERMAWS CP25TrkWan section should contain 8 separators (9 entries)."""
-        prs = parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
+        prs = cached_parse_prs(TESTDATA / "PAWSOVERMAWS.PRS")
         sec = prs.get_section_by_class("CP25TrkWan")
         # Count separators in the raw section data (after header)
         _, _, _, data_start = parse_class_header(sec.raw, 0)
@@ -668,7 +669,7 @@ class TestWanSeparator:
 
     def test_no_separator_in_claude_test(self):
         """claude test has 1 WAN entry, so no separators."""
-        prs = parse_prs(TESTDATA / "claude test.PRS")
+        prs = cached_parse_prs(TESTDATA / "claude test.PRS")
         sec = prs.get_section_by_class("CP25TrkWan")
         _, _, _, data_start = parse_class_header(sec.raw, 0)
         data = sec.raw[data_start:]

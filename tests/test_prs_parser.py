@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from quickprs.prs_parser import parse_prs, parse_prs_bytes, Section, PRSFile
+from conftest import cached_parse_prs
 from quickprs.prs_writer import write_prs
 
 
@@ -88,14 +89,14 @@ class TestParsePrs:
 
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test file not found")
     def test_parse_claude(self):
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         assert prs.file_size == 9652
         assert len(prs.sections) == 26
         assert prs.filepath.endswith("claude test.PRS")
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test file not found")
     def test_parse_paws(self):
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         assert prs.file_size == 46822
         assert len(prs.sections) == 63
 
@@ -103,33 +104,33 @@ class TestParsePrs:
     def test_byte_identical_roundtrip(self):
         """Parsing and reassembling should produce identical bytes."""
         original = CLAUDE.read_bytes()
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         reassembled = prs.to_bytes()
         assert original == reassembled
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test file not found")
     def test_paws_roundtrip(self):
         original = PAWS.read_bytes()
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         assert prs.to_bytes() == original
 
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test file not found")
     def test_sections_are_contiguous(self):
         """Sections should cover the entire file with no gaps."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         total = sum(len(s.raw) for s in prs.sections)
         assert total == prs.file_size
 
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test file not found")
     def test_all_sections_start_with_ffff(self):
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         for sec in prs.sections:
             assert sec.raw[:2] == b"\xff\xff", (
                 f"Section at {sec.offset} does not start with ffff")
 
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test file not found")
     def test_named_sections_found(self):
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         names = [s.class_name for s in prs.sections if s.class_name]
         assert "CPersonality" in names
         assert "CP25TrkSystem" in names
@@ -163,7 +164,7 @@ class TestParsePrsBytes:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test file not found")
     def test_parse_bytes_matches_parse_file(self):
         data = CLAUDE.read_bytes()
-        prs_file = parse_prs(CLAUDE)
+        prs_file = cached_parse_prs(CLAUDE)
         prs_bytes = parse_prs_bytes(data)
         assert len(prs_bytes.sections) == len(prs_file.sections)
         assert prs_bytes.file_size == prs_file.file_size
@@ -198,7 +199,7 @@ class TestWritePrs:
 
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test file not found")
     def test_write_creates_file(self):
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir) / "output.PRS"
             size = write_prs(prs, str(out), backup=False)
@@ -209,7 +210,7 @@ class TestWritePrs:
     def test_write_byte_identical(self):
         """Written file should be byte-identical to original."""
         original = CLAUDE.read_bytes()
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir) / "output.PRS"
             write_prs(prs, str(out), backup=False)
@@ -218,7 +219,7 @@ class TestWritePrs:
 
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test file not found")
     def test_write_creates_backup(self):
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir) / "output.PRS"
             # Write once to create the file
@@ -232,7 +233,7 @@ class TestWritePrs:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test file not found")
     def test_write_no_backup_when_new(self):
         """No .bak should be created when file doesn't exist."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir) / "new_file.PRS"
             write_prs(prs, str(out), backup=True)
@@ -241,7 +242,7 @@ class TestWritePrs:
 
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test file not found")
     def test_write_returns_size(self):
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir) / "output.PRS"
             size = write_prs(prs, str(out), backup=False)
@@ -250,7 +251,7 @@ class TestWritePrs:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test file not found")
     def test_full_roundtrip_paws(self):
         """Parse PAWS, write, re-parse, verify identical."""
-        prs1 = parse_prs(PAWS)
+        prs1 = cached_parse_prs(PAWS)
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir) / "roundtrip.PRS"
             write_prs(prs1, str(out), backup=False)

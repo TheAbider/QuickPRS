@@ -7,6 +7,7 @@ import pytest
 from pathlib import Path
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.zones import (
     Zone, plan_zones, format_zone_plan, validate_zone_plan,
     export_zone_plan_csv, format_zone_plan_csv,
@@ -68,7 +69,7 @@ class TestPlanZones:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_auto_strategy_paws(self):
         """Auto strategy produces zones from PAWSOVERMAWS."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         zones = plan_zones(prs, strategy="auto")
         assert isinstance(zones, list)
         # PAWS has conv and group sets, so should have zones
@@ -77,14 +78,14 @@ class TestPlanZones:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_auto_strategy_claude(self):
         """Auto strategy produces zones from claude test."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         zones = plan_zones(prs, strategy="auto")
         assert isinstance(zones, list)
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_by_set_strategy(self):
         """by_set strategy produces zones."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         zones = plan_zones(prs, strategy="by_set")
         assert isinstance(zones, list)
         assert len(zones) > 0
@@ -92,7 +93,7 @@ class TestPlanZones:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_combined_strategy(self):
         """combined strategy merges all channels."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         zones = plan_zones(prs, strategy="combined")
         assert isinstance(zones, list)
         # All channels should fit in at least one zone
@@ -103,21 +104,21 @@ class TestPlanZones:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_manual_strategy_empty(self):
         """manual strategy returns empty plan."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         zones = plan_zones(prs, strategy="manual")
         assert zones == []
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_unknown_strategy_raises(self):
         """Unknown strategy should raise ValueError."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         with pytest.raises(ValueError, match="Unknown zone strategy"):
             plan_zones(prs, strategy="nonexistent")
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_zones_respect_48_limit(self):
         """All auto-generated zones should have <= 48 channels."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         for strategy in ("auto", "by_set", "combined"):
             zones = plan_zones(prs, strategy=strategy)
             for z in zones:
@@ -128,7 +129,7 @@ class TestPlanZones:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_zone_names_max_16_chars(self):
         """Auto zone names should be <= 16 chars."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         zones = plan_zones(prs, strategy="auto")
         for z in zones:
             assert len(z.name) <= 16, \
@@ -177,7 +178,7 @@ class TestFormatZonePlan:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_format_from_prs(self):
         """Format zone plan from real PRS data."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         zones = plan_zones(prs, strategy="auto")
         lines = format_zone_plan(zones)
         assert len(lines) > 0
@@ -260,7 +261,7 @@ class TestValidateZonePlan:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_prs_auto_plan_validates(self):
         """Auto plan from real PRS should validate cleanly."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         zones = plan_zones(prs, strategy="auto")
         issues = validate_zone_plan(zones)
         errors = [i for i in issues if i[0] == "error"]
@@ -307,7 +308,7 @@ class TestZoneCSVExport:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_export_from_prs(self):
         """Export zone plan from real PRS to CSV."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         zones = plan_zones(prs, strategy="auto")
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False,
                                           mode='w') as f:

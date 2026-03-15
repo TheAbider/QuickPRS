@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.record_types import (
     parse_group_section, parse_trunk_channel_section,
     parse_conv_channel_section, parse_iden_section,
@@ -79,7 +80,7 @@ def _read_csv(path):
 class TestExportGroupSets:
 
     def test_headers(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_groups(prs)
         with tempfile.TemporaryDirectory() as d:
             export_group_sets(os.path.join(d, "g.csv"), sets)
@@ -88,7 +89,7 @@ class TestExportGroupSets:
                           "TX", "RX", "Scan"]
 
     def test_row_count(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_groups(prs)
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "g.csv")
@@ -98,14 +99,14 @@ class TestExportGroupSets:
         assert "241 groups" in result
 
     def test_return_format(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_groups(prs)
         with tempfile.TemporaryDirectory() as d:
             result = export_group_sets(os.path.join(d, "g.csv"), sets)
         assert result.startswith("GROUP_SET.csv")
 
     def test_tx_rx_scan_flags(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_groups(prs)
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "g.csv")
@@ -118,7 +119,7 @@ class TestExportGroupSets:
             assert row[6] in ("Y", "N")  # Scan
 
     def test_group_ids_are_numeric(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_groups(prs)
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "g.csv")
@@ -134,7 +135,7 @@ class TestExportGroupSets:
 class TestExportTrunkSets:
 
     def test_headers(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_trunks(prs)
         with tempfile.TemporaryDirectory() as d:
             export_trunk_sets(os.path.join(d, "t.csv"), sets)
@@ -142,7 +143,7 @@ class TestExportTrunkSets:
         assert header == ["Set", "TxFreq", "RxFreq", "TxMin", "TxMax"]
 
     def test_row_count(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_trunks(prs)
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "t.csv")
@@ -153,7 +154,7 @@ class TestExportTrunkSets:
 
     def test_freq_precision(self):
         """Frequencies should have 5 decimal places."""
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_trunks(prs)
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "t.csv")
@@ -171,7 +172,7 @@ class TestExportTrunkSets:
 class TestExportConvSets:
 
     def test_headers(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_convs(prs)
         if not sets:
             pytest.skip("No conv sets in PAWS")
@@ -182,7 +183,7 @@ class TestExportConvSets:
                           "TxTone", "RxTone", "LongName"]
 
     def test_return_format(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_convs(prs)
         if not sets:
             pytest.skip("No conv sets in PAWS")
@@ -197,7 +198,7 @@ class TestExportConvSets:
 class TestExportIdenSets:
 
     def test_headers(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_idens(prs)
         with tempfile.TemporaryDirectory() as d:
             export_iden_sets(os.path.join(d, "i.csv"), sets)
@@ -207,7 +208,7 @@ class TestExportIdenSets:
 
     def test_iden_type_values(self):
         """Type column should be TDMA or FDMA."""
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_idens(prs)
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "i.csv")
@@ -217,7 +218,7 @@ class TestExportIdenSets:
             assert row[6] in ("TDMA", "FDMA")
 
     def test_return_format(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         sets = _parse_idens(prs)
         with tempfile.TemporaryDirectory() as d:
             result = export_iden_sets(os.path.join(d, "i.csv"), sets)
@@ -231,14 +232,14 @@ class TestExportIdenSets:
 class TestExportOptions:
 
     def test_paws_has_options(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             result = export_options(os.path.join(d, "o.csv"), prs)
         assert result is not None
         assert "OPTIONS.csv" in result
 
     def test_options_headers(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "o.csv")
             export_options(path, prs)
@@ -246,7 +247,7 @@ class TestExportOptions:
         assert header == ["Category", "Field", "Value"]
 
     def test_options_has_rows(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "o.csv")
             export_options(path, prs)
@@ -255,14 +256,14 @@ class TestExportOptions:
 
     def test_no_xml_returns_none(self):
         """claude test.PRS has no XML — should return None."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         with tempfile.TemporaryDirectory() as d:
             result = export_options(os.path.join(d, "o.csv"), prs)
         assert result is None
 
     def test_options_has_button_fields(self):
         """OPTIONS.csv should include prog button fields."""
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "o.csv")
             export_options(path, prs)
@@ -277,14 +278,14 @@ class TestExportOptions:
 class TestExportSystems:
 
     def test_paws_has_systems(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             result = export_systems(os.path.join(d, "s.csv"), prs)
         assert result is not None
         assert "SYSTEMS.csv" in result
 
     def test_systems_headers(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "s.csv")
             export_systems(path, prs)
@@ -292,7 +293,7 @@ class TestExportSystems:
         assert header == ["ShortName", "Type", "LongName", "WACN"]
 
     def test_systems_has_rows(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "s.csv")
             export_systems(path, prs)
@@ -301,7 +302,7 @@ class TestExportSystems:
 
     def test_simple_file_returns_none(self):
         """claude test.PRS may not have system sections."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         with tempfile.TemporaryDirectory() as d:
             result = export_systems(os.path.join(d, "s.csv"), prs)
         # Small file may not have system info
@@ -369,25 +370,25 @@ class TestFlattenConfig:
 class TestCollectSystemInfo:
 
     def test_paws_systems(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         rows = collect_system_info(prs)
         assert len(rows) >= 2
 
     def test_system_type_labels(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         rows = collect_system_info(prs)
         types = {r[1] for r in rows}
         assert "P25 Trunked" in types
 
     def test_row_tuple_length(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         rows = collect_system_info(prs)
         for row in rows:
             assert len(row) == 4  # short_name, type, long_name, wacn
 
     def test_claude_test_file(self):
         """Small file — may return empty or small list."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         rows = collect_system_info(prs)
         assert isinstance(rows, list)
 
@@ -398,14 +399,14 @@ class TestCollectSystemInfo:
 class TestExportECC:
 
     def test_paws_has_ecc(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             result = export_ecc(os.path.join(d, "ecc.csv"), prs)
         assert result is not None
         assert "ECC.csv" in result
 
     def test_ecc_headers(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "ecc.csv")
             export_ecc(path, prs)
@@ -414,7 +415,7 @@ class TestExportECC:
                           "IdenSet"]
 
     def test_ecc_has_rows(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "ecc.csv")
             export_ecc(path, prs)
@@ -422,7 +423,7 @@ class TestExportECC:
         assert len(rows) >= 5  # PAWS has many ECC entries
 
     def test_simple_file_no_ecc(self):
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         with tempfile.TemporaryDirectory() as d:
             result = export_ecc(os.path.join(d, "ecc.csv"), prs)
         # Small file likely has no ECC
@@ -435,7 +436,7 @@ class TestExportECC:
 class TestExportPreferred:
 
     def test_paws_has_preferred(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             result = export_preferred(os.path.join(d, "pref.csv"), prs)
         # PAWS may or may not have preferred sections
@@ -443,7 +444,7 @@ class TestExportPreferred:
             assert "PREFERRED.csv" in result
 
     def test_preferred_headers(self):
-        prs = parse_prs(str(PAWS))
+        prs = cached_parse_prs(str(PAWS))
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "pref.csv")
             result = export_preferred(path, prs)
@@ -453,7 +454,7 @@ class TestExportPreferred:
                                   "IdenSet", "ChainTo"]
 
     def test_simple_file_preferred(self):
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         with tempfile.TemporaryDirectory() as d:
             result = export_preferred(os.path.join(d, "pref.csv"), prs)
         assert result is None or "PREFERRED.csv" in result

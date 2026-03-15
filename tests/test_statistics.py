@@ -6,6 +6,7 @@ import pytest
 from pathlib import Path
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.validation import compute_statistics, format_statistics
 from quickprs.reports import generate_summary_card
 
@@ -22,14 +23,14 @@ class TestComputeStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_returns_dict(self):
         """compute_statistics returns a dict."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         assert isinstance(stats, dict)
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_has_required_keys(self):
         """Statistics dict contains all required keys."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         required = ['systems', 'channels', 'freq_bands',
                      'talkgroup_analysis', 'channel_types',
@@ -40,7 +41,7 @@ class TestComputeStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_systems_count(self):
         """Systems count is populated."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         sys_info = stats['systems']
         assert sys_info['total'] >= 0
@@ -52,14 +53,14 @@ class TestComputeStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_paws_has_systems(self):
         """PAWSOVERMAWS should have systems."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         assert stats['systems']['total'] > 0
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_channels_count(self):
         """Channel counts add up correctly."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         ch = stats['channels']
         assert ch['total'] == (ch['talkgroups'] + ch['trunk_freqs']
@@ -68,7 +69,7 @@ class TestComputeStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_freq_bands_populated(self):
         """Frequency bands dict is populated for PAWS."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         # PAWS has trunk frequencies and conv channels
         bands = stats['freq_bands']
@@ -91,7 +92,7 @@ class TestComputeStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_talkgroup_analysis(self):
         """Talkgroup analysis fields are populated."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         tg = stats['talkgroup_analysis']
         assert 'total' in tg
@@ -103,7 +104,7 @@ class TestComputeStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_tg_analysis_consistency(self):
         """TG analysis counts should be <= total."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         tg = stats['talkgroup_analysis']
         assert tg['tx_enabled'] <= tg['total']
@@ -114,7 +115,7 @@ class TestComputeStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_channel_types(self):
         """Channel types dict has simplex and duplex."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         ct = stats['channel_types']
         assert 'simplex' in ct
@@ -125,7 +126,7 @@ class TestComputeStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_ctcss_tones(self):
         """CTCSS tones dict is populated."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         tones = stats['ctcss_tones']
         assert isinstance(tones, dict)
@@ -133,7 +134,7 @@ class TestComputeStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_file_info(self):
         """File info has size and section count."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         fi = stats['file_info']
         assert fi['size_bytes'] > 0
@@ -142,7 +143,7 @@ class TestComputeStatistics:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_claude_test_file(self):
         """Statistics work on claude test PRS."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         stats = compute_statistics(prs)
         assert isinstance(stats, dict)
         assert stats['file_info']['size_bytes'] > 0
@@ -166,7 +167,7 @@ class TestFormatStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_returns_lines(self):
         """format_statistics returns list of strings."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         lines = format_statistics(stats)
         assert isinstance(lines, list)
@@ -175,7 +176,7 @@ class TestFormatStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_header_with_filename(self):
         """Header shows filename when given."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         lines = format_statistics(stats, filename="TEST.PRS")
         assert any("TEST.PRS" in l for l in lines)
@@ -183,7 +184,7 @@ class TestFormatStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_header_without_filename(self):
         """Header works without filename."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         lines = format_statistics(stats)
         assert any("Radio Statistics" in l for l in lines)
@@ -191,7 +192,7 @@ class TestFormatStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_systems(self):
         """Output contains system information."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         lines = format_statistics(stats)
         text = "\n".join(lines)
@@ -200,7 +201,7 @@ class TestFormatStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_channels(self):
         """Output contains channel information."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         lines = format_statistics(stats)
         text = "\n".join(lines)
@@ -209,7 +210,7 @@ class TestFormatStatistics:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_file_info(self):
         """Output contains file size information."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         stats = compute_statistics(prs)
         lines = format_statistics(stats)
         text = "\n".join(lines)
@@ -260,7 +261,7 @@ class TestSummaryCard:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_returns_html(self):
         """generate_summary_card returns HTML string."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_summary_card(prs)
         assert isinstance(html, str)
         assert html.startswith("<!DOCTYPE html>")
@@ -268,7 +269,7 @@ class TestSummaryCard:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_structure(self):
         """Card has proper HTML structure."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_summary_card(prs, source_path=str(PAWS))
         assert "<html" in html
         assert "</html>" in html
@@ -279,21 +280,21 @@ class TestSummaryCard:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_personality_name(self):
         """Card shows personality name."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_summary_card(prs, source_path=str(PAWS))
         assert "Quick Reference" in html
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_systems(self):
         """Card shows system information."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_summary_card(prs)
         assert "Systems" in html
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_contains_channels_section(self):
         """Card should have channel or talkgroup data."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         html = generate_summary_card(prs)
         # Should have either TX talkgroups or conventional channels
         assert "TX Talkgroups" in html or "Conventional" in html or \
@@ -302,7 +303,7 @@ class TestSummaryCard:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_writes_to_file(self):
         """Card writes to file when filepath given."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         with tempfile.NamedTemporaryFile(suffix=".html",
                                           delete=False) as f:
             path = f.name
@@ -318,7 +319,7 @@ class TestSummaryCard:
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_claude_test(self):
         """Card works on claude test PRS."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         html = generate_summary_card(prs, source_path=str(CLAUDE))
         assert "<!DOCTYPE html>" in html
 
@@ -333,7 +334,7 @@ class TestSummaryCard:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_card_compact(self):
         """Card should be significantly smaller than full report."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         card = generate_summary_card(prs)
         from quickprs.reports import generate_html_report
         report = generate_html_report(prs)

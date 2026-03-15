@@ -1,6 +1,6 @@
 [project]
 name = "quickprs"
-version = "1.0.1"
+version = "1.0.2"
 description = "Generate Harris XG-100P personality files without Harris RPM"
 requires-python = ">=3.8"
 dependencies = [

@@ -6,9 +6,9 @@ for key injector functions not covered elsewhere.
 
 import pytest
 from pathlib import Path
-from copy import deepcopy
 
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 from quickprs.injector import (
     bulk_edit_talkgroups, bulk_edit_channels,
     make_p25_group, make_conv_channel, make_conv_set,
@@ -63,22 +63,22 @@ class TestInternalHelpers:
     """Tests for _find_section_index, _get_first_count, etc."""
 
     def test_find_section_index_found(self):
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         idx = _find_section_index(prs, "CP25Group")
         assert idx >= 0
 
     def test_find_section_index_missing(self):
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         idx = _find_section_index(prs, "CNotAClass")
         assert idx == -1
 
     def test_get_first_count(self):
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         count = _get_first_count(prs, "CP25GroupSet")
         assert count > 0
 
     def test_get_header_bytes(self):
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sec = prs.get_section_by_class("CP25Group")
         b1, b2 = _get_header_bytes(sec)
         assert isinstance(b1, int)
@@ -93,7 +93,7 @@ class TestBulkEditTalkgroups:
 
     def test_enable_scan(self):
         """Enable scan on all TGs in a group set."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets_before = _get_group_sets(prs)
         set_name = sets_before[0].name
 
@@ -106,7 +106,7 @@ class TestBulkEditTalkgroups:
 
     def test_disable_scan(self):
         """Disable scan on all TGs."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets_before = _get_group_sets(prs)
         set_name = sets_before[0].name
 
@@ -119,7 +119,7 @@ class TestBulkEditTalkgroups:
 
     def test_enable_tx(self):
         """Enable TX on all TGs."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets_before = _get_group_sets(prs)
         set_name = sets_before[0].name
 
@@ -132,7 +132,7 @@ class TestBulkEditTalkgroups:
 
     def test_disable_tx(self):
         """Disable TX on all TGs."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets_before = _get_group_sets(prs)
         set_name = sets_before[0].name
 
@@ -145,7 +145,7 @@ class TestBulkEditTalkgroups:
 
     def test_prefix(self):
         """Add prefix to all TG short names (truncated to 8 chars)."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets_before = _get_group_sets(prs)
         set_name = sets_before[0].name
         original_names = [g.group_name for g in sets_before[0].groups]
@@ -160,7 +160,7 @@ class TestBulkEditTalkgroups:
 
     def test_suffix(self):
         """Add suffix to all TG short names."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets_before = _get_group_sets(prs)
         set_name = sets_before[0].name
 
@@ -173,7 +173,7 @@ class TestBulkEditTalkgroups:
 
     def test_combined_scan_and_tx(self):
         """Set both scan and TX at once."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets_before = _get_group_sets(prs)
         set_name = sets_before[0].name
 
@@ -188,20 +188,20 @@ class TestBulkEditTalkgroups:
 
     def test_set_not_found_raises(self):
         """Editing a nonexistent set should raise ValueError."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         with pytest.raises(ValueError, match="not found"):
             bulk_edit_talkgroups(prs, "NOPE", enable_scan=True)
 
     def test_no_modifications_raises(self):
         """Calling with no modifications should raise ValueError."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         with pytest.raises(ValueError, match="No modifications"):
             bulk_edit_talkgroups(prs, sets[0].name)
 
     def test_validates_after_edit(self):
         """File should still validate after bulk edit."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         bulk_edit_talkgroups(prs, sets[0].name, enable_scan=True)
         issues = validate_prs(prs)
@@ -210,7 +210,7 @@ class TestBulkEditTalkgroups:
 
     def test_roundtrip_preserves_bytes(self):
         """Parse -> bulk edit -> rebuild -> parse should give same data."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         sets = _get_group_sets(prs)
         set_name = sets[0].name
 
@@ -230,7 +230,7 @@ class TestBulkEditChannels:
 
     def _ensure_conv_set(self):
         """Get a PRS with at least one conv set (PAWS has one)."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         conv_sets = _get_conv_sets(prs)
         if not conv_sets:
             pytest.skip("No conv sets in test file")
@@ -281,7 +281,7 @@ class TestBulkEditChannels:
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_set_not_found_raises(self):
         """Editing a nonexistent set should raise ValueError."""
-        prs = parse_prs(PAWS)
+        prs = cached_parse_prs(PAWS)
         with pytest.raises(ValueError, match="not found"):
             bulk_edit_channels(prs, "NOPE", set_tone="100.0")
 
@@ -301,7 +301,7 @@ class TestBulkEditChannels:
 
     def test_no_conv_sections_raises(self):
         """Editing channels on a file with no conv sets should raise."""
-        prs = parse_prs(CLAUDE)
+        prs = cached_parse_prs(CLAUDE)
         conv_sets = _get_conv_sets(prs)
         if conv_sets:
             pytest.skip("File has conv sets")

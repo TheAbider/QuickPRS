@@ -5,6 +5,7 @@ from pathlib import Path
 
 from quickprs.auto_setup import auto_setup_from_rr
 from quickprs.prs_parser import parse_prs
+from conftest import cached_parse_prs
 
 TESTDATA = Path(__file__).parent / "testdata"
 PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
@@ -93,7 +94,7 @@ class TestAutoSetup:
 
     def test_basic_auto_setup(self):
         """Auto-setup should create system, talkgroups, and frequencies."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         rr_system = self._make_basic_system()
 
         summary = auto_setup_from_rr(prs, rr_system)
@@ -106,7 +107,7 @@ class TestAutoSetup:
 
     def test_auto_setup_creates_ecc(self):
         """Auto-setup should create ECC entries from control channels."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         rr_system = self._make_basic_system()
 
         summary = auto_setup_from_rr(prs, rr_system)
@@ -116,7 +117,7 @@ class TestAutoSetup:
 
     def test_auto_setup_creates_iden(self):
         """Auto-setup should create IDEN entries."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         rr_system = self._make_basic_system()
 
         summary = auto_setup_from_rr(prs, rr_system)
@@ -125,7 +126,7 @@ class TestAutoSetup:
 
     def test_auto_setup_empty_system(self):
         """Auto-setup with no talkgroups/freqs should warn but not crash."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         rr_system = MockRRSystem(name="Empty System")
 
         summary = auto_setup_from_rr(prs, rr_system)
@@ -135,7 +136,7 @@ class TestAutoSetup:
 
     def test_auto_setup_no_sites(self):
         """Auto-setup with no sites should still work."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         talkgroups = [MockTalkgroup(100, "TEST", "Test TG")]
         rr_system = MockRRSystem(
             name="No Sites", talkgroups=talkgroups,
@@ -150,7 +151,7 @@ class TestAutoSetup:
 
     def test_auto_setup_with_categories(self):
         """Auto-setup with category filter should limit talkgroups."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         talkgroups = [
             MockTalkgroup(100, "PD DISP", "Police", category_id=1),
             MockTalkgroup(200, "FD DISP", "Fire", category_id=2),
@@ -168,7 +169,7 @@ class TestAutoSetup:
 
     def test_auto_setup_with_tags(self):
         """Auto-setup with tag filter should limit talkgroups."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         talkgroups = [
             MockTalkgroup(100, "PD DISP", "Police", tag="Law Dispatch"),
             MockTalkgroup(200, "FD DISP", "Fire", tag="Fire Dispatch"),
@@ -185,7 +186,7 @@ class TestAutoSetup:
 
     def test_auto_setup_summary_keys(self):
         """Summary should contain all expected keys."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         rr_system = self._make_basic_system()
 
         summary = auto_setup_from_rr(prs, rr_system)
@@ -200,7 +201,7 @@ class TestAutoSetup:
 
     def test_auto_setup_multiple_sites(self):
         """Auto-setup with multiple sites should aggregate frequencies."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
 
         site1_freqs = [
             MockSiteFreq(851.0125, use="c"),
@@ -233,7 +234,7 @@ class TestAutoSetupSysidParsing:
 
     def test_hex_sysid(self):
         """Hex system ID should be parsed correctly."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         rr_system = MockRRSystem(
             name="Hex Test", sysid="9D2", wacn="BEE00",
             talkgroups=[MockTalkgroup(100, "TEST")],
@@ -243,7 +244,7 @@ class TestAutoSetupSysidParsing:
 
     def test_empty_sysid(self):
         """Empty system ID should not crash."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         rr_system = MockRRSystem(
             name="Empty SID", sysid="", wacn="",
             talkgroups=[MockTalkgroup(100, "TEST")],
@@ -253,7 +254,7 @@ class TestAutoSetupSysidParsing:
 
     def test_zero_sysid(self):
         """Zero system ID should not crash."""
-        prs = parse_prs(str(CLAUDE))
+        prs = cached_parse_prs(str(CLAUDE))
         rr_system = MockRRSystem(
             name="Zero SID", sysid="0", wacn="0",
             talkgroups=[MockTalkgroup(100, "TEST")],
