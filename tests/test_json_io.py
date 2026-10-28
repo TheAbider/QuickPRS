@@ -806,3 +806,139 @@ class TestEdgeCases:
         ts = next(ts for ts in d2["trunk_sets"] if ts["name"] == "FREQ")
         assert abs(ts["channels"][0]["tx_freq"] - 851.0125) < 0.0001
         assert abs(ts["channels"][1]["tx_freq"] - 851.5125) < 0.0001
+
+
+# ─── Lossless round trip ─────────────────────────────────────────────
+
+
+def _built():
+    """A personality with every set type, a P25 system with IDs, an IDEN
+    table with a gap between its slots, and a changed radio option."""
+    from quickprs import injector
+    from quickprs.option_maps import set_platform_option
+    from quickprs.prs_parser import parse_prs_bytes
+    from quickprs.record_types import P25TrkSystemConfig, P25ConvSystemConfig
+    prs = create_blank_prs("built.PRS", "tester")
+    injector.add_conv_set(prs, injector.make_conv_set("CONV", [
+        {"short_name": "LE D1", "tx_freq": 155.76, "tx_tone": "136.5",
+         "rx_tone": "136.5", "narrowband": True},
+        {"short_name": "FIRE D1", "tx_freq": 154.28, "scan": False}]))
+    injector.add_p25_conv_set(prs, injector.make_p25_conv_set("P25C", [
+        {"short_name": "TAC 1", "tx_freq": 154.43, "nac_tx": 0x3AB}]))
+    injector.add_p25_conv_system(prs, P25ConvSystemConfig(
+        system_name="P25C", long_name="P25 CONV", conv_set_name="P25C"))
+    iden = injector.make_iden_set("CITY", [
+        {"base_freq_hz": 851_012_500, "tx_offset_mhz": -45.0}])
+    iden.elements[3] = injector.make_iden_set("X", [
+        {"base_freq_hz": 762_006_250, "tx_offset_mhz": 30.0,
+         "iden_type": 1, "chan_spacing_hz": 12500}]).elements[0]
+    gset = injector.make_group_set("CITY", [
+        (100, "PD DISP", "PD DISPATCH"), (200, "FIRE", "FIRE DISPATCH")])
+    injector.add_p25_trunked_system(
+        prs,
+        P25TrkSystemConfig(system_name="CITY", long_name="CITY P25",
+                           trunk_set_name="CITY", group_set_name="CITY",
+                           wan_name="CITY", system_id=939,
+                           home_unit_id=1234567, iden_set_name="CITY"),
+        trunk_set=injector.make_trunk_set(
+            "CITY", [(806.0125, 851.0125), (806.5125, 851.5125)]),
+        group_set=gset, iden_set=iden)
+    set_platform_option(prs, "gps", "gpsMode", "OFF")
+    return parse_prs_bytes(prs.to_bytes())
+
+
+def _through_json(d):
+    return json.loads(json.dumps(d))
+
+
+class TestLosslessRoundTrip:
+    """An unedited export imports to the same personality.  Import used to
+    drop P25 conventional sets and systems and the radio options, compact
+    IDEN tables, lose system IDs and duplicate the blank's default set."""
+
+    def test_blank_is_identical(self):
+        prs = create_blank_prs("roundtrip.PRS", "tester")
+        back = dict_to_prs(_through_json(prs_to_dict(prs)))
+        assert back.to_bytes() == prs.to_bytes()
+
+    def test_built_personality_is_identical(self):
+        prs = _built()
+        back = dict_to_prs(_through_json(prs_to_dict(prs)))
+        assert back.to_bytes() == prs.to_bytes()
+
+    @pytest.mark.skipif(not TESTDATA.exists(), reason="no test data")
+    def test_rpm_files_are_identical(self):
+        files = sorted(TESTDATA.rglob("*.PRS"))
+        if not files:
+            pytest.skip("Test PRS data not available")
+        for f in files:
+            prs = parse_prs(f)
+            back = dict_to_prs(_through_json(prs_to_dict(prs)))
+            assert back.to_bytes() == f.read_bytes(), f.name
+
+    def test_edits_apply_and_nothing_else_changes(self):
+        from quickprs.comparison import compare_prs, SAME
+        prs = _built()
+        d = _through_json(prs_to_dict(prs))
+        city = next(g for g in d["group_sets"] if g["name"] == "CITY")
+        city["groups"][0]["short_name"] = "PD MAIN"
+        conv = next(c for c in d["conv_sets"] if c["name"] == "CONV")
+        conv["channels"][0]["rx_freq"] = 155.775
+        diffs = [x for x in compare_prs(prs, dict_to_prs(d)) if x[0] != SAME]
+        assert sorted((x[1], x[2]) for x in diffs) == [
+            ("Conv Set", "CONV"), ("Group Set", "CITY")], diffs
+
+    def test_iden_slots_are_kept(self):
+        d = _through_json(prs_to_dict(_built()))
+        city = next(i for i in d["iden_sets"] if i["name"] == "CITY")
+        assert [e["index"] for e in city["elements"]] == [0, 3]
+        assert city["elements"][1]["iden_type"] == "TDMA"
+
+
+class TestImportWithoutArchive:
+    """A JSON without the archive block (hand-written, or from 1.1.0 or
+    older) is built from a blank personality."""
+
+    @staticmethod
+    def _readable(prs):
+        d = _through_json(prs_to_dict(prs))
+        del d["archive"]
+        return d
+
+    def test_default_set_is_not_duplicated(self):
+        from quickprs.injector import get_p25_conv_sets  # noqa: F401
+        back = prs_to_dict(dict_to_prs(self._readable(
+            create_blank_prs("blank.PRS"))))
+        assert [c["name"] for c in back["conv_sets"]] == ["Conv 1"]
+        assert [s["name"] for s in back["systems"]] == ["Conv 1"]
+
+    def test_sets_systems_ids_and_options_survive(self):
+        from quickprs.option_maps import extract_platform_config
+        back_prs = dict_to_prs(self._readable(_built()))
+        back = prs_to_dict(back_prs)
+        assert [c["name"] for c in back["p25_conv_sets"]] == ["P25C"]
+        assert back["p25_conv_sets"][0]["channels"][0]["nac_tx"] == 0x3AB
+        systems = {s["name"]: s for s in back["systems"]}
+        assert systems["P25C"]["type"] == "P25Conv"
+        assert systems["P25C"]["conv_set"] == "P25C"
+        assert systems["CITY"]["system_id"] == 939
+        assert systems["CITY"]["home_unit_id"] == 1234567
+        assert systems["CITY"]["iden_set"] == "CITY"
+        city = next(i for i in back["iden_sets"] if i["name"] == "CITY")
+        assert [e["index"] for e in city["elements"]] == [0, 3]
+        gps = extract_platform_config(back_prs)["gpsConfig"]
+        assert gps["gpsMode"] == "OFF"
+
+    def test_hidden_fields_are_kept(self):
+        """Channel and talkgroup fields that have no readable key (power,
+        squelch, audio profile...) come through the hidden fields."""
+        prs = _built()
+        d = self._readable(prs)
+        conv = next(c for c in d["conv_sets"] if c["name"] == "CONV")
+        conv["channels"][0]["pre_long_name"] = "00010c0000000000" "0101"
+        back = prs_to_dict(dict_to_prs(d))
+        ch = next(c for c in back["conv_sets"]
+                  if c["name"] == "CONV")["channels"][0]
+        assert ch["pre_long_name"] == "00010c00000000000101"
+        assert ch["narrowband"] is True
+        assert ch["tx_tone"] == "136.5"
