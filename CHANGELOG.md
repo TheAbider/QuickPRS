@@ -28,6 +28,7 @@ All notable changes to QuickPRS will be documented in this file.
 - GUI: crashed on start; the Import Wizard failed every non-talkgroup import; the System Wizard reported failure on success and could add a system twice; undo history carried over to the next file; opening a recent file did not ask about unsaved changes; Delete, F2 and undo acted on the tree while typing; multi-select edits touched talkgroups that were not selected; Health Check crashed; dropped paths were not read as Unicode
 - `search` skipped unreadable files without saying so; listings print 6.25 kHz channels with 5 decimals
 - The standalone EXE is a windowed program, so its commands printed nothing in a console; releases now include `QuickPRS-cli.exe`, a console build for the command line
+- Classic Windows console windows showed color codes as text (`←[1m`); QuickPRS now turns on their handling, leaves colors out where it cannot, and honors `NO_COLOR`
 
 ### Added
 - `quickprs radio`: groundwork for reading the radio over Bluetooth. The XG-100P uses Bluetooth Classic (serial port profile), which RPM programs over like the USB cable. `scan` finds paired radios and their COM ports, `probe` listens, `relay` sits between RPM and the radio and logs both directions, and `analyze` summarises a capture and extracts any personality in it. None of them sends bytes of its own to the radio. See [docs/bluetooth.md](docs/bluetooth.md).
