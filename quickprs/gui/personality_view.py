@@ -657,21 +657,24 @@ class PersonalityView(ttk.Frame):
                 meta={"type": "trunk_set", "name": tset.name,
                        "set_data": tset})
 
-            for ch in tset.channels:
+            # ch_idx: the channel's place in its set (a row's place among
+            # its visible siblings differs while the search filters rows)
+            for ch_idx, ch in enumerate(tset.channels):
                 if ch.tx_freq == ch.rx_freq:
                     self._insert(
                         set_node, tk.END,
                         text=f"{ch.tx_freq:.5f} MHz",
                         values=("simplex",),
                         meta={"type": "trunk_channel",
-                               "freq": ch.tx_freq})
+                               "freq": ch.tx_freq, "ch_idx": ch_idx})
                 else:
                     self._insert(
                         set_node, tk.END,
                         text=f"TX:{ch.tx_freq:.5f}",
                         values=(f"RX:{ch.rx_freq:.5f} MHz",),
                         meta={"type": "trunk_channel",
-                               "tx": ch.tx_freq, "rx": ch.rx_freq})
+                               "tx": ch.tx_freq, "rx": ch.rx_freq,
+                               "ch_idx": ch_idx})
 
     def _add_group_sets(self, parent, prs):
         """Add group set nodes with talkgroups."""
@@ -2223,8 +2226,7 @@ class PersonalityView(ttk.Frame):
             parent_iid = self.tree.parent(iid)
             parent_meta = self._item_meta.get(parent_iid, {})
             set_name = parent_meta.get("name", "")
-            siblings = list(self.tree.get_children(parent_iid))
-            ch_idx = siblings.index(iid) if iid in siblings else 0
+            ch_idx = meta.get("ch_idx", 0)
             freq = meta.get("freq") or meta.get("tx", "")
             self.ctx_menu.add_command(
                 label="Move Up",
@@ -3909,9 +3911,7 @@ class PersonalityView(ttk.Frame):
             parent_iid = self.tree.parent(iid)
             parent_meta = self._item_meta.get(parent_iid, {})
             set_name = parent_meta.get("name", "")
-            # Get index from tree position
-            siblings = list(self.tree.get_children(parent_iid))
-            ch_idx = siblings.index(iid) if iid in siblings else None
+            ch_idx = meta.get("ch_idx")
             if set_name and ch_idx is not None:
                 self._move_trunk_channel(set_name, ch_idx, direction)
         elif item_type == "group_set":
@@ -4726,9 +4726,7 @@ class PersonalityView(ttk.Frame):
                 self._inline_edit_conv_channel(
                     prs, set_name, meta.get("ch_idx"), new_val, max_len)
             elif item_type == "trunk_channel":
-                # Get channel index from tree position
-                siblings = list(self.tree.get_children(parent_iid))
-                ch_idx = siblings.index(iid) if iid in siblings else None
+                ch_idx = meta.get("ch_idx")
                 if ch_idx is not None:
                     self._inline_edit_trunk_freq(
                         prs, set_name, ch_idx, new_val)

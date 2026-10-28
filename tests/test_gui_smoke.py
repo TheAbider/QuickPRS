@@ -135,3 +135,44 @@ def test_import_wizard_injects_into_blank(app):
     ImportWizard._inject_talkgroups(fake, "TGS", [
         {"group_id": 100, "short_name": "TG100", "long_name": "TG 100"}])
     assert archive.check(app.prs) == []
+
+
+def test_trunk_edit_while_filtered_hits_the_right_channel(app, tmp_path):
+    """The search's filter mode detaches rows that do not match, so a
+    row's place among its visible siblings is not its channel's place in
+    the set: editing the second channel while the first was hidden changed
+    the first."""
+    from quickprs import injector
+    from quickprs.builder import create_blank_prs
+    from quickprs.prs_writer import write_prs
+    from quickprs.record_types import P25TrkSystemConfig
+    prs = create_blank_prs("trunk.PRS")
+    injector.add_p25_trunked_system(
+        prs, P25TrkSystemConfig(system_name="CITY", long_name="CITY",
+                                trunk_set_name="CITY", group_set_name="CITY",
+                                wan_name="CITY"),
+        trunk_set=injector.make_trunk_set("CITY", [
+            (806.0125, 851.0125), (806.5125, 851.5125),
+            (807.0125, 852.0125)]),
+        group_set=injector.make_group_set("CITY", [(1, "TG", "TG")]))
+    path = tmp_path / "trunk.PRS"
+    write_prs(prs, path)
+    app._open_path(path, confirmed=True)
+
+    pv = app.personality_view
+    pv._filter_mode.set(True)
+    pv.search_var.set("851.5125")          # only the second channel shows
+    iid, meta = next((i, m) for i, m in pv._item_meta.items()
+                     if m.get("type") == "trunk_channel"
+                     and m.get("rx") == 851.5125)
+    assert pv.tree.index(iid) == 0         # first among visible rows
+    with mock.patch("quickprs.gui.personality_view.messagebox"):
+        pv._commit_inline_edit(iid, meta, "806.525", 16)
+
+    from quickprs.record_types import parse_trunk_channel_section
+    channels = next(s for s in injector._parse_section_data(
+        app.prs.get_section_by_class("CTrunkChannel"),
+        parse_trunk_channel_section,
+        injector._get_first_count(app.prs, "CTrunkSet"))
+        if s.name == "CITY").channels
+    assert [c.tx_freq for c in channels] == [806.0125, 806.525, 807.0125]
