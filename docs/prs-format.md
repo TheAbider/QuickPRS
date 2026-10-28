@@ -91,5 +91,31 @@ been checked against RPM:
   channels; earlier versions wrote 0, 0 and 0, and what difference that
   makes on the radio is not known.
 
-A good way to settle either: change one value in RPM, save, and compare the
-two files with `quickprs compare --detail` or `quickprs dump`.
+### How to settle them in RPM
+
+Each check is: save a file, change one thing, save a copy, and let
+`quickprs compare` name the field that moved. Work on a copy of a
+personality, never on the one in a radio.
+
+```bash
+quickprs compare before.PRS after.PRS
+```
+
+1. **IDEN spacing and bandwidth.** Open a personality with an IDEN set
+   and save it as `iden-a.PRS`. Change only the channel spacing of one
+   element (12.5 to 6.25 kHz, say), save as `iden-b.PRS`. Put it back,
+   change only that element's bandwidth, save as `iden-c.PRS`. Comparing
+   a with b, then a with c, shows which field each setting is.
+2. **ECC entries.** Save a personality whose P25 system has enhanced
+   control channel entries as `ecc-a.PRS`. Change one number in one entry
+   (its RFSS, its site, or its channel, one at a time), saving after each
+   as `ecc-b.PRS`, `ecc-c.PRS` and so on.
+3. **The analog channel fields.** Add a conventional channel in RPM with
+   no tones and save as `ch-a.PRS`. Give it a CTCSS tone, save as
+   `ch-b.PRS`; switch the tone to DCS, save as `ch-c.PRS`. If RPM shows a
+   squelch or signalling type for the channel, change it on its own too.
+   A field that stays at 85 through all of these is a constant; one that
+   moves shows what it follows.
+
+Send the saved files, or the `compare` output, and the field names in
+QuickPRS get fixed to match.
