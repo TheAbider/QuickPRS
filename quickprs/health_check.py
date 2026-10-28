@@ -32,16 +32,17 @@ INFO = "INFO"
 # NOAA Weather Radio frequencies (MHz)
 _NOAA_FREQS = {162.400, 162.425, 162.450, 162.475, 162.500, 162.525, 162.550}
 
-# National interop frequencies (NPSPAC, MHz)
+# National interop frequencies (MHz, as the NIFOG lists them; outputs)
 _INTEROP_FREQS = {
     # VHF
-    155.7525, 156.7625, 158.7375, 159.4725,
+    155.7525, 151.1375, 154.4525, 158.7375, 159.4725,
     # UHF
     453.2125, 453.4625, 453.7125, 453.8625,
-    # 800 MHz
-    866.0125, 866.5125, 867.0125, 867.5125,
-    # 700 MHz
-    769.24375, 769.74375, 770.24375, 770.74375,
+    # 800 MHz (rebanded)
+    851.0125, 851.5125, 852.0125, 852.5125, 853.0125,
+    # 700 MHz (P25)
+    769.24375, 769.14375, 769.64375, 770.14375, 770.64375, 769.74375,
+    770.24375,
 }
 
 # Emergency talkgroup IDs (common P25 emergency TG ranges)

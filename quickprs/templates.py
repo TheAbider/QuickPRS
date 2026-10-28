@@ -241,82 +241,55 @@ def get_noaa_channels():
 
 @_register('interop')
 def get_interop_channels():
-    """Return National Public Safety Interoperability channels.
+    """Return the national public safety interoperability channels.
 
-    Standard NPSPAC/interop channels used across all US agencies:
-    - VCALL10 (155.7525 MHz, VHF calling channel)
-    - VTAC11-14 (155.7675-156.0375 MHz, VHF tactical)
-    - UCALL40 (453.2125 MHz, UHF calling)
-    - UTAC41-44 (453.4625-453.8875 MHz, UHF tactical)
-    - 8CALL90 (866.0125 MHz, 800 MHz calling)
-    - 8TAC91-94 (866.5125-868.0125 MHz, 800 MHz tactical)
-    - 7CALL50 (769.24375 MHz, 700 MHz calling)
-    - 7TAC51-54 (769.74375-771.24375 MHz, 700 MHz tactical)
+    Values as the NIFOG publishes them (checked against RadioReference's
+    National Interoperability page; the current NIFOG from CISA wins any
+    disagreement).  All use 156.7 Hz CTCSS and narrowband FM unless noted:
 
-    VHF/UHF/800 channels use 156.7 Hz PL tone (NPSPAC standard).
-    700 MHz channels are P25 digital (no PL tone).
+    - VHF, simplex: VCALL10 155.7525, VTAC11 151.1375, VTAC12 154.4525,
+      VTAC13 158.7375, VTAC14 159.4725 MHz
+    - UHF repeater pairs (radio transmits 5 MHz up) and their direct
+      ("D") simplex channels: UCALL40 453.2125, UTAC41 453.4625,
+      UTAC42 453.7125, UTAC43 453.8625 MHz
+    - 800 MHz repeater pairs (radio transmits 45 MHz down; wide FM) and
+      direct channels: 8CALL90 851.0125, 8TAC91-94 851.5125-853.0125 MHz
+      (the rebanded frequencies; 866-868 MHz is the pre-rebanding plan)
+
+    The 700 MHz channels (7CALL50, 7TAC51-56) are P25 digital (NAC 293),
+    which an analog conventional set cannot carry; add them as a P25
+    conventional set (P25_CONV_SET.csv import) instead.
     """
-    return [
-        # VHF Interop (NPSPAC)
-        {'short_name': 'VCALL10', 'tx_freq': 155.7525,
-         'long_name': 'VHF Call',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': 'VTAC11', 'tx_freq': 155.7675,
-         'long_name': 'VHF Tactical 1',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': 'VTAC12', 'tx_freq': 155.7825,
-         'long_name': 'VHF Tactical 2',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': 'VTAC13', 'tx_freq': 155.7975,
-         'long_name': 'VHF Tactical 3',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': 'VTAC14', 'tx_freq': 156.0375,
-         'long_name': 'VHF Tactical 4',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        # UHF Interop
-        {'short_name': 'UCALL40', 'tx_freq': 453.2125,
-         'long_name': 'UHF Call',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': 'UTAC41', 'tx_freq': 453.4625,
-         'long_name': 'UHF Tactical 1',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': 'UTAC42', 'tx_freq': 453.7125,
-         'long_name': 'UHF Tactical 2',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': 'UTAC43', 'tx_freq': 453.8625,
-         'long_name': 'UHF Tactical 3',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': 'UTAC44', 'tx_freq': 453.8875,
-         'long_name': 'UHF Tactical 4',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        # 800 MHz Interop
-        {'short_name': '8CALL90', 'tx_freq': 866.0125,
-         'long_name': '800 Call',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': '8TAC91', 'tx_freq': 866.5125,
-         'long_name': '800 Tactical 1',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': '8TAC92', 'tx_freq': 867.0125,
-         'long_name': '800 Tactical 2',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': '8TAC93', 'tx_freq': 867.5125,
-         'long_name': '800 Tactical 3',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        {'short_name': '8TAC94', 'tx_freq': 868.0125,
-         'long_name': '800 Tactical 4',
-         'tx_tone': '156.7', 'rx_tone': '156.7'},
-        # 700 MHz Interop
-        {'short_name': '7CALL50', 'tx_freq': 769.24375,
-         'long_name': '700 Call'},
-        {'short_name': '7TAC51', 'tx_freq': 769.74375,
-         'long_name': '700 Tactical 1'},
-        {'short_name': '7TAC52', 'tx_freq': 770.24375,
-         'long_name': '700 Tactical 2'},
-        {'short_name': '7TAC53', 'tx_freq': 770.74375,
-         'long_name': '700 Tactical 3'},
-        {'short_name': '7TAC54', 'tx_freq': 771.24375,
-         'long_name': '700 Tactical 4'},
+    def ch(name, rx, tx=None, long_name="", narrowband=True):
+        return {'short_name': name, 'tx_freq': tx if tx else rx,
+                'rx_freq': rx, 'long_name': long_name,
+                'tx_tone': '156.7', 'rx_tone': '156.7',
+                'narrowband': narrowband}
+
+    channels = [
+        ch('VCALL10', 155.7525, long_name='VHF Call'),
+        ch('VTAC11', 151.1375, long_name='VHF Tactical 11'),
+        ch('VTAC12', 154.4525, long_name='VHF Tactical 12'),
+        ch('VTAC13', 158.7375, long_name='VHF Tactical 13'),
+        ch('VTAC14', 159.4725, long_name='VHF Tactical 14'),
     ]
+    for name, out, label in (('UCALL40', 453.2125, 'UHF Call'),
+                             ('UTAC41', 453.4625, 'UHF Tactical 41'),
+                             ('UTAC42', 453.7125, 'UHF Tactical 42'),
+                             ('UTAC43', 453.8625, 'UHF Tactical 43')):
+        channels.append(ch(name, out, tx=round(out + 5.0, 4),
+                           long_name=f'{name} Repeater'))
+        channels.append(ch(name + 'D', out, long_name=f'{name} Direct'))
+    for name, out, label in (('8CALL90', 851.0125, '800 Call'),
+                             ('8TAC91', 851.5125, '800 Tactical 91'),
+                             ('8TAC92', 852.0125, '800 Tactical 92'),
+                             ('8TAC93', 852.5125, '800 Tactical 93'),
+                             ('8TAC94', 853.0125, '800 Tactical 94')):
+        channels.append(ch(name, out, tx=round(out - 45.0, 4),
+                           long_name=f'{name} Repeater',
+                           narrowband=False))
+        channels.append(ch(name + 'D', out, long_name=f'{name} Direct'))
+    return channels
 
 
 @_register('public_safety')

@@ -1741,7 +1741,7 @@ def make_group_set(name, talkgroups, tx_default=False, scan_default=True):
 
 def make_conv_channel(short_name, tx_freq, rx_freq=None,
                       tx_tone="", rx_tone="", long_name="",
-                      tx=True, scan=True):
+                      tx=True, scan=True, narrowband=False):
     """Create a ConvChannel with default flags.
 
     Args:
@@ -1753,6 +1753,7 @@ def make_conv_channel(short_name, tx_freq, rx_freq=None,
         long_name: 16-char max long name (defaults to short_name)
         tx: transmit enable (False for receive-only channels like NOAA)
         scan: scan enable
+        narrowband: 12.5 kHz channel (False = 25 kHz wideband)
     """
     if rx_freq is None:
         rx_freq = tx_freq
@@ -1766,7 +1767,7 @@ def make_conv_channel(short_name, tx_freq, rx_freq=None,
     return ConvChannel(
         short_name=short_name, tx_freq=tx_freq, rx_freq=rx_freq,
         tx_tone=tx_tone, rx_tone=rx_tone, long_name=long_name,
-        tx=tx, scan=scan,
+        tx=tx, scan=scan, narrowband=narrowband,
     )
 
 
@@ -1839,6 +1840,7 @@ def make_conv_set(name, channels_data):
             long_name=ch.get('long_name', ''),
             tx=ch.get('tx', True),
             scan=ch.get('scan', True),
+            narrowband=ch.get('narrowband', False),
         ))
     return ConvSet(name=name[:8], channels=channels)
 

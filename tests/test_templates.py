@@ -302,9 +302,10 @@ class TestInteropTemplate:
     """Test National Interoperability channel data."""
 
     def test_interop_count(self):
-        """Interop has exactly 20 channels (5 VHF + 5 UHF + 5 800 + 5 700)."""
+        """5 VHF simplex + 4 UHF and 5 800 MHz channels, each as a
+        repeater pair and a direct channel (700 MHz is P25, not here)."""
         channels = get_interop_channels()
-        assert len(channels) == 20
+        assert len(channels) == 5 + 4 * 2 + 5 * 2
 
     def test_interop_short_names_length(self):
         """All interop short names are 8 chars or less."""
@@ -330,21 +331,35 @@ class TestInteropTemplate:
         channels = get_interop_channels()
         ucall = [ch for ch in channels if ch['short_name'] == 'UCALL40']
         assert len(ucall) == 1
-        assert ucall[0]['tx_freq'] == 453.2125
+        # repeater: the radio listens on 453.2125 and transmits 5 MHz up
+        assert ucall[0]['rx_freq'] == 453.2125
+        assert ucall[0]['tx_freq'] == 458.2125
+        direct = [ch for ch in channels if ch['short_name'] == 'UCALL40D']
+        assert direct[0]['tx_freq'] == direct[0]['rx_freq'] == 453.2125
 
     def test_interop_8call90_present(self):
-        """8CALL90 (800 MHz calling) must be present at 866.0125 MHz."""
+        """8CALL90 is 851.0125 MHz since 800 MHz rebanding (input
+        806.0125); 866.0125 was the old plan."""
         channels = get_interop_channels()
         call800 = [ch for ch in channels if ch['short_name'] == '8CALL90']
         assert len(call800) == 1
-        assert call800[0]['tx_freq'] == 866.0125
+        assert call800[0]['rx_freq'] == 851.0125
+        assert call800[0]['tx_freq'] == 806.0125
 
-    def test_interop_7call50_present(self):
-        """7CALL50 (700 MHz calling) must be present at 769.24375 MHz."""
-        channels = get_interop_channels()
-        call700 = [ch for ch in channels if ch['short_name'] == '7CALL50']
-        assert len(call700) == 1
-        assert call700[0]['tx_freq'] == 769.24375
+    def test_interop_vtac_frequencies(self):
+        """VTAC11-14 as the NIFOG lists them."""
+        got = {ch['short_name']: ch['tx_freq']
+               for ch in get_interop_channels()
+               if ch['short_name'].startswith('VTAC')}
+        assert got == {'VTAC11': 151.1375, 'VTAC12': 154.4525,
+                       'VTAC13': 158.7375, 'VTAC14': 159.4725}
+
+    def test_interop_no_700_or_utac44(self):
+        """700 MHz interop is P25 (not an analog channel) and there is no
+        UTAC44."""
+        names = {ch['short_name'] for ch in get_interop_channels()}
+        assert not any(n.startswith('7') for n in names)
+        assert 'UTAC44' not in names
 
     def test_interop_vhf_channels(self):
         """Interop has 5 VHF channels (VCALL10 + VTAC11-14)."""
@@ -358,21 +373,14 @@ class TestInteropTemplate:
         channels = get_interop_channels()
         uhf = [ch for ch in channels
                if ch['short_name'].startswith('U')]
-        assert len(uhf) == 5
+        assert len(uhf) == 8
 
     def test_interop_800_channels(self):
-        """Interop has 5 800 MHz channels (8CALL90 + 8TAC91-94)."""
+        """8CALL90 + 8TAC91-94, repeater and direct."""
         channels = get_interop_channels()
         ch800 = [ch for ch in channels
                  if ch['short_name'].startswith('8')]
-        assert len(ch800) == 5
-
-    def test_interop_700_channels(self):
-        """Interop has 5 700 MHz channels (7CALL50 + 7TAC51-54)."""
-        channels = get_interop_channels()
-        ch700 = [ch for ch in channels
-                 if ch['short_name'].startswith('7')]
-        assert len(ch700) == 5
+        assert len(ch800) == 10
 
     def test_interop_vhf_tones(self):
         """VHF interop channels use 156.7 Hz CTCSS tone."""
@@ -390,11 +398,11 @@ class TestInteropTemplate:
                 assert ch.get('tx_tone') == '156.7'
                 assert ch.get('rx_tone') == '156.7'
 
-    def test_interop_no_duplicate_freqs(self):
-        """No duplicate frequencies in interop template."""
+    def test_interop_no_duplicate_channels(self):
+        """No two channels share both frequencies."""
         channels = get_interop_channels()
-        freqs = [ch['tx_freq'] for ch in channels]
-        assert len(freqs) == len(set(freqs))
+        pairs = [(ch['tx_freq'], ch['rx_freq']) for ch in channels]
+        assert len(pairs) == len(set(pairs))
 
     def test_interop_has_required_keys(self):
         """Each interop channel has required keys."""
@@ -406,7 +414,7 @@ class TestInteropTemplate:
     def test_interop_lookup_by_name(self):
         """get_template_channels('interop') returns data."""
         channels = get_template_channels('interop')
-        assert len(channels) == 20
+        assert len(channels) == len(get_interop_channels())
 
 
 # ─── Public Safety template ──────────────────────────────────────────
