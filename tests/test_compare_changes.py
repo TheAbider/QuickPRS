@@ -92,7 +92,9 @@ def test_identical_files_exit_0(tmp_path, capsys):
     a.write_bytes(_personality().to_bytes())
     b.write_bytes(_personality().to_bytes())
     assert cmd_compare(str(a), str(b)) == 0
-    assert "identical" in capsys.readouterr().out.lower()
+    # the exact line: the word is also in pytest's folder name for this
+    # test, which the A:/B: lines print
+    assert "Files are identical." in capsys.readouterr().out.splitlines()
 
 
 def test_long_change_lists_are_shortened():

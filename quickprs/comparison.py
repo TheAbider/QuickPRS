@@ -516,6 +516,8 @@ def format_comparison(diffs, filepath_a="", filepath_b=""):
     removed = sum(1 for d in diffs if d[0] == REMOVED)
     changed = sum(1 for d in diffs if d[0] == CHANGED)
     lines.append(f"Summary: {added} added, {removed} removed, {changed} changed")
+    if not (added or removed or changed):
+        lines.append("Files are identical.")
 
     return lines
 
