@@ -784,6 +784,16 @@ def read_cstring(data, pos):
     return body.decode("latin-1"), w.pos
 
 
+def write_cstring(text):
+    """Encode an MFC CString (1-byte length, or 0xFF + 16-bit length)."""
+    raw = text.encode("latin-1", errors="replace")
+    if len(raw) < 0xFF:
+        return struct.pack("<B", len(raw)) + raw
+    if len(raw) < 0xFFFE:
+        return b"\xff" + struct.pack("<H", len(raw)) + raw
+    return b"\xff\xff\xff" + struct.pack("<I", len(raw)) + raw
+
+
 def read_document(data, lenient=True):
     """Read PRS bytes into ``(Document, WalkReport)``.
 

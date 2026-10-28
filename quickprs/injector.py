@@ -1319,13 +1319,37 @@ def edit_personality(prs, filename=None, saved_by=None):
     if not changed:
         return False
 
-    new_raw = build_personality_section(personality)
+    try:
+        new_raw = build_personality_section(personality)
+    except struct.error:
+        # the header's name/value block has a one-byte length
+        raise ValueError("the personality name and saved-by are too long "
+                         "(the header holds 255 bytes for them and three "
+                         "other fields)") from None
     idx = _find_section_index(prs, "CPersonality")
     if idx < 0:
         raise ValueError("CPersonality section not found")
     prs.sections[idx] = Section(offset=0, raw=new_raw,
                                  class_name="CPersonality")
+    _set_document_names(prs, personality.filename, personality.saved_by)
     return True
+
+
+def _set_document_names(prs, name, user):
+    """The personality name and user name are stored twice: in the
+    CPersonality header and among the document fields after the options
+    (RPM writes the same values in both).  Set the second copy."""
+    try:
+        doc = archive.document_from_prs(prs)
+    except archive.WalkError:
+        return
+    fields = doc.root.parts[6]
+    _, pos = archive.read_cstring(fields, 0)
+    flags = fields[pos:pos + 2]
+    _, end = archive.read_cstring(fields, pos + 2)
+    doc.root.parts[6] = (archive.write_cstring(name) + flags +
+                         archive.write_cstring(user) + fields[end:])
+    archive.write_document(prs, doc)
 
 
 def remove_wan_entry(prs, wan_name):
