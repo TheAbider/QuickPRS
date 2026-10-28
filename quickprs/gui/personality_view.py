@@ -1413,6 +1413,8 @@ class PersonalityView(ttk.Frame):
                     "group_id": meta.get("group_id"),
                     "name": meta.get("name", ""),
                     "long_name": meta.get("long_name", ""),
+                    "set_name": self._item_meta.get(
+                        self.tree.parent(iid), {}).get("name", ""),
                 })
             elif t == "conv_channel":
                 if item_type and item_type != "conv_channel":
@@ -1428,11 +1430,52 @@ class PersonalityView(ttk.Frame):
                 })
 
         if items:
+            self._attach_records(items, item_type)
             self._clipboard = items
             self._clipboard_type = item_type
             self.app.status_set(
                 f"Copied {len(items)} {item_type.replace('_', ' ')}(s)")
         return "break"
+
+    def _attach_records(self, items, item_type):
+        """Give each copied item its whole record (a talkgroup's flags,
+        encryption and audio settings; a channel's tones, power and
+        flags), taken now, so a paste does not depend on what the file
+        holds by then (edits, another file opened)."""
+        from copy import deepcopy
+        from ..injector import _get_first_count, _parse_section_data
+        prs = self.app.prs
+        if not prs:
+            return
+        if item_type == "talkgroup":
+            sec, set_cls, parser = ("CP25Group", "CP25GroupSet",
+                                    parse_group_section)
+        else:
+            sec, set_cls, parser = ("CConvChannel", "CConvSet",
+                                    parse_conv_channel_section)
+        data_sec = prs.get_section_by_class(sec)
+        if not data_sec or not prs.get_section_by_class(set_cls):
+            return
+        try:
+            sets = {s.name: s for s in _parse_section_data(
+                data_sec, parser, _get_first_count(prs, set_cls))}
+        except Exception as e:
+            log_error("copy", str(e))
+            return
+        for item in items:
+            source = sets.get(item.get("set_name", ""))
+            if source is None:
+                continue
+            if item_type == "talkgroup":
+                found = next((g for g in source.groups
+                              if g.group_id == item.get("group_id")), None)
+            else:
+                idx = item.get("ch_idx")
+                found = (source.channels[idx]
+                         if idx is not None and idx < len(source.channels)
+                         else None)
+            if found is not None:
+                item["record"] = deepcopy(found)
 
     def _on_paste(self, event):
         """Ctrl+V: paste copied items into the selected set."""
@@ -1484,6 +1527,7 @@ class PersonalityView(ttk.Frame):
 
     def _paste_talkgroups(self, prs, set_name):
         """Paste copied talkgroups into a group set."""
+        from copy import deepcopy
         from ..injector import (
             _parse_section_data, _replace_group_sections,
             _get_header_bytes, _get_first_count, make_p25_group,
@@ -1516,11 +1560,10 @@ class PersonalityView(ttk.Frame):
             for item in self._clipboard:
                 gid = item.get("group_id")
                 if gid is not None and gid not in existing_ids:
-                    new_grp = make_p25_group(
-                        gid,
-                        item.get("name", ""),
-                        item.get("long_name", ""),
-                    )
+                    record = item.get("record")
+                    new_grp = deepcopy(record) if record is not None else (
+                        make_p25_group(gid, item.get("name", ""),
+                                       item.get("long_name", "")))
                     target.groups.append(new_grp)
                     existing_ids.add(gid)
                     added += 1
@@ -1568,17 +1611,9 @@ class PersonalityView(ttk.Frame):
                 self.app.status_set(f"Set '{set_name}' not found")
                 return
 
-            # To copy channels, we need the full channel data from source
-            # Re-parse to get the actual channel objects
-            source_channels = []
-            for item in self._clipboard:
-                src_set_name = item.get("set_name", "")
-                src_idx = item.get("ch_idx")
-                for cs in existing_sets:
-                    if cs.name == src_set_name and src_idx is not None:
-                        if src_idx < len(cs.channels):
-                            source_channels.append(cs.channels[src_idx])
-                        break
+            # The channels as they were when copied (see _attach_records)
+            source_channels = [item["record"] for item in self._clipboard
+                               if item.get("record") is not None]
 
             if not source_channels:
                 # Fallback: create new channels from clipboard metadata
@@ -1996,15 +2031,10 @@ class PersonalityView(ttk.Frame):
         if not set_name:
             return
 
-        # Get indices from tree position (trunk channels don't have ch_idx)
-        parent_children = list(self.tree.get_children(set_parent_iid))
-        drag_idx = None
-        target_idx = None
-        for i, child_iid in enumerate(parent_children):
-            if child_iid == drag_iid:
-                drag_idx = i
-            if child_iid == target_iid:
-                target_idx = i
+        # The rows' channel indexes: a row's place among its visible
+        # siblings differs while the search filters rows
+        drag_idx = self._item_meta.get(drag_iid, {}).get("ch_idx")
+        target_idx = self._item_meta.get(target_iid, {}).get("ch_idx")
         if drag_idx is None or target_idx is None:
             return
 

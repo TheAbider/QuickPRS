@@ -269,3 +269,126 @@ def test_api_fetch_result_is_handled_on_the_main_thread(app):
     assert seen["result"] == ("FAKE", None)
     assert seen["thread"] is threading.main_thread()
     assert seen["api_thread"] is not threading.main_thread()
+
+
+def _gui_personality(tmp_path, name="gui.PRS"):
+    """Two talkgroup sets, two channel sets and a trunk set."""
+    from quickprs import injector
+    from quickprs.builder import create_blank_prs
+    from quickprs.prs_writer import write_prs
+    from quickprs.record_types import P25TrkSystemConfig
+    prs = create_blank_prs(name)
+    src = injector.make_group_set("SRC", [(100, "PD SEC", "PD SECURE"),
+                                          (200, "FIRE", "FIRE DISPATCH")])
+    tg = src.groups[0]
+    tg.tx, tg.encrypted, tg.key_id, tg.priority_tg, tg.scan = (
+        True, True, 5, True, False)
+    injector.add_p25_trunked_system(
+        prs, P25TrkSystemConfig(system_name="CITY", long_name="CITY",
+                                trunk_set_name="CITY", group_set_name="SRC",
+                                wan_name="CITY"),
+        trunk_set=injector.make_trunk_set("CITY", [
+            (806.0125, 851.0125), (806.5125, 851.5125),
+            (807.0125, 852.0125)]),
+        group_set=src)
+    injector.add_group_set(prs, injector.make_group_set(
+        "DST", [(300, "OTHER", "OTHER")]))
+    injector.add_conv_set(prs, injector.make_conv_set("CSRC", [
+        {"short_name": "A", "tx_freq": 151.625},
+        {"short_name": "B", "tx_freq": 462.5625, "tx_tone": "250.3",
+         "rx_tone": "250.3", "narrowband": True, "scan": False}]))
+    injector.add_conv_set(prs, injector.make_conv_set("CDST", [
+        {"short_name": "Z", "tx_freq": 154.57}]))
+    path = tmp_path / name
+    write_prs(prs, path)
+    return path
+
+
+def _rows(pv, kind, **match):
+    return [(iid, m) for iid, m in pv._item_meta.items()
+            if m.get("type") == kind
+            and all(m.get(k) == v for k, v in match.items())]
+
+
+def _sets(prs, data_cls, set_cls, parser):
+    from quickprs import injector
+    return {s.name: s for s in injector._parse_section_data(
+        prs.get_section_by_class(data_cls), parser,
+        injector._get_first_count(prs, set_cls))}
+
+
+def test_pasted_talkgroup_keeps_its_settings(app, tmp_path):
+    """Paste rebuilt talkgroups from ID and names: TX, scan, encryption,
+    key and priority went back to defaults."""
+    from quickprs.record_types import parse_group_section
+    app._open_path(_gui_personality(tmp_path), confirmed=True)
+    pv = app.personality_view
+    iid, _ = _rows(pv, "talkgroup", group_id=100)[0]
+    pv.tree.selection_set(iid)
+    pv._on_copy(None)
+    pv._paste_talkgroups(app.prs, "DST")
+    sets = _sets(app.prs, "CP25Group", "CP25GroupSet", parse_group_section)
+    source = next(g for g in sets["SRC"].groups if g.group_id == 100)
+    pasted = next(g for g in sets["DST"].groups if g.group_id == 100)
+    assert pasted == source
+    assert (pasted.tx, pasted.encrypted, pasted.key_id, pasted.scan) == (
+        True, True, 5, False)
+
+
+def test_pasted_channel_is_the_one_copied(app, tmp_path):
+    """Paste looked the channel up by its place at paste time, so after
+    the source set changed it pasted another channel."""
+    from quickprs import injector
+    from quickprs.record_types import parse_conv_channel_section
+    app._open_path(_gui_personality(tmp_path), confirmed=True)
+    pv = app.personality_view
+    iid, _ = _rows(pv, "conv_channel", name="B")[0]
+    pv.tree.selection_set(iid)
+    pv._on_copy(None)
+    # the source set changes before the paste: B moves to place 0
+    injector.reorder_conv_channel(app.prs, "CSRC", 1, 0)
+    pv._paste_conv_channels(app.prs, "CDST")
+    sets = _sets(app.prs, "CConvChannel", "CConvSet",
+                 parse_conv_channel_section)
+    pasted = sets["CDST"].channels[-1]
+    assert pasted.short_name == "B"
+    assert (pasted.tx_tone, pasted.narrowband, pasted.scan) == (
+        "250.3", True, False)
+
+
+def test_channels_paste_into_another_file(app, tmp_path):
+    from quickprs.record_types import parse_conv_channel_section
+    app._open_path(_gui_personality(tmp_path, "one.PRS"), confirmed=True)
+    pv = app.personality_view
+    iid, _ = _rows(pv, "conv_channel", name="B")[0]
+    pv.tree.selection_set(iid)
+    pv._on_copy(None)
+    (tmp_path / "other").mkdir()
+    app._open_path(_gui_personality(tmp_path / "other", "two.PRS"),
+                   confirmed=True)
+    # this file's CSRC holds A where the copied B was
+    from quickprs import injector
+    injector.reorder_conv_channel(app.prs, "CSRC", 1, 0)
+    pv._paste_conv_channels(app.prs, "CDST")
+    sets = _sets(app.prs, "CConvChannel", "CConvSet",
+                 parse_conv_channel_section)
+    assert [c.short_name for c in sets["CDST"].channels] == ["Z", "B"]
+
+
+def test_trunk_drag_while_filtered_moves_the_right_channels(app, tmp_path):
+    """Drag-reorder took channel indexes from the rows' places among the
+    visible rows."""
+    from quickprs.record_types import parse_trunk_channel_section
+    app._open_path(_gui_personality(tmp_path), confirmed=True)
+    pv = app.personality_view
+    pv._filter_mode.set(True)
+    pv.search_var.set("852.0125")          # only the third channel shows
+    third, _ = _rows(pv, "trunk_channel", rx=852.0125)[0]
+    first, _ = _rows(pv, "trunk_channel", rx=851.0125)[0]
+    set_iid = pv.tree.parent(third)
+    with mock.patch("quickprs.gui.personality_view.messagebox"):
+        pv._reorder_trunk_channels(set_iid, third, first)
+    sets = _sets(app.prs, "CTrunkChannel", "CTrunkSet",
+                 parse_trunk_channel_section)
+    assert [c.rx_freq for c in sets["CITY"].channels] == [
+        852.0125, 851.0125, 851.5125]
