@@ -141,9 +141,13 @@ class TestImportRR:
         prs_file = _create_blank(tmp_path)
         result = cmd_import_rr(
             prs_file, sid=8155,
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
         )
         assert result == 0
+        # RadioReferenceAPI(username, password, app_key): the account
+        # password, not the API key a second time
+        mock_api_cls.assert_called_once_with("testuser", "testpass",
+                                             "testkey")
         out = capsys.readouterr().out
         assert "Test County Public Safety" in out
         assert "SID 8155" in out
@@ -160,7 +164,7 @@ class TestImportRR:
         prs_file = _create_blank(tmp_path)
         cmd_import_rr(
             prs_file, sid=8155,
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
         )
         prs = parse_prs(prs_file)
         trunk_sets = _count_trunk_sets(prs)
@@ -178,7 +182,7 @@ class TestImportRR:
         prs_file = _create_blank(tmp_path)
         cmd_import_rr(
             prs_file, sid=8155,
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
         )
         prs = parse_prs(prs_file)
         issues = validate_prs(prs)
@@ -195,7 +199,7 @@ class TestImportRR:
         prs_file = _create_blank(tmp_path)
         cmd_import_rr(
             prs_file, sid=8155,
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
         )
         raw1 = Path(prs_file).read_bytes()
         prs = parse_prs(prs_file)
@@ -213,7 +217,7 @@ class TestImportRR:
         result = cmd_import_rr(
             prs_file,
             url="https://www.radioreference.com/db/sid/8155",
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
         )
         assert result == 0
         mock_api.get_system.assert_called_once_with(8155)
@@ -229,7 +233,7 @@ class TestImportRR:
         out_file = str(tmp_path / "output.PRS")
         result = cmd_import_rr(
             prs_file, sid=8155,
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
             output=out_file,
         )
         assert result == 0
@@ -245,7 +249,7 @@ class TestImportRR:
         prs_file = _create_blank(tmp_path)
         result = cmd_import_rr(
             prs_file, sid=8155,
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
             categories="1",  # Law Enforcement only
         )
         assert result == 0
@@ -263,7 +267,7 @@ class TestImportRR:
         prs_file = _create_blank(tmp_path)
         result = cmd_import_rr(
             prs_file, sid=8155,
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
             tags="Law Dispatch,Law Tac",
         )
         assert result == 0
@@ -285,7 +289,7 @@ class TestImportRR:
 
         result = cmd_import_rr(
             prs_file, sid=8155,
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
         )
         assert result == 0
 
@@ -307,7 +311,7 @@ class TestImportRRErrors:
         """Missing both --sid and --url should return 1."""
         prs_file = _create_blank(tmp_path)
         result = cmd_import_rr(
-            prs_file, username="testuser", apikey="testkey",
+            prs_file, username="testuser", apikey="testkey", password="testpass",
         )
         assert result == 1
         err = capsys.readouterr().err
@@ -318,7 +322,7 @@ class TestImportRRErrors:
         prs_file = _create_blank(tmp_path)
         result = cmd_import_rr(
             prs_file, url="https://google.com",
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
         )
         assert result == 1
         err = capsys.readouterr().err
@@ -330,7 +334,7 @@ class TestImportRRErrors:
         prs_file = _create_blank(tmp_path)
         result = cmd_import_rr(
             prs_file, sid=8155,
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
         )
         assert result == 1
         err = capsys.readouterr().err
@@ -347,7 +351,7 @@ class TestImportRRErrors:
         prs_file = _create_blank(tmp_path)
         result = cmd_import_rr(
             prs_file, sid=8155,
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
         )
         assert result == 1
         err = capsys.readouterr().err
@@ -363,7 +367,7 @@ class TestImportRRErrors:
         prs_file = _create_blank(tmp_path)
         result = cmd_import_rr(
             prs_file, sid=9999,
-            username="testuser", apikey="testkey",
+            username="testuser", apikey="testkey", password="testpass",
         )
         assert result == 1
         err = capsys.readouterr().err
@@ -375,7 +379,7 @@ class TestImportRRErrors:
             "import-rr", "nonexistent.PRS",
             "--sid", "8155",
             "--username", "testuser",
-            "--apikey", "testkey",
+            "--apikey", "testkey", "--password", "testpass",
         ])
         assert result == 1
 
@@ -667,7 +671,7 @@ class TestImportRunCli:
             "import-rr", prs_file,
             "--sid", "8155",
             "--username", "testuser",
-            "--apikey", "testkey",
+            "--apikey", "testkey", "--password", "testpass",
         ])
         assert result == 0
         out = capsys.readouterr().out
@@ -685,7 +689,7 @@ class TestImportRunCli:
             "import-rr", prs_file,
             "--url", "https://www.radioreference.com/db/sid/8155",
             "--username", "testuser",
-            "--apikey", "testkey",
+            "--apikey", "testkey", "--password", "testpass",
         ])
         assert result == 0
 
@@ -703,7 +707,7 @@ class TestImportRunCli:
             "import-rr", prs_file,
             "--sid", "8155",
             "--username", "testuser",
-            "--apikey", "testkey",
+            "--apikey", "testkey", "--password", "testpass",
             "--categories", "1,2",
             "--tags", "Law Dispatch",
             "-o", out_file,

@@ -147,8 +147,8 @@ def _parse_freq_lines(cfg, section_name):
     for key, value in cfg.items(section_name):
         # The key might be a number or 'freq1', etc. Use the value.
         # But configparser stores "key = value", so if the user writes
-        # "851.0125,806.0125" it becomes key="851.0125,806.0125" value=""
-        # or the user can write "1 = 851.0125,806.0125"
+        # "806.0125,851.0125" it becomes key="806.0125,851.0125" value=""
+        # or the user can write "1 = 806.0125,851.0125"
         line = value if value else key
         parts = line.split(',')
         try:

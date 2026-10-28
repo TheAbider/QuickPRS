@@ -2454,8 +2454,35 @@ def cmd_set_option(filepath, option_path=None, value=None, list_opts=False,
     return 0
 
 
+def _rr_credentials(username, apikey, password):
+    """RadioReference login: username, password and app key.
+
+    Each comes from its option, else QUICKPRS_RR_USER /
+    QUICKPRS_RR_PASSWORD / QUICKPRS_RR_APIKEY, and the password is asked
+    for (hidden) when a terminal is attached, so it need not appear in
+    shell history.  Returns None (after printing why) when one is missing.
+    """
+    import os
+    username = username or os.environ.get("QUICKPRS_RR_USER")
+    apikey = apikey or os.environ.get("QUICKPRS_RR_APIKEY")
+    password = password or os.environ.get("QUICKPRS_RR_PASSWORD")
+    if not password and username and sys.stdin.isatty():
+        import getpass
+        password = getpass.getpass(f"RadioReference password for "
+                                   f"{username}: ")
+    missing = [name for name, val in (("--username", username),
+                                      ("--password", password),
+                                      ("--apikey", apikey)) if not val]
+    if missing:
+        print(f"Error: RadioReference login needs {', '.join(missing)} "
+              f"(or the QUICKPRS_RR_* environment variables)",
+              file=sys.stderr)
+        return None
+    return username, password, apikey
+
+
 def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
-                   categories=None, tags=None, output=None):
+                  categories=None, tags=None, output=None, password=None):
     """Import a P25 trunked system from RadioReference and inject into PRS.
 
     Args:
@@ -2500,10 +2527,14 @@ def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
         print("Error: --sid or --url is required", file=sys.stderr)
         return 1
 
+    creds = _rr_credentials(username, apikey, password)
+    if creds is None:
+        return 1
+
     # Fetch system from API
     print(f"Fetching system {sid} from RadioReference...")
     try:
-        api = RadioReferenceAPI(username, apikey, apikey)
+        api = RadioReferenceAPI(*creds)
         rr_system = api.get_system(sid)
     except (ImportError, ConnectionError) as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -2709,6 +2740,10 @@ def cmd_import_paste(filepath, name, sysid, wacn=0, long_name=None,
             print("Error: no frequencies found in pasted text",
                   file=sys.stderr)
             return 1
+        # RadioReference lists the sites' downlink (receive) frequencies;
+        # the radio transmits on the band's paired uplink.
+        from .iden_library import calculate_tx_freq
+        freqs = [(calculate_tx_freq(rx), rx) for _, rx in freqs]
 
         trunk_set = make_trunk_set(name, freqs)
         freq_count = len(freqs)
@@ -3436,7 +3471,7 @@ def cmd_freq_tools(subcmd, freq=None, freq_list=None):
 
 
 def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
-                   categories=None, tags=None, output=None):
+                   categories=None, tags=None, output=None, password=None):
     """One-click RadioReference system setup with ECC and IDEN.
 
     Like import-rr but also auto-configures ECC entries and IDEN
@@ -3476,10 +3511,14 @@ def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
         print("Error: --sid or --url is required", file=sys.stderr)
         return 1
 
+    creds = _rr_credentials(username, apikey, password)
+    if creds is None:
+        return 1
+
     # Fetch system from API
     print(f"Fetching system {sid} from RadioReference...")
     try:
-        api = RadioReferenceAPI(username, apikey, apikey)
+        api = RadioReferenceAPI(*creds)
         rr_system = api.get_system(sid)
     except (ImportError, ConnectionError) as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -3844,8 +3883,9 @@ def cmd_template_csv(template_type, output=None):
             'default_name': 'freqs.csv',
             'content': (
                 "tx_freq,rx_freq\n"
-                "# Example: 851.0125,806.0125\n"
-                "# One frequency pair per line\n"
+                "# Example: 806.0125,851.0125\n"
+                "# TX is the radio's transmit (site uplink), RX the site\n"
+                "# downlink RadioReference lists.  One pair per line.\n"
             ),
         },
         'talkgroups': {
@@ -3889,8 +3929,9 @@ def cmd_template_csv(template_type, output=None):
                 "#wacn = 0\n"
                 "\n"
                 "#[system.MYSYS.frequencies]\n"
-                "#1 = 851.0125,806.0125\n"
-                "#2 = 851.0375,806.0375\n"
+                "# tx_freq (site uplink),rx_freq (site downlink)\n"
+                "#1 = 806.0125,851.0125\n"
+                "#2 = 806.0375,851.0375\n"
                 "\n"
                 "#[system.MYSYS.talkgroups]\n"
                 "#1 = 1,DISP,Dispatch\n"
@@ -4554,10 +4595,16 @@ def run_cli(args=None):
                       help="RadioReference system ID (from URL: /db/sid/XXXX)")
     p_rr.add_argument("--url", default=None,
                       help="RadioReference system URL (alternative to --sid)")
-    p_rr.add_argument("--username", required=True,
-                      help="RadioReference username")
-    p_rr.add_argument("--apikey", required=True,
-                      help="RadioReference API key")
+    p_rr.add_argument("--username", default=None,
+                      help="RadioReference username "
+                           "(or QUICKPRS_RR_USER)")
+    p_rr.add_argument("--password", default=None,
+                      help="RadioReference password (or "
+                           "QUICKPRS_RR_PASSWORD; asked for "
+                           "when omitted)")
+    p_rr.add_argument("--apikey", default=None,
+                      help="RadioReference API (app) key "
+                           "(or QUICKPRS_RR_APIKEY)")
     p_rr.add_argument("--categories", default=None,
                       help="Comma-separated category IDs to include "
                            "(default: all)")
@@ -5021,10 +5068,16 @@ def run_cli(args=None):
     p_auto.add_argument("--url", default=None,
                         help="RadioReference system URL (alternative "
                              "to --sid)")
-    p_auto.add_argument("--username", required=True,
-                        help="RadioReference username")
-    p_auto.add_argument("--apikey", required=True,
-                        help="RadioReference API key")
+    p_auto.add_argument("--username", default=None,
+                        help="RadioReference username "
+                             "(or QUICKPRS_RR_USER)")
+    p_auto.add_argument("--password", default=None,
+                        help="RadioReference password (or "
+                             "QUICKPRS_RR_PASSWORD; asked for "
+                             "when omitted)")
+    p_auto.add_argument("--apikey", default=None,
+                        help="RadioReference API (app) key "
+                             "(or QUICKPRS_RR_APIKEY)")
     p_auto.add_argument("--categories", default=None,
                         help="Comma-separated category IDs to include")
     p_auto.add_argument("--tags", default=None,
@@ -5604,6 +5657,7 @@ def run_cli(args=None):
                 url=parsed.url,
                 username=parsed.username,
                 apikey=parsed.apikey,
+                password=parsed.password,
                 categories=parsed.categories,
                 tags=parsed.tags,
                 output=parsed.output,
@@ -5783,6 +5837,7 @@ def run_cli(args=None):
                 url=parsed.url,
                 username=parsed.username,
                 apikey=parsed.apikey,
+                password=parsed.password,
                 categories=parsed.categories,
                 tags=parsed.tags,
                 output=parsed.output,

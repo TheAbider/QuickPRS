@@ -143,11 +143,18 @@ def test_validate_group_set_name_too_long():
 def test_validate_trunk_set_clean():
     """A valid trunk set produces no issues."""
     ts = make_trunk_set("TEST", [
-        (851.0125, 806.0125),
-        (852.0125, 807.0125),
+        (806.0125, 851.0125),
+        (807.0125, 852.0125),
     ])
     issues = validate_trunk_set(ts)
     assert len(issues) == 0
+
+
+def test_validate_trunk_set_swapped_tx_rx():
+    """TX on the site downlink and RX on its uplink is flagged."""
+    ts = make_trunk_set("TEST", [(851.0125, 806.0125)])
+    issues = validate_trunk_set(ts)
+    assert any("swapped" in m for s, m in issues if s == WARNING)
 
 
 def test_validate_trunk_set_duplicate_freq():

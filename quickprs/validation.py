@@ -291,6 +291,21 @@ def validate_trunk_set(trunk_set):
                     f"Remove this frequency or correct it to a valid "
                     f"XG-100P band."))
 
+    # TX and RX the wrong way round: TX on a site downlink frequency and
+    # RX on that downlink's uplink.  The radio would then listen where the
+    # site never transmits.
+    from .iden_library import calculate_tx_freq
+    swapped = [ch for ch in trunk_set.channels
+               if abs(ch.tx_freq - ch.rx_freq) > 0.001 and
+               abs(calculate_tx_freq(ch.tx_freq) - ch.rx_freq) < 0.0001]
+    if swapped:
+        ch = swapped[0]
+        issues.append((WARNING,
+            f"Trunk set '{name}': {len(swapped)} channel(s) have TX and RX "
+            f"swapped (e.g. TX {ch.tx_freq:.5f} is a site downlink, RX "
+            f"{ch.rx_freq:.5f} its uplink). TX should be the uplink "
+            f"{ch.rx_freq:.5f}, RX the downlink {ch.tx_freq:.5f}."))
+
     return issues
 
 

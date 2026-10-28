@@ -123,8 +123,9 @@ class TestBuildPatrol:
         tsets = _prs_trunk_sets(prs)
         psern = [t for t in tsets if t['name'].strip() == 'PSERN'][0]
         ch0 = psern['channels'][0]
-        assert abs(ch0['tx_freq'] - 851.0125) < 0.001
-        assert abs(ch0['rx_freq'] - 806.0125) < 0.001
+        # TX is the radio's transmit (site uplink), RX the site downlink
+        assert abs(ch0['tx_freq'] - 806.0125) < 0.001
+        assert abs(ch0['rx_freq'] - 851.0125) < 0.001
 
     def test_patrol_talkgroups(self):
         prs = build_from_config(str(PATROL_INI))
@@ -952,8 +953,8 @@ class TestRoundtripJson:
         tsets = d['trunk_sets']
         psern = [t for t in tsets if t['name'].strip() == 'PSERN'][0]
         # Verify first and last freq
-        assert abs(psern['channels'][0]['tx_freq'] - 851.0125) < 0.001
-        assert abs(psern['channels'][4]['tx_freq'] - 851.1125) < 0.001
+        assert abs(psern['channels'][0]['tx_freq'] - 806.0125) < 0.001
+        assert abs(psern['channels'][4]['tx_freq'] - 806.1125) < 0.001
 
     def test_patrol_json_talkgroup_ids(self):
         prs = build_from_config(str(PATROL_INI))

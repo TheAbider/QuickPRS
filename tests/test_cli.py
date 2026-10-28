@@ -934,7 +934,8 @@ class TestFreqToolsCLI:
         assert result == 0
         out = capsys.readouterr().out
         assert "146.9400" in out
-        assert "+0.6" in out
+        assert "-0.6" in out
+        assert "146.3400" in out
 
     def test_freq_tools_offset_70cm(self, capsys):
         """freq-tools offset for 70cm should show 5 MHz offset."""

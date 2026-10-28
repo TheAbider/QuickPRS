@@ -70,28 +70,28 @@ class TestToneData:
 class TestRepeaterOffset:
     """Test repeater offset calculations."""
 
-    def test_2m_low_positive(self):
-        """2m output below 147 MHz has + offset."""
+    def test_2m_146_outputs_negative(self):
+        """ARRL plan: 146.61-146.97 MHz outputs listen 600 kHz below
+        (146.94 output, 146.34 input)."""
         result = calculate_repeater_offset(146.940)
+        assert result is not None
+        offset, direction = result
+        assert offset == 0.6
+        assert direction == "-"
+
+    def test_2m_147_low_outputs_positive(self):
+        """147.00-147.39 MHz outputs listen 600 kHz above."""
+        result = calculate_repeater_offset(147.060)
         assert result is not None
         offset, direction = result
         assert offset == 0.6
         assert direction == "+"
 
-    def test_2m_high_negative(self):
-        """2m output at/above 147 MHz has - offset."""
-        result = calculate_repeater_offset(147.060)
-        assert result is not None
-        offset, direction = result
-        assert offset == 0.6
-        assert direction == "-"
-
-    def test_2m_boundary(self):
-        """Exactly 147.0 should give - offset."""
-        result = calculate_repeater_offset(147.0)
-        assert result is not None
-        _, direction = result
-        assert direction == "-"
+    def test_2m_boundaries(self):
+        assert calculate_repeater_offset(147.0)[1] == "+"
+        assert calculate_repeater_offset(147.39)[1] == "+"
+        assert calculate_repeater_offset(147.6)[1] == "-"
+        assert calculate_repeater_offset(145.29)[1] == "-"
 
     def test_220_band(self):
         """220 MHz band always has -1.6 MHz offset."""
@@ -386,7 +386,8 @@ class TestFormatting:
         lines = format_repeater_offset(146.940)
         text = "\n".join(lines)
         assert "146.9400" in text
-        assert "+0.6" in text
+        assert "-0.6" in text
+        assert "146.3400" in text       # the input, 600 kHz below
         assert "2m" in text
 
     def test_repeater_offset_out_of_band(self):

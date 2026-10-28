@@ -91,7 +91,9 @@ def calculate_repeater_offset(freq_mhz):
     Returns (offset_mhz, direction) tuple where direction is '+' or '-'.
 
     Standard offsets:
-    - 2m (144-148 MHz): +/- 0.6 MHz (output below 147 = +, above = -)
+    - 2m (144-148 MHz): 0.6 MHz; ARRL band plan: outputs 147.00-147.39
+      take a + offset, the other repeater outputs (145.1-145.5,
+      146.61-146.97, 147.6-148.0) take a - offset
     - 220 (222-225 MHz): -1.6 MHz
     - 70cm (420-450 MHz): +/- 5.0 MHz (output below 445 = +, above = -)
     - 900 (902-928 MHz): -12.0 MHz (input higher than output)
@@ -99,7 +101,7 @@ def calculate_repeater_offset(freq_mhz):
     Returns None if frequency is not in a standard repeater band.
     """
     if 144.0 <= freq_mhz <= 148.0:
-        direction = "+" if freq_mhz < 147.0 else "-"
+        direction = "+" if 147.0 <= freq_mhz < 147.4 else "-"
         return (0.6, direction)
     elif 222.0 <= freq_mhz <= 225.0:
         return (1.6, "-")

@@ -210,21 +210,24 @@ INI-style config files let you define an entire radio personality in one place:
 name = PATROL.PRS
 author = Dispatch
 
-[system.PSERN]
+; Example values: use your system's real IDs and frequencies.
+[system.COUNTY]
 type = p25_trunked
-long_name = PSERN SEATTLE
-system_id = 892
+long_name = COUNTY P25
+system_id = 100
 wacn = 781824
 
-[system.PSERN.frequencies]
-851.0125,806.0125
-851.5125,806.5125
-852.0125,807.0125
+[system.COUNTY.frequencies]
+; tx_freq (radio transmit = site uplink), rx_freq (site downlink)
+1 = 806.0125,851.0125
+2 = 806.5125,851.5125
+3 = 807.0125,852.0125
 
-[system.PSERN.talkgroups]
-1000,PD DISP,Police Dispatch
-1001,PD TAC1,Police Tactical 1
-2000,FD DISP,Fire Dispatch
+[system.COUNTY.talkgroups]
+; id, short_name, long_name
+1 = 1000,PD DISP,Police Dispatch
+2 = 1001,PD TAC1,Police Tactical 1
+3 = 2000,FD DISP,Fire Dispatch
 
 [channels.MURS]
 template = murs
@@ -237,9 +240,8 @@ template = interop
 
 [channels.LOCAL]
 ; short_name, tx_freq, rx_freq, tx_tone, rx_tone, long_name
-RPT IN,147.000,147.600,100.0,100.0,Repeater Input
-RPT OUT,147.600,147.600,,,Repeater Output
-SIMPLEX,146.520,146.520,,,2m Calling
+1 = RPT 147,147.600,147.000,100.0,100.0,147.00+ Repeater
+2 = SIMPLEX,146.520,146.520,,,2m Calling
 
 [options]
 gps.gpsMode = ON
