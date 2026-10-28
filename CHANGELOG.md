@@ -2,6 +2,15 @@
 
 All notable changes to QuickPRS will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- `quickprs radio sniff`: record RPM's session with the radio from a Bluetooth trace served by Microsoft's Bluetooth Virtual Sniffer (or a saved pcap/pcapng file), without a virtual COM port driver. It keeps only the serial bytes RPM and the radio exchange, in the capture format `analyze` reads. com0com, which the relay needs, cannot load while Windows 11's Memory Integrity is on
+- `--skip-encrypted` for `import-rr`, `auto-setup` and `import-paste`: leave out talkgroups RadioReference lists as fully encrypted
+
+### Fixed
+- Shell completions listed 33 of the 63 commands and stale flags; they are now read from the CLI's parser
+
 ## [1.2.0] - 2026-10-28
 
 ### Fixed
