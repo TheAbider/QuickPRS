@@ -306,11 +306,34 @@ def _get_channel_sections(cfg):
     return channels
 
 
+# Channel flags an inline channel line may end with (space-separated),
+# and the channel field each sets
+_CHANNEL_FLAGS = {
+    'nb': ('narrowband', True),      # 12.5 kHz channel
+    'rxonly': ('tx', False),         # transmit off
+    'noscan': ('scan', False),       # left out of scan
+}
+
+
+def _channel_flags(ch):
+    """The flag words for a channel dict (empty when all are default)."""
+    words = []
+    if ch.get('narrowband'):
+        words.append('nb')
+    if ch.get('tx', True) is False:
+        words.append('rxonly')
+    if ch.get('scan', True) is False:
+        words.append('noscan')
+    return " ".join(words)
+
+
 def _parse_inline_channels(section_dict):
     """Parse inline channel definitions from a channels section.
 
     Lines that look like channel data (contain a frequency) are parsed.
-    Format: short_name,tx_freq,rx_freq,tx_tone,rx_tone,long_name
+    Format: short_name,tx_freq,rx_freq,tx_tone,rx_tone,long_name[,flags]
+    where flags is any of "nb" (narrowband), "rxonly" and "noscan",
+    separated by spaces.
 
     Returns list of channel dicts.
     """
@@ -331,14 +354,22 @@ def _parse_inline_channels(section_dict):
             tx_tone = parts[3] if len(parts) > 3 else ''
             rx_tone = parts[4] if len(parts) > 4 else ''
             long_name = parts[5][:16] if len(parts) > 5 else short
-            channels.append({
+            channel = {
                 'short_name': short,
                 'tx_freq': tx,
                 'rx_freq': rx,
                 'tx_tone': tx_tone,
                 'rx_tone': rx_tone,
                 'long_name': long_name,
-            })
+            }
+            for word in (parts[6].lower().split() if len(parts) > 6 else []):
+                if word not in _CHANNEL_FLAGS:
+                    raise ConfigError(
+                        f"channel '{short}': unknown flag '{word}' "
+                        f"(use {', '.join(_CHANNEL_FLAGS)})")
+                field, value = _CHANNEL_FLAGS[word]
+                channel[field] = value
+            channels.append(channel)
         except (ValueError, IndexError):
             continue
     return channels
@@ -567,8 +598,11 @@ def export_config(prs, filepath, source_path=None):
                 tx_tone = ch.get("tx_tone", "")
                 rx_tone = ch.get("rx_tone", "")
                 long_n = ch.get("long_name", short).strip()
-                lines.append(
-                    f"{i} = {short},{tx},{rx},{tx_tone},{rx_tone},{long_n}")
+                line = f"{i} = {short},{tx},{rx},{tx_tone},{rx_tone},{long_n}"
+                flags = _channel_flags(ch)
+                if flags:
+                    line += f",{flags}"
+                lines.append(line)
             lines.append("")
 
     # Options from platformConfig
@@ -598,27 +632,40 @@ def _build_template_cache():
     cache = {}
     for name in get_template_names():
         try:
-            channels = get_template_channels(name)
-            freqs = sorted(round(ch["tx_freq"], 6) for ch in channels)
-            cache[name] = freqs
+            from .injector import make_conv_set
+            from .json_io import _conv_set_to_dict
+            built = make_conv_set(name, get_template_channels(name))
+            cache[name] = _template_key(
+                _conv_set_to_dict(built)["channels"])
         except Exception:
             continue
     return cache
 
 
-def _detect_template(channels, template_cache):
-    """Check if a set of channels matches a built-in template.
+def _template_key(channels):
+    """What a 'template = X' line rebuilds of each channel: names,
+    frequencies, tones and flags."""
+    return sorted(
+        (ch.get("short_name", "").strip(), ch.get("long_name", "").strip(),
+         round(ch["tx_freq"], 6), round(ch.get("rx_freq", ch["tx_freq"]), 6),
+         ch.get("tx_tone", ""), ch.get("rx_tone", ""),
+         bool(ch.get("narrowband")), ch.get("tx", True), ch.get("scan", True))
+        for ch in channels)
 
-    Compares the sorted TX frequencies of the channel set against
-    each template. Returns the template name if matched, else None.
+
+def _detect_template(channels, template_cache):
+    """Check if a set of channels is exactly a built-in template.
+
+    Only then can the export say 'template = X': building from the
+    template gives back the same names, frequencies, tones and flags.
+    Returns the template name if matched, else None.
     """
     if not channels:
         return None
 
-    ch_freqs = sorted(round(ch["tx_freq"], 6) for ch in channels)
-
-    for name, template_freqs in template_cache.items():
-        if ch_freqs == template_freqs:
+    key = _template_key(channels)
+    for name, template_key in template_cache.items():
+        if key == template_key:
             return name
 
     return None

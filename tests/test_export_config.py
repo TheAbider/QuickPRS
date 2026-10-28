@@ -391,38 +391,50 @@ class TestTemplateDetection:
         assert 'noaa' in cache
         assert 'gmrs' in cache
 
+    @staticmethod
+    def _exported(name):
+        """A template's channels as export_config sees them."""
+        from quickprs.injector import make_conv_set
+        from quickprs.json_io import _conv_set_to_dict
+        from quickprs.templates import get_template_channels
+        return _conv_set_to_dict(
+            make_conv_set(name, get_template_channels(name)))["channels"]
+
     def test_detect_murs(self):
         """MURS channels are detected as murs template."""
-        from quickprs.templates import get_template_channels
-        channels = get_template_channels('murs')
-        cache = _build_template_cache()
-        ch_dicts = [{'tx_freq': ch['tx_freq']} for ch in channels]
-        result = _detect_template(ch_dicts, cache)
-        assert result == 'murs'
+        assert _detect_template(self._exported('murs'),
+                                _build_template_cache()) == 'murs'
 
     def test_detect_noaa(self):
         """NOAA channels are detected as noaa or weather template."""
-        from quickprs.templates import get_template_channels
-        channels = get_template_channels('noaa')
-        cache = _build_template_cache()
-        ch_dicts = [{'tx_freq': ch['tx_freq']} for ch in channels]
-        result = _detect_template(ch_dicts, cache)
+        result = _detect_template(self._exported('noaa'),
+                                  _build_template_cache())
         assert result in ('noaa', 'weather')
 
-    def test_detect_gmrs_or_frs(self):
-        """GMRS channels match gmrs or frs (identical frequencies)."""
-        from quickprs.templates import get_template_channels
-        channels = get_template_channels('gmrs')
+    def test_detect_gmrs(self):
+        """GMRS and FRS share frequencies but not names or bandwidths."""
         cache = _build_template_cache()
-        ch_dicts = [{'tx_freq': ch['tx_freq']} for ch in channels]
-        result = _detect_template(ch_dicts, cache)
-        # GMRS and FRS have identical frequencies, either match is valid
-        assert result in ('gmrs', 'frs')
+        assert _detect_template(self._exported('gmrs'), cache) == 'gmrs'
+        assert _detect_template(self._exported('frs'), cache) == 'frs'
+
+    def test_same_frequencies_other_flags_is_not_the_template(self):
+        """A MURS set programmed wide (as PAWSOVERMAWS's WA WIDE is) used
+        to export as 'template = murs', which builds MURS 1-3 narrowband."""
+        channels = self._exported('murs')
+        for ch in channels:
+            ch.pop('narrowband', None)
+        assert _detect_template(channels, _build_template_cache()) is None
+
+    def test_same_frequencies_other_names_is_not_the_template(self):
+        channels = self._exported('murs')
+        channels[0]['long_name'] = 'MY MURS'
+        assert _detect_template(channels, _build_template_cache()) is None
 
     def test_detect_custom_no_match(self):
         """Custom channels do not match any template."""
         cache = _build_template_cache()
-        custom = [{'tx_freq': 462.123}, {'tx_freq': 462.456}]
+        custom = [{'short_name': 'A', 'tx_freq': 462.123},
+                  {'short_name': 'B', 'tx_freq': 462.456}]
         result = _detect_template(custom, cache)
         assert result is None
 
@@ -804,3 +816,41 @@ class TestExportBlankPRS:
         export_config(prs, str(out))
         content = out.read_text(encoding='utf-8')
         assert "[system." not in content
+
+
+class TestInlineChannelFlags:
+    """Inline channels lost narrowband, TX off and scan off: PAWSOVERMAWS's
+    FURRY NB set came back wideband from export-config + build."""
+
+    def test_flags_round_trip(self, tmp_path):
+        from quickprs.builder import create_blank_prs
+        from quickprs.config_builder import build_from_config, export_config
+        from quickprs.injector import add_conv_set, make_conv_set
+        from quickprs.json_io import prs_to_dict
+        prs = create_blank_prs("flags.PRS")
+        add_conv_set(prs, make_conv_set("MIXED", [
+            {"short_name": "NB", "tx_freq": 151.625, "narrowband": True},
+            {"short_name": "RX", "tx_freq": 162.55, "tx": False},
+            {"short_name": "NOSCAN", "tx_freq": 154.57, "scan": False},
+            {"short_name": "PLAIN", "tx_freq": 146.52},
+        ]))
+        ini = tmp_path / "flags.ini"
+        export_config(prs, ini)
+        assert "1 = NB,151.625,151.625,,,NB,nb" in ini.read_text()
+        back = prs_to_dict(build_from_config(ini))
+        chans = {c["short_name"]: c for c in next(
+            s for s in back["conv_sets"] if s["name"] == "MIXED")["channels"]}
+        assert chans["NB"].get("narrowband") is True
+        assert chans["RX"]["tx"] is False
+        assert chans["NOSCAN"]["scan"] is False
+        assert (chans["PLAIN"].get("narrowband"), chans["PLAIN"]["tx"],
+                chans["PLAIN"]["scan"]) == (None, True, True)
+
+    def test_unknown_flag_is_an_error(self, tmp_path):
+        from quickprs.config_builder import build_from_config, ConfigError
+        ini = tmp_path / "bad.ini"
+        ini.write_text("[channels.X]\n1 = A,146.52,146.52,,,A,wide\n",
+                       encoding="utf-8")
+        with pytest.raises(ConfigError, match="unknown flag 'wide'"):
+            build_from_config(ini)
+
