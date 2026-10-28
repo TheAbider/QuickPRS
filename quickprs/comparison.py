@@ -405,8 +405,56 @@ def _compare_documents(prs_a, prs_b, found):
                 ob = [o for o in b.items if o and o.cls == cls]
                 if oa != ob:
                     diffs.append((CHANGED, "Options", cls, "settings differ"))
+        elif what == "header fields":
+            diffs.extend(_compare_personality_headers(prs_a, prs_b))
+        elif what == "name, user and band limits":
+            diffs.extend(_compare_doc_fields(a, b))
         elif cat in ("Personality", "Radio Options") or cat not in reported:
             diffs.append((CHANGED, cat, what, "differs"))
+    return diffs
+
+
+def _compare_personality_headers(prs_a, prs_b):
+    """The CPersonality fields that differ (file name, saved by, save
+    time ...)."""
+    from .record_types import parse_personality_section
+    try:
+        pa = parse_personality_section(
+            prs_a.get_section_by_class("CPersonality").raw)
+        pb = parse_personality_section(
+            prs_b.get_section_by_class("CPersonality").raw)
+    except Exception:
+        return [(CHANGED, "Personality", "header fields", "differs")]
+    diffs = [(CHANGED, "Personality", f.name,
+              f"{getattr(pa, f.name)!r} -> {getattr(pb, f.name)!r}")
+             for f in dataclasses.fields(pa)
+             if getattr(pa, f.name) != getattr(pb, f.name)]
+    return diffs or [(CHANGED, "Personality", "header fields", "differ")]
+
+
+def _compare_doc_fields(a, b):
+    """Personality name, user name and band limits (the document fields
+    after the options list)."""
+    from . import archive
+    try:
+        name_a, pos_a = archive.read_cstring(a, 0)
+        name_b, pos_b = archive.read_cstring(b, 0)
+        user_a, end_a = archive.read_cstring(a, pos_a + 2)
+        user_b, end_b = archive.read_cstring(b, pos_b + 2)
+    except (IndexError, ValueError):
+        return [(CHANGED, "Personality", "name, user and band limits",
+                 "differ")]
+    diffs = []
+    if name_a != name_b:
+        diffs.append((CHANGED, "Personality", "personality name",
+                      f"{name_a!r} -> {name_b!r}"))
+    if user_a != user_b:
+        diffs.append((CHANGED, "Personality", "user name",
+                      f"{user_a!r} -> {user_b!r}"))
+    if (a[pos_a:pos_a + 2] != b[pos_b:pos_b + 2]
+            or a[end_a:] != b[end_b:]):
+        diffs.append((CHANGED, "Personality", "band limits and flags",
+                      "differ"))
     return diffs
 
 

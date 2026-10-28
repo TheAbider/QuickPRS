@@ -1461,11 +1461,16 @@ class TestRunCliDispatcher:
         assert rc == 0
 
     def test_compare_via_cli(self, tmp_path, capsys):
-        """compare via run_cli."""
-        a = _make_blank(tmp_path, "a.PRS")
-        b = _make_blank(tmp_path, "b.PRS")
-        rc = run_cli(["compare", a, b])
-        assert rc == 0
+        """compare via run_cli: the same personality is identical, another
+        name is a difference."""
+        (tmp_path / "x").mkdir()
+        (tmp_path / "y").mkdir()
+        a = _make_blank(tmp_path / "x")
+        b = _make_blank(tmp_path / "y")
+        assert run_cli(["compare", a, b]) == 0
+        c = _make_blank(tmp_path, "c.PRS")
+        assert run_cli(["compare", a, c]) == 1
+        assert "'blank.PRS' -> 'c.PRS'" in capsys.readouterr().out
 
     def test_diff_options_via_cli(self, tmp_path, capsys):
         """diff-options via run_cli."""
