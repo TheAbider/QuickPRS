@@ -107,7 +107,7 @@ def test_800_fdma_template():
     assert len(t.entries) == 16
 
     for i, e in enumerate(t.entries):
-        assert e['base_freq_hz'] == 851006250 + i * 1125000
+        assert e['base_freq_hz'] == 851012500 + i * 1125000
         assert e['chan_spacing_hz'] == 12500
         assert e['bandwidth_hz'] == 12500
         assert e['tx_offset_mhz'] == -45.0
@@ -126,12 +126,26 @@ def test_800_tdma_template():
     t = get_template("800-TDMA")
     assert len(t.entries) == 16
 
-    for e in t.entries:
-        assert e['chan_spacing_hz'] == 6250
-        assert e['bandwidth_hz'] == 6250
+    # The TDMA entries RPM-saved personalities hold (BEE00 and 92738
+    # slot 2): base 851.0125 MHz, 12500 / 12500
+    for i, e in enumerate(t.entries):
+        assert e['base_freq_hz'] == 851012500 + i * 1125000
+        assert e['chan_spacing_hz'] == 12500
+        assert e['bandwidth_hz'] == 12500
         assert e['iden_type'] == 1  # TDMA
         assert e['tx_offset_mhz'] == -45.0
     print("  PASS: 800 MHz TDMA template")
+
+
+def test_800_templates_reach_every_channel():
+    """Every 800 MHz channel centre (851.0125 MHz + n x 12.5 kHz) is a
+    whole number of steps from the first entry's base."""
+    for key in ("800-FDMA", "800-TDMA", "800-Mixed"):
+        e = get_template(key).entries[0]
+        for n in range(0, 80):
+            f_hz = 851012500 + n * 12500
+            steps = (f_hz - e['base_freq_hz']) / e['chan_spacing_hz']
+            assert steps == int(steps), (key, f_hz)
 
 
 def test_800_mixed_template():
@@ -150,13 +164,13 @@ def test_800_mixed_template():
     # Slots 2-15: TDMA
     for i in range(2, 16):
         e = t.entries[i]
-        assert e['chan_spacing_hz'] == 6250, f"Slot {i} spacing wrong"
-        assert e['bandwidth_hz'] == 6250, f"Slot {i} BW wrong"
+        assert e['chan_spacing_hz'] == 12500, f"Slot {i} spacing wrong"
+        assert e['bandwidth_hz'] == 12500, f"Slot {i} BW wrong"
         assert e['iden_type'] == 1, f"Slot {i} should be TDMA"
 
     # All entries have same base freq pattern and TX offset
     for i, e in enumerate(t.entries):
-        assert e['base_freq_hz'] == 851006250 + i * 1125000
+        assert e['base_freq_hz'] == 851012500 + i * 1125000
         assert e['tx_offset_mhz'] == -45.0
     print("  PASS: 800 MHz Mixed template")
 
@@ -182,7 +196,7 @@ def test_700_tdma_template():
     assert len(t.entries) == 16
 
     for e in t.entries:
-        assert e['chan_spacing_hz'] == 6250
+        assert e['chan_spacing_hz'] == 12500
         assert e['iden_type'] == 1
         assert e['tx_offset_mhz'] == 30.0
     print("  PASS: 700 MHz TDMA template")
@@ -214,7 +228,7 @@ def test_900_tdma_template():
     assert len(active) == 8
 
     for e in active:
-        assert e['chan_spacing_hz'] == 6250
+        assert e['chan_spacing_hz'] == 12500
         assert e['iden_type'] == 1
         assert e['tx_offset_mhz'] == -39.0
     print("  PASS: 900 MHz TDMA template")
@@ -312,8 +326,8 @@ def test_build_entries_800_phase2():
     entries = build_standard_iden_entries(
         [851.0125, 851.2625], "Project 25 Phase II")
     assert len(entries) == 16
-    assert entries[0]['base_freq_hz'] == 851006250
-    assert entries[0]['chan_spacing_hz'] == 6250
+    assert entries[0]['base_freq_hz'] == 851012500
+    assert entries[0]['chan_spacing_hz'] == 12500
     assert entries[0]['iden_type'] == 1
     print("  PASS: build_entries 800 Phase II")
 
@@ -392,7 +406,7 @@ def test_cli_iden_templates_detail():
         rc = cmd_iden_templates(detail=True)
     assert rc == 0
     output = buf.getvalue()
-    assert "851.00625" in output  # 800 MHz first entry
+    assert "851.01250" in output  # 800 MHz first entry
     assert "TDMA" in output
     assert "FDMA" in output
     print("  PASS: CLI iden-templates detail")

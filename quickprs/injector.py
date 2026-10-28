@@ -1953,13 +1953,23 @@ def auto_iden_from_frequencies(frequencies_mhz, set_name=None):
         is_tdma = _has_tdma_spacing(freqs)
         spacing = 6250 if is_tdma else 12500
         bw = 6250 if is_tdma else 12500
+        base_kw = {}
+        if band_name == '800':
+            # The table must reach every listed frequency in whole steps:
+            # 12.5 kHz from 851.0125 covers the 800 MHz channel centres,
+            # anything on a 6.25 kHz offset needs 6.25 kHz from 851.00625.
+            if is_tdma:
+                spacing = bw = 6250
+                base_kw = {'base_hz': 851006250}
+            else:
+                spacing = bw = 12500
         iden_type = 1 if is_tdma else 0
         mode_str = "TDMA" if is_tdma else "FDMA"
 
         gen_fn, tx_offset, max_entries = band_config[band_name]
 
         if gen_fn is not None:
-            entries = gen_fn(spacing, bw, tx_offset, iden_type)
+            entries = gen_fn(spacing, bw, tx_offset, iden_type, **base_kw)
         else:
             # VHF/UHF — derive from actual frequencies
             entries = _derive_iden_from_freqs(

@@ -71,7 +71,7 @@ def test_auto_iden_800_only():
 
     active = [e for e in iden_set.elements if e.base_freq_hz > 0]
     assert len(active) == 16  # Standard 800 MHz table
-    assert active[0].base_freq_hz == 851006250
+    assert active[0].base_freq_hz == 851012500
 
 
 def test_auto_iden_800_fdma():
