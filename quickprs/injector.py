@@ -187,6 +187,41 @@ def _system_obj_names(obj):
     return short, long_name
 
 
+def system_set_references(prs):
+    """Every set name the personality's systems refer to.
+
+    P25 trunked systems name a trunk set, a talkgroup set and an IDEN set;
+    conventional and P25 conventional systems name their channel set.
+    Returns an empty set when the archive cannot be read.
+    """
+    try:
+        doc = archive.document_from_prs(prs)
+    except archive.WalkError:
+        return set()
+    refs = set()
+    for obj in doc.list("systems").items:
+        if obj is None:
+            continue
+        data = obj.parts[0]
+        _, pos = archive.read_cstring(data, 0)
+        pos += 1 + 2 + 42                       # type byte, FFFF, prefix
+        _, pos = archive.read_cstring(data, pos)  # long name
+        if obj.cls == "CP25TrkSystem":
+            pos += 15
+            trunk, pos = archive.read_cstring(data, pos)
+            group, pos = archive.read_cstring(data, pos)
+            iden, _ = archive.read_cstring(obj.parts[2], 4)
+            refs.update((trunk, group, iden))
+        elif obj.cls == "CConvSystem":
+            conv, _ = archive.read_cstring(data, pos + 12)
+            refs.add(conv)
+        elif obj.cls == "CP25ConvSystem":
+            conv, _ = archive.read_cstring(data, pos + 5 + 4)
+            refs.add(conv)
+    refs.discard("")
+    return refs
+
+
 def _append_system(prs, obj):
     doc = archive.document_from_prs(prs)
     doc.list("systems").items.append(obj)

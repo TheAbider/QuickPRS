@@ -780,7 +780,7 @@ def _card_add_summary_stats(parts, prs):
 
     tones = stats.get('ctcss_tones', {})
     if tones:
-        tone_strs = [f"{t} ({c})" for t, c
+        tone_strs = [f"{_esc(t)} ({c})" for t, c
                      in sorted(tones.items(), key=lambda x: -x[1])]
         parts.append(f"<p class='summary-item'>"
                      f"<span class='summary-label'>Tones:</span>"

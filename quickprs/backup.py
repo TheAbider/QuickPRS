@@ -13,6 +13,25 @@ BACKUP_DIR_NAME = ".quickprs_backups"
 MAX_BACKUPS = 10
 
 
+def _backups_of(src, backup_dir):
+    """Backups of ``src`` in ``backup_dir``, newest first.
+
+    Matched on the exact name pattern create_backup writes, so the
+    backups of "radio_v2.PRS" are not taken for those of "radio.PRS", and
+    ordered by the timestamp in the name (a restored copy keeps its old
+    file time).
+    """
+    import re
+    pattern = re.compile(re.escape(src.stem) + r"_(\d{8}_\d{6}(?:_\d{6})?)"
+                         + re.escape(src.suffix) + "$", re.IGNORECASE)
+    found = []
+    for p in Path(backup_dir).iterdir():
+        m = pattern.match(p.name)
+        if m:
+            found.append((m.group(1), p))
+    return [p for _, p in sorted(found, reverse=True)]
+
+
 def create_backup(filepath, backup_dir=None):
     """Create a timestamped backup of a PRS file.
 
@@ -37,12 +56,8 @@ def create_backup(filepath, backup_dir=None):
 
     shutil.copy2(str(src), str(backup_path))
 
-    # Prune old backups for this specific file (by stem prefix)
-    backups = sorted(
-        backup_dir.glob(f"{src.stem}_*{src.suffix}"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
+    # Prune old backups for this specific file
+    backups = _backups_of(src, backup_dir)
     for old in backups[MAX_BACKUPS:]:
         old.unlink()
 
@@ -61,11 +76,7 @@ def list_backups(filepath):
     if not backup_dir.exists():
         return []
 
-    backups = sorted(
-        backup_dir.glob(f"{src.stem}_*{src.suffix}"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
+    backups = _backups_of(src, backup_dir)
 
     result = []
     for i, bp in enumerate(backups, 1):

@@ -880,15 +880,23 @@ class TestCmdCreate:
         p = parse_personality_section(sec.raw)
         assert p.filename == "MyPersonality.PRS"
 
-    def test_create_overwrites_existing(self, capsys, tmp_path):
-        """Create should silently overwrite an existing file."""
+    def test_create_refuses_existing(self, capsys, tmp_path):
+        """Create must not wipe an existing personality by accident."""
         out_file = tmp_path / "existing.PRS"
         out_file.write_bytes(b"old data")
         result = cmd_create(str(out_file))
+        assert result == 1
+        assert out_file.read_bytes() == b"old data"
+        assert "already exists" in capsys.readouterr().err
+
+    def test_create_force_replaces_and_keeps_bak(self, capsys, tmp_path):
+        out_file = tmp_path / "existing.PRS"
+        out_file.write_bytes(b"old data")
+        result = cmd_create(str(out_file), force=True)
         assert result == 0
         content = out_file.read_bytes()
-        assert content != b"old data"
         assert content[:2] == b'\xff\xff'  # valid PRS header
+        assert (tmp_path / "existing.PRS.bak").read_bytes() == b"old data"
 
     def test_create_section_count(self, capsys, tmp_path):
         """Output should report section count."""

@@ -1895,11 +1895,17 @@ def cmd_import_json(filepath, output=None):
 
     if output is None:
         output = Path(filepath).with_suffix('.PRS')
+        if output.exists():
+            print(f"Error: {output} already exists (probably the "
+                  f"personality this JSON came from); choose the output "
+                  f"with -o", file=sys.stderr)
+            return 1
 
+    from .prs_writer import write_prs
     out = Path(output)
     out.parent.mkdir(parents=True, exist_ok=True)
+    write_prs(prs, out, backup=True)
     raw = prs.to_bytes()
-    out.write_bytes(raw)
 
     print(f"Created: {out}")
     print(f"  Size: {len(raw):,} bytes")
@@ -2202,26 +2208,32 @@ def cmd_snapshot(filepath, output=None, compare=None):
         return 0
 
 
-def cmd_create(output_path, name=None, author=""):
+def cmd_create(output_path, name=None, author="", force=False):
     """Create a new blank PRS file.
 
     Args:
         output_path: path for the output .PRS file
         name: personality name (defaults to output filename)
         author: saved-by field (default empty)
+        force: replace an existing file (a .bak copy is kept)
 
     Returns:
         0 on success, 1 on error.
     """
     from .builder import create_blank_prs
+    from .prs_writer import write_prs
 
     out = Path(output_path)
+    if out.exists() and not force:
+        print(f"Error: {out} already exists; use --force to replace it "
+              f"(a .bak copy is kept)", file=sys.stderr)
+        return 1
     filename = name if name else out.name
     prs = create_blank_prs(filename=filename, saved_by=author)
-    raw = prs.to_bytes()
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(raw)
+    write_prs(prs, out, backup=True)
+    raw = prs.to_bytes()
 
     print(f"Created: {out}")
     print(f"Size: {len(raw):,} bytes")
@@ -3068,13 +3080,13 @@ def cmd_list(filepath, list_type):
                 if ch.tx_tone:
                     tone = f"tone={ch.tx_tone}"
                 print(f"{cs.name}\t{ch.short_name}\t"
-                      f"{ch.tx_freq:.4f}\t{ch.rx_freq:.4f}\t{tone}")
+                      f"{ch.tx_freq:.5f}\t{ch.rx_freq:.5f}\t{tone}")
 
     elif list_type == "frequencies":
         sets = _parse_trunk_sets(prs)
         for ts in sets:
             for ch in ts.channels:
-                print(f"{ts.name}\t{ch.tx_freq:.4f}\t{ch.rx_freq:.4f}")
+                print(f"{ts.name}\t{ch.tx_freq:.5f}\t{ch.rx_freq:.5f}")
 
     elif list_type == "sets":
         for kind, parser_fn in [("group", _parse_group_sets),
@@ -3845,7 +3857,18 @@ def cmd_search(filepaths, freq=None, tg=None, name=None):
         print("No PRS files found.", file=sys.stderr)
         return 1
 
-    print(f"Searching {len(prs_files)} file(s)...")
+    unreadable = []
+    for f in prs_files:
+        try:
+            parse_prs(f)
+        except Exception as e:
+            unreadable.append((f, e))
+    for f, e in unreadable:
+        print(f"Warning: cannot read {f}: {e}", file=sys.stderr)
+    if len(unreadable) == len(prs_files):
+        return 1
+
+    print(f"Searching {len(prs_files) - len(unreadable)} file(s)...")
     print()
 
     from .search import (
@@ -4515,6 +4538,8 @@ def run_cli(args=None):
                            help="Personality name (default: output filename)")
     p_create.add_argument("--author", default="",
                            help="Saved-by field")
+    p_create.add_argument("--force", action="store_true",
+                           help="Replace an existing file (keeps a .bak)")
 
     # build
     p_build = sub.add_parser("build",
@@ -5691,7 +5716,7 @@ def run_cli(args=None):
                                     raw=parsed.raw)
         elif parsed.command == "create":
             return cmd_create(parsed.output, name=parsed.name,
-                              author=parsed.author)
+                              author=parsed.author, force=parsed.force)
         elif parsed.command == "build":
             return cmd_build(parsed.config, output=parsed.output)
         elif parsed.command == "export-config":

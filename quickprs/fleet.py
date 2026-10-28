@@ -61,18 +61,21 @@ def build_fleet(config_path, units_csv_path, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     results = []
+    written = set()
     for unit in units:
         unit_id = unit['unit_id']
-        name = unit.get('name', '').strip()
-        password = unit.get('password', '').strip()
+        name = (unit.get('name') or '').strip()
+        password = (unit.get('password') or '').strip()
 
-        # Determine output filename
-        if name:
-            filename = f"{name}.PRS"
-        else:
-            filename = f"unit_{unit_id}.PRS"
-
+        # Determine output filename: a plain name inside output_dir only
+        safe = "".join(c for c in name if c not in '\\/:*?"<>|').strip(". ")
+        filename = f"{safe}.PRS" if safe else f"unit_{unit_id}.PRS"
         out_path = output_dir / filename
+        if out_path in written:
+            results.append((str(out_path), unit_id, False,
+                            f"duplicate output name {filename}"))
+            continue
+        written.add(out_path)
 
         try:
             prs = _build_unit_prs(config_path, unit_id, name, password)
@@ -118,7 +121,7 @@ def _parse_units_csv(csv_path):
         pw_col = normalized.get('password')
 
         for row_num, row in enumerate(reader, start=2):
-            uid_str = row.get(uid_col, '').strip()
+            uid_str = (row.get(uid_col) or '').strip()
             if not uid_str:
                 continue  # skip blank rows
 
@@ -128,13 +131,18 @@ def _parse_units_csv(csv_path):
                 raise ValueError(
                     f"Units CSV row {row_num}: invalid unit_id '{uid_str}'")
 
+            if not 1 <= uid <= 0xFFFFFF:
+                raise ValueError(
+                    f"Units CSV row {row_num}: unit_id {uid} is outside "
+                    f"the 24-bit P25 range (1-16777215)")
+
             entry = {'unit_id': uid}
             if name_col is not None:
-                entry['name'] = row.get(name_col, '').strip()
+                entry['name'] = (row.get(name_col) or '').strip()
             else:
                 entry['name'] = ''
             if pw_col is not None:
-                entry['password'] = row.get(pw_col, '').strip()
+                entry['password'] = (row.get(pw_col) or '').strip()
             else:
                 entry['password'] = ''
 
