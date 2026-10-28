@@ -766,8 +766,8 @@ class QuickPRSApp:
         """Recent files and last folder; a settings write failure must not
         break opening or saving."""
         self.settings["last_open_dir"] = str(Path(path).parent)
-        add_recent_file(self.settings, str(path))
         try:
+            add_recent_file(self.settings, str(path))   # writes settings
             self._refresh_recent_menu()
         except Exception as e:
             log_error("recent_files", str(e))

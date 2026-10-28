@@ -3816,7 +3816,7 @@ class PersonalityView(ttk.Frame):
 
         btn_frame = ttk.Frame(main)
         btn_frame.grid(row=6, column=0, columnspan=2, pady=(12, 0))
-        ttk.Button(btn_frame, text="Save", command=_save,
+        ttk.Button(btn_frame, text="Apply", command=_save,
                    width=10).pack(side=tk.RIGHT, padx=(4, 0))
         ttk.Button(btn_frame, text="Cancel", command=_cancel,
                    width=10).pack(side=tk.RIGHT)
@@ -4945,9 +4945,9 @@ class PersonalityView(ttk.Frame):
             self.app.mark_modified()
             self.refresh()
             win.destroy()
-            self.app.status_set(f"Saved {category}")
+            self.app.status_set(f"Updated {category}")
 
-        ttk.Button(btn_frame, text="Save", command=_save,
+        ttk.Button(btn_frame, text="Apply", command=_save,
                    width=10).pack(side=tk.RIGHT, padx=2)
         ttk.Button(btn_frame, text="Cancel", command=win.destroy,
                    width=10).pack(side=tk.RIGHT, padx=2)
@@ -5166,9 +5166,9 @@ class PersonalityView(ttk.Frame):
             self.app.mark_modified()
             self.refresh()
             win.destroy()
-            self.app.status_set("Saved Programmable Buttons")
+            self.app.status_set("Updated programmable buttons")
 
-        ttk.Button(btn_frame, text="Save", command=_save,
+        ttk.Button(btn_frame, text="Apply", command=_save,
                    width=10).pack(side=tk.RIGHT, padx=2)
         ttk.Button(btn_frame, text="Cancel", command=win.destroy,
                    width=10).pack(side=tk.RIGHT, padx=2)
@@ -5264,9 +5264,9 @@ class PersonalityView(ttk.Frame):
             self.app.mark_modified()
             self.refresh()
             win.destroy()
-            self.app.status_set("Saved Short Menu")
+            self.app.status_set("Updated short menu")
 
-        ttk.Button(btn_frame, text="Save", command=_save,
+        ttk.Button(btn_frame, text="Apply", command=_save,
                    width=10).pack(side=tk.RIGHT, padx=2)
         ttk.Button(btn_frame, text="Cancel", command=win.destroy,
                    width=10).pack(side=tk.RIGHT, padx=2)
@@ -5396,9 +5396,9 @@ class PersonalityView(ttk.Frame):
             self.app.mark_modified()
             self.refresh()
             win.destroy()
-            self.app.status_set(f"Saved {display}")
+            self.app.status_set(f"Updated {display}")
 
-        ttk.Button(btn_frame, text="Save", command=_save,
+        ttk.Button(btn_frame, text="Apply", command=_save,
                    width=10).pack(side=tk.RIGHT, padx=2)
         ttk.Button(btn_frame, text="Cancel", command=win.destroy,
                    width=10).pack(side=tk.RIGHT, padx=2)
@@ -5674,7 +5674,7 @@ class PersonalityView(ttk.Frame):
 
         btn_frame = ttk.Frame(main)
         btn_frame.grid(row=4, column=0, columnspan=2, pady=(12, 0))
-        ttk.Button(btn_frame, text="Save", command=_save,
+        ttk.Button(btn_frame, text="Apply", command=_save,
                    width=10).pack(side=tk.RIGHT, padx=(4, 0))
         ttk.Button(btn_frame, text="Cancel", command=dlg.destroy,
                    width=10).pack(side=tk.RIGHT)

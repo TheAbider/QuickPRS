@@ -496,7 +496,7 @@ def test_option_editor_save_can_be_undone(app, tmp_path):
     assert not app._undo_stack.can_undo()
     win = _editor_window(app)
     _first(win, ttk.Checkbutton).invoke()       # change one setting
-    _button(win, "Save").invoke()
+    _button(win, "Apply").invoke()
     assert app._undo_stack.can_undo()
 
 
@@ -512,7 +512,7 @@ def test_option_editor_after_undo_does_not_write(app, tmp_path):
     assert app.prs is not current
     before = app.prs.to_bytes()
     with mock.patch("quickprs.gui.personality_view.messagebox") as mb:
-        _button(win, "Save").invoke()
+        _button(win, "Apply").invoke()
         mb.showwarning.assert_called_once()
     assert app.prs.to_bytes() == before
 
@@ -587,3 +587,19 @@ def test_save_follows_the_auto_backup_setting(app, tmp_path, auto_backup,
     with mock.patch.object(app, "_offer_change_report"):
         assert app._do_save(path)
     assert Path(str(path) + ".bak").exists() is kept
+
+
+def test_save_survives_a_settings_write_failure(app, tmp_path):
+    """Recording the recent file writes settings.json; when that failed
+    the error came out of the save although the file was written."""
+    from quickprs.builder import create_blank_prs
+    from quickprs.prs_writer import write_prs
+    path = tmp_path / "s.PRS"
+    write_prs(create_blank_prs("s.PRS"), path, backup=False)
+    app._open_path(path, confirmed=True)
+    _change(app, "edit")
+    with mock.patch.object(app, "_offer_change_report"), \
+            mock.patch("quickprs.gui.settings.save_settings",
+                       side_effect=PermissionError("read-only")):
+        assert app._do_save(path) is True
+    assert app.modified is False
