@@ -231,3 +231,77 @@ def test_sniff_command_live(tmp_path):
     log = tmp_path / "live.jsonl"
     assert cmd_radio_sniff(port=port, log=str(log), address=RADIO) == 0
     assert read_capture(log).stream("radio>pc") == reply
+
+
+# ── traces without directions, and the trace report ──────────────────
+
+def pcap_h4(records):
+    """The same records as link type 187: no direction header."""
+    out = struct.pack("<IHHiIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535,
+                      hci.LINKTYPE_H4)
+    for t, _sent, h4 in records:
+        out += struct.pack("<IIII", int(t), 0, len(h4), len(h4)) + h4
+    return out
+
+
+def chunks_h4(records, **kw):
+    return [(d, data) for _, d, data in hci.serial_chunks(
+        hci.read_packets(io.BytesIO(pcap_h4(records))), **kw)]
+
+
+def test_no_direction_header_with_connection_setup():
+    """The L2CAP setup says which CID is whose: the side asking for the
+    RFCOMM channel is the PC."""
+    reply, records = session()
+    assert chunks_h4(records) == [("pc>radio", b"hello"),
+                                  ("radio>pc", reply)]
+
+
+def test_no_direction_header_mid_session():
+    """Without the setup, RFCOMM's C/R bit says who sent a frame: the PC
+    opened the channel, and its UIH frames carry C/R = 1."""
+    reply, records = session()
+    assert chunks_h4(records[5:]) == [("pc>radio", b"hello"),
+                                      ("radio>pc", reply)]
+
+
+def test_radio_opened_channel_with_directions():
+    """When the radio asks for the channel, the CIDs swap roles."""
+    records = [
+        (1.0, RECV, acl(H, conn_req(9, 0x0070))),
+        (1.1, SENT, acl(H, conn_rsp(9, 0x0071, 0x0070))),
+        (1.2, SENT, acl(H, l2cap(0x0070, rfcomm(
+            2, hci.RFCOMM_UIH, b"to radio", cr=0)))),
+        (1.3, RECV, acl(H, l2cap(0x0071, rfcomm(
+            2, hci.RFCOMM_UIH, b"to pc")))),
+    ]
+    assert chunks(records) == [("pc>radio", b"to radio"),
+                               ("radio>pc", b"to pc")]
+
+
+def test_trace_report():
+    reply, records = session()
+    stats = hci.TraceStats()
+    list(hci.serial_chunks(hci.read_packets(io.BytesIO(pcap(records))),
+                           stats=stats))
+    assert stats.packets == len(records)
+    assert stats.serial_bytes == {"pc>radio": 5, "radio>pc": len(reply)}
+    assert stats.rfcomm_frames == {"SABM": 1, "UA": 1, "UIH": 3}
+    lines = hci.describe(stats)
+    assert "9 packets (9 HCI H4 with direction)" in lines[0]
+    assert "serial channel(s) 1" in lines[1]
+
+
+@pytest.mark.parametrize("records, linktype, words", [
+    ([], hci.LINKTYPE_H4_WITH_PHDR, "is btvs.exe"),
+    ([(1.0, RECV, conn_complete(H, RADIO))], hci.LINKTYPE_H4_WITH_PHDR,
+     "No Bluetooth data packets"),
+    ([(1.0, SENT, acl(H, l2cap(0x0050, b"\x01\x02\x03\x04\x05")))],
+     hci.LINKTYPE_H4_WITH_PHDR, "Full Packet Logging"),
+    ([(1.0, SENT, b"\x02\x0b\x20\x00\x00")], 1, "link type 1 (not read)"),
+])
+def test_trace_report_says_why_nothing_was_found(records, linktype, words):
+    stats = hci.TraceStats()
+    list(hci.serial_chunks(hci.read_packets(io.BytesIO(
+        pcap(records, linktype=linktype))), stats=stats))
+    assert words in "\n".join(hci.describe(stats))
