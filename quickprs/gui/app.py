@@ -443,7 +443,7 @@ class QuickPRSApp:
 
         # Version info
         ttk.Label(self._welcome_frame,
-                  text=f"v{__version__} \u2022 50+ CLI commands \u2022 quickprs --help",
+                  text=f"v{__version__} \u2022 60+ CLI commands \u2022 quickprs --help",
                   foreground="gray").pack(side=tk.BOTTOM, pady=10)
 
         # Show the welcome screen initially

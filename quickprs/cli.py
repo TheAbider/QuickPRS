@@ -4286,7 +4286,7 @@ def run_cli(args=None):
     version_str = (
         f"QuickPRS v{__version__}\n"
         f"Python {py_ver} on {os_label}\n"
-        f"50+ CLI commands | quickprs cheat-sheet for reference"
+        f"60+ CLI commands | quickprs cheat-sheet for reference"
     )
 
     parser = argparse.ArgumentParser(

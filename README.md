@@ -133,7 +133,7 @@ python -m quickprs          # Launch GUI
 python -m quickprs --help   # CLI help
 ```
 
-Or use the standalone EXE from [Releases](../../releases) (no Python required).
+Or use the standalone EXEs from [Releases](../../releases) (no Python required): `QuickPRS.exe` is the GUI, and `QuickPRS-cli.exe` runs the commands below from a console, for example `QuickPRS-cli.exe validate radio.PRS`.
 
 ### Optional dependencies:
 
