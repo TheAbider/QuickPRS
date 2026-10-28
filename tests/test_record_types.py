@@ -1275,13 +1275,15 @@ class TestConvChannelDecodedFlags:
         f = ch.flags
         assert len(f) == 48
         # Defaults: rx=True, calls=True, alert=True, slm=True, scan=True, tx=True
-        # flag0=False, tone_mode=False, narrowband=False
+        # flag0=False, narrowband=False; tone_mode=True and both addresses
+        # 85, as RPM writes in every analog channel it creates
         assert f[0] == 0   # flag0
         assert f[1] == 1   # rx
         assert f[2] == 1   # calls
         assert f[3] == 1   # alert
         assert f[4] == 1   # scan_list_member
-        assert f[22] == 0  # tone_mode
+        assert f[22] == 1  # tone_mode
+        assert (ch.tx_addr, ch.rx_addr) == (85, 85)
         assert f[27] == 0  # narrowband
         assert f[29] == 1  # scan
         assert f[46] == 1  # tx
@@ -2398,3 +2400,26 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def test_new_channels_match_rpms():
+    """RPM writes tx_addr 85, rx_addr 85 and the tone mode flag in every
+    analog channel it creates, with or without tones; QuickPRS wrote 0, 0
+    and off."""
+    from conftest import cached_parse_prs
+    from quickprs.injector import make_conv_channel
+    paws = Path(__file__).parent / "testdata" / "PAWSOVERMAWS.PRS"
+    if not paws.exists():
+        pytest.skip("Test PRS data not available")
+    prs = cached_parse_prs(paws)
+    rpm_made = [ch for s in parse_sets_from_sections(
+                    prs.get_section_by_class("CConvSet").raw,
+                    prs.get_section_by_class("CConvChannel").raw,
+                    parse_conv_channel_section)
+                if s.name in ("FURRY NB", "FURRY WB") for ch in s.channels]
+    assert rpm_made
+    ours = [make_conv_channel("A", 151.625),
+            make_conv_channel("B", 462.5625, tx_tone="250.3",
+                              rx_tone="250.3", narrowband=True)]
+    for ch in rpm_made + ours:
+        assert (ch.tx_addr, ch.rx_addr, ch.tone_mode) == (85, 85, True)
