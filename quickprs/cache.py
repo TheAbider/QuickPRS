@@ -6,6 +6,7 @@ No RadioReference-copyrighted data is redistributed — this is
 local user data only.
 """
 
+import dataclasses
 import json
 import logging
 from pathlib import Path
@@ -13,7 +14,8 @@ from datetime import datetime
 
 logger = logging.getLogger("quickprs")
 
-from .radioreference import RRSystem, RRTalkgroup, RRSite, RRSiteFreq
+from .radioreference import (RRSystem, RRTalkgroup, RRSite, RRSiteFreq,
+                             ConvChannelData)
 
 
 CACHE_DIR = Path.home() / '.quickprs' / 'cache'
@@ -40,52 +42,10 @@ def save_system(system, source="paste"):
     filename = f"{safe_name}.json"
     filepath = cache_dir / filename
 
-    data = {
-        'cached_at': datetime.now().isoformat(),
-        'source': source,
-        'sid': system.sid,
-        'name': system.name,
-        'system_type': system.system_type,
-        'sysid': system.sysid,
-        'wacn': system.wacn,
-        'nac': system.nac,
-        'voice': system.voice,
-        'city': system.city,
-        'state': system.state,
-        'county': system.county,
-        'talkgroups': [
-            {
-                'dec_id': tg.dec_id,
-                'hex_id': tg.hex_id,
-                'alpha_tag': tg.alpha_tag,
-                'description': tg.description,
-                'mode': tg.mode,
-                'encrypted': tg.encrypted,
-                'tag': tg.tag,
-                'category': tg.category,
-                'category_id': tg.category_id,
-            }
-            for tg in system.talkgroups
-        ],
-        'sites': [
-            {
-                'site_id': site.site_id,
-                'site_number': site.site_number,
-                'name': site.name,
-                'rfss': site.rfss,
-                'nac': site.nac,
-                'county': getattr(site, 'county', ''),
-                'lat': getattr(site, 'lat', 0.0),
-                'lon': getattr(site, 'lon', 0.0),
-                'range_miles': getattr(site, 'range_miles', 0.0),
-                'freqs': [
-                    {'freq': sf.freq, 'lcn': sf.lcn, 'use': sf.use}
-                    for sf in site.freqs
-                ],
-            }
-            for site in system.sites
-        ],
-    }
+    # Every field of the system and the records in it (talkgroups, sites
+    # and their frequencies, conventional channels, categories)
+    data = {'cached_at': datetime.now().isoformat(), 'source': source}
+    data.update(dataclasses.asdict(system))
 
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
@@ -98,58 +58,29 @@ def load_system(filepath):
     with open(filepath, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
-    system = RRSystem(
-        sid=data.get('sid', 0),
-        name=data.get('name', ''),
-        system_type=data.get('system_type', ''),
-        sysid=data.get('sysid', ''),
-        wacn=data.get('wacn', ''),
-        nac=data.get('nac', ''),
-        voice=data.get('voice', ''),
-        city=data.get('city', ''),
-        state=data.get('state', ''),
-        county=data.get('county', ''),
-    )
-
-    system.talkgroups = [
-        RRTalkgroup(
-            dec_id=tg['dec_id'],
-            hex_id=tg.get('hex_id', ''),
-            alpha_tag=tg.get('alpha_tag', ''),
-            description=tg.get('description', ''),
-            mode=tg.get('mode', ''),
-            encrypted=tg.get('encrypted', 0),
-            tag=tg.get('tag', ''),
-            category=tg.get('category', ''),
-            category_id=tg.get('category_id', 0),
-        )
-        for tg in data.get('talkgroups', [])
-    ]
-
+    system = _record(RRSystem, data, sid=data.get('sid', 0))
+    system.categories = {int(k): v
+                         for k, v in data.get('categories', {}).items()}
+    system.talkgroups = [_record(RRTalkgroup, tg)
+                         for tg in data.get('talkgroups', [])]
     system.sites = [
-        RRSite(
-            site_id=site['site_id'],
-            site_number=site.get('site_number', ''),
-            name=site.get('name', ''),
-            rfss=site.get('rfss', 0),
-            nac=site.get('nac', ''),
-            county=site.get('county', ''),
-            lat=float(site.get('lat', 0.0)),
-            lon=float(site.get('lon', 0.0)),
-            range_miles=float(site.get('range_miles', 0.0)),
-            freqs=[
-                RRSiteFreq(
-                    freq=sf['freq'],
-                    lcn=sf.get('lcn', 0),
-                    use=sf.get('use', ''),
-                )
-                for sf in site.get('freqs', [])
-            ],
-        )
+        _record(RRSite, site, freqs=[_record(RRSiteFreq, sf)
+                                     for sf in site.get('freqs', [])])
         for site in data.get('sites', [])
     ]
-
+    system.conv_channels = [_record(ConvChannelData, ch)
+                            for ch in data.get('conv_channels', [])]
     return system
+
+
+def _record(cls, d, **fixed):
+    """A data class from a cached dict: its own keys (others ignored,
+    missing ones default) plus ``fixed``."""
+    names = {f.name for f in dataclasses.fields(cls)}
+    kwargs = {k: v for k, v in d.items()
+              if k in names and not isinstance(v, (list, dict))}
+    kwargs.update(fixed)
+    return cls(**kwargs)
 
 
 def list_cached_systems():

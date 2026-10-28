@@ -268,3 +268,35 @@ class TestCacheEdgeCases:
         assert path1 == path2
         loaded = load_system(path2)
         assert len(loaded.talkgroups) == 3
+
+
+class TestEverythingIsCached:
+    """The cache dropped the conventional channels, the categories (the
+    GUI's category filter) and each frequency's color code."""
+
+    def test_round_trip_keeps_every_field(self, tmp_cache):
+        from quickprs.radioreference import (
+            RRSystem, RRTalkgroup, RRSite, RRSiteFreq, ConvChannelData)
+        system = RRSystem(
+            sid=11628, name="PSERN", system_type="Project 25 Phase II",
+            sysid="3AB", wacn="BEE00", nac="3A1", voice="Analog and Digital",
+            city="Seattle", state="WA", county="King",
+            categories={7: "Seattle Police", 9: "King County Fire"},
+            talkgroups=[RRTalkgroup(dec_id=1001, hex_id="3e9",
+                                    alpha_tag="SPD N", description="North",
+                                    mode="DE", encrypted=2,
+                                    tag="Law Dispatch",
+                                    category="Seattle Police",
+                                    category_id=7)],
+            sites=[RRSite(site_id=1, site_number="001", name="Capitol Hill",
+                          rfss=1, nac="3A1", lat=47.6, lon=-122.3,
+                          range_miles=12.0, county="King",
+                          freqs=[RRSiteFreq(freq=851.0125, lcn=1, use="c",
+                                            color_code=3)])],
+            conv_channels=[ConvChannelData(
+                freq=155.76, name="LE D1", tone="136.5", mode="FMN",
+                description="Law Dispatch", tx_freq=150.76, tx_tone="136.5",
+                nac=0x293)],
+        )
+        back = load_system(save_system(system))
+        assert back == system
