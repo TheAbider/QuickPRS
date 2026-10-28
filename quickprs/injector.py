@@ -14,10 +14,13 @@ Strategy:
 """
 
 import logging
+import struct
 
+from . import archive
+from .archive import Obj, ObjList
 from .prs_parser import Section
 from .binary_io import (
-    read_uint16_le, write_uint16_le, write_lps,
+    read_uint16_le, write_uint16_le, write_lps, write_uint8, write_double_le,
 )
 from .record_types import (
     TrunkChannel, TrunkSet, ConvChannel, ConvSet,
@@ -81,6 +84,91 @@ def _parse_section_data(section, parser_fn, first_count):
     return parser_fn(section.raw, data_start, len(section.raw), first_count)
 
 
+# ─── Archive-backed writes ────────────────────────────────────────────
+#
+# Everything that adds, removes or reorders objects goes through
+# archive.Document, which writes the class tags, the WORD count in front
+# of each list and each class's schema the way RPM does (see archive.py).
+# Copying "separators" from the old file is what used to make edited files
+# unreadable to RPM.
+
+def _trunk_set_obj(tset):
+    channels = [Obj("CTrunkChannel", [ch.to_bytes()]) for ch in tset.channels]
+    trailing = bytes(tset.trailing_bytes or b"")
+    if len(trailing) >= 13:
+        tail = trailing[:13]   # parsed last set: its own 13 bytes come first
+    else:
+        tail = bytes(tset.gap_bytes or b"")[:12].ljust(12, b"\x00") + b"\x01"
+    return Obj("CTrunkSet", [ObjList("items", channels),
+                             tset.metadata_to_bytes() + tail])
+
+
+def _conv_set_obj(cset):
+    channels = [Obj("CConvChannel", [ch.to_bytes()]) for ch in cset.channels]
+    meta = cset.metadata_to_bytes() + bytes(getattr(cset, "padding", b""))
+    return Obj("CConvSet", [ObjList("items", channels), meta])
+
+
+def _group_set_obj(gset):
+    groups = [Obj("CP25Group", [g.to_bytes()]) for g in gset.groups]
+    return Obj("CP25GroupSet", [ObjList("items", groups),
+                                gset.metadata_to_bytes()])
+
+
+def _iden_set_obj(iset):
+    elements = list(iset.elements[:IdenDataSet.SLOTS])
+    while len(elements) < IdenDataSet.SLOTS:
+        elements.append(IdenElement())
+    items = [Obj("CDefaultIdenElem", [e.to_bytes()]) for e in elements]
+    meta = write_lps(iset.name) + bytes(iset.metadata)[:2].ljust(2, b"\x00")
+    return Obj("CIdenDataSet", [ObjList("items", items), meta])
+
+
+def _p25_conv_set_obj(pset):
+    channels = [Obj("CP25ConvChannel", [ch.to_bytes()])
+                for ch in pset.channels]
+    # The old parser's 17-byte "trailing" ends with the next two list
+    # counts; only the first 13 bytes belong to the set.
+    meta = (write_lps(pset.name) + write_uint8(pset.scan_list_size) +
+            write_uint8(pset.config_byte2) + write_double_le(pset.tx_min) +
+            write_double_le(pset.rx_min) + write_double_le(pset.tx_max) +
+            write_double_le(pset.rx_max) + write_lps(pset.group_set_ref) +
+            bytes(pset.trailing)[:13].ljust(13, b"\x00"))
+    return Obj("CP25ConvSet", [ObjList("items", channels), meta])
+
+
+_SET_OBJ_BUILDERS = {
+    "trunk sets": _trunk_set_obj,
+    "conv sets": _conv_set_obj,
+    "group sets": _group_set_obj,
+    "IDEN sets": _iden_set_obj,
+    "P25 conv sets": _p25_conv_set_obj,
+}
+
+
+def _write_set_list(prs, list_name, sets):
+    """Replace one whole set list (may be empty) and rewrite the file."""
+    doc = archive.document_from_prs(prs)
+    build = _SET_OBJ_BUILDERS[list_name]
+    doc.list(list_name).items = [build(s) for s in sets]
+    archive.write_document(prs, doc)
+
+
+def _system_obj_names(obj):
+    """(short name, long name) of a system object in an archive.Document."""
+    data = obj.parts[0]
+    short, pos = archive.read_cstring(data, 0)
+    pos += 1 + 2 + 42          # type byte, FFFF, config prefix
+    long_name, _ = archive.read_cstring(data, pos)
+    return short, long_name
+
+
+def _append_system(prs, obj):
+    doc = archive.document_from_prs(prs)
+    doc.list("systems").items.append(obj)
+    archive.write_document(prs, doc)
+
+
 # ─── Trunk Set Operations ────────────────────────────────────────────
 
 def add_trunk_set(prs, trunk_set):
@@ -142,22 +230,13 @@ def add_trunk_channels(prs, set_name, channels):
                              set_byte1, set_byte2)
 
 
-def _replace_trunk_sections(prs, sets, byte1, byte2, set_byte1, set_byte2):
-    """Replace CTrunkChannel and CTrunkSet sections with rebuilt data."""
+def _replace_trunk_sections(prs, sets, byte1=None, byte2=None,
+                            set_byte1=None, set_byte2=None):
+    """Replace all trunk sets.  The header-byte arguments are ignored (kept
+    for callers); schemas come from the file or RPM's defaults."""
     if not sets:
         raise ValueError("No trunk sets to write")
-    new_ch_raw = _build_trunk_channel_raw(sets, byte1, byte2)
-    new_set_raw = _rebuild_set_section("CTrunkSet", len(sets[0].channels),
-                                        set_byte1, set_byte2)
-
-    ch_idx = _find_section_index(prs, "CTrunkChannel")
-    set_idx = _find_section_index(prs, "CTrunkSet")
-    if ch_idx < 0 or set_idx < 0:
-        raise ValueError("CTrunkChannel or CTrunkSet section not found")
-    prs.sections[ch_idx] = Section(offset=0, raw=new_ch_raw,
-                                    class_name="CTrunkChannel")
-    prs.sections[set_idx] = Section(offset=0, raw=new_set_raw,
-                                     class_name="CTrunkSet")
+    _write_set_list(prs, "trunk sets", sets)
 
 
 def _build_trunk_channel_raw(sets, byte1, byte2):
@@ -257,23 +336,12 @@ def add_talkgroups(prs, set_name, groups):
                              set_byte1, set_byte2)
 
 
-def _replace_group_sections(prs, sets, byte1, byte2, set_byte1, set_byte2):
-    """Replace CP25Group and CP25GroupSet sections with rebuilt data."""
+def _replace_group_sections(prs, sets, byte1=None, byte2=None,
+                            set_byte1=None, set_byte2=None):
+    """Replace all talkgroup sets (header-byte arguments are ignored)."""
     if not sets:
         raise ValueError("No group sets to write")
-    new_grp_raw = _build_group_raw(sets, byte1, byte2)
-    new_set_raw = _rebuild_set_section("CP25GroupSet",
-                                        len(sets[0].groups),
-                                        set_byte1, set_byte2)
-
-    grp_idx = _find_section_index(prs, "CP25Group")
-    set_idx = _find_section_index(prs, "CP25GroupSet")
-    if grp_idx < 0 or set_idx < 0:
-        raise ValueError("CP25Group or CP25GroupSet section not found")
-    prs.sections[grp_idx] = Section(offset=0, raw=new_grp_raw,
-                                     class_name="CP25Group")
-    prs.sections[set_idx] = Section(offset=0, raw=new_set_raw,
-                                     class_name="CP25GroupSet")
+    _write_set_list(prs, "group sets", sets)
 
 
 def _build_group_raw(sets, byte1, byte2):
@@ -324,27 +392,25 @@ def add_iden_set(prs, iden_set):
     set_byte1, set_byte2 = _get_header_bytes(set_sec)
     first_count = _get_first_count(prs, "CIdenDataSet")
 
-    # Extract trailing data BEFORE rebuilding (platformConfig XML, passwords, etc.)
-    trailing = extract_iden_trailing_data(elem_sec.raw, first_count)
-
     existing_sets = _parse_section_data(elem_sec, parse_iden_section, first_count)
     existing_sets.append(iden_set)
+    # The document keeps everything after the IDEN sets (platformConfig XML,
+    # passwords, GUID) on its own, so no trailing data needs carrying here.
+    _replace_iden_sections(prs, existing_sets)
 
-    # Rebuild with trailing data preserved
-    new_elem_raw = _build_iden_raw(existing_sets, byte1, byte2,
-                                    trailing_data=trailing)
-    new_set_raw = _rebuild_set_section("CIdenDataSet",
-                                        len(existing_sets[0].elements),
-                                        set_byte1, set_byte2)
 
-    elem_idx = _find_section_index(prs, "CDefaultIdenElem")
-    set_idx = _find_section_index(prs, "CIdenDataSet")
-    if elem_idx < 0 or set_idx < 0:
-        raise ValueError("CDefaultIdenElem or CIdenDataSet section not found")
-    prs.sections[elem_idx] = Section(offset=0, raw=new_elem_raw,
-                                      class_name="CDefaultIdenElem")
-    prs.sections[set_idx] = Section(offset=0, raw=new_set_raw,
-                                     class_name="CIdenDataSet")
+def _replace_iden_sections(prs, sets, *_args, **_kwargs):
+    """Replace all IDEN sets (extra arguments are ignored)."""
+    if not sets:
+        raise ValueError("No IDEN sets to write")
+    _write_set_list(prs, "IDEN sets", sets)
+
+
+def _replace_p25_conv_sections(prs, sets, *_args, **_kwargs):
+    """Replace all P25 conventional sets (extra arguments are ignored)."""
+    if not sets:
+        raise ValueError("No P25 conv sets to write")
+    _write_set_list(prs, "P25 conv sets", sets)
 
 
 def _build_iden_raw(sets, byte1, byte2, trailing_data=None):
@@ -397,28 +463,15 @@ def add_p25_trunked_system(prs, config, trunk_set=None, group_set=None,
         group_set: optional P25GroupSet to inject
         iden_set: optional IdenDataSet to inject
     """
-    # Build the system config data section
-    data_raw = config.build_data_section()
-    data_section = Section(offset=0, raw=data_raw, class_name="")
-
-    # Check if a CP25TrkSystem header already exists
-    header_idx = _find_section_index(prs, "CP25TrkSystem")
-
-    if header_idx < 0:
-        # No existing header — create one and insert before the data sets
-        header_raw = config.build_header_section()
-        header_section = Section(offset=0, raw=header_raw,
-                                  class_name="CP25TrkSystem")
-
-        # Find insertion point: just before the first C*Set section
-        insert_idx = _find_set_insertion_point(prs)
-        prs.sections.insert(insert_idx, data_section)
-        prs.sections.insert(insert_idx, header_section)
-    else:
-        # Header exists — insert data section after the last system config
-        # data section that follows the header
-        insert_idx = _find_system_data_end(prs, header_idx)
-        prs.sections.insert(insert_idx, data_section)
+    # The system goes at the end of the systems list; its ECC entries are
+    # CPreferredSystemTableEntry objects inside it.
+    head, ecc, rest = config.object_parts()
+    _append_system(prs, Obj("CP25TrkSystem", [
+        head,
+        ObjList("ECC entries",
+                [Obj("CPreferredSystemTableEntry", [e]) for e in ecc]),
+        rest,
+    ]))
 
     # Inject associated data sets
     if trunk_set:
@@ -450,41 +503,37 @@ def _update_wan_sections(prs, config):
         wan_name = wan_name + ' ' * (8 - len(wan_name))
     wan_name = wan_name[:8]
 
-    # Parse existing WAN entries
-    wan_idx = _find_section_index(prs, "CP25TrkWan")
-    if wan_idx < 0:
-        return  # No WAN section to update
-
-    wan_sec = prs.sections[wan_idx]
-    try:
-        existing_entries = parse_wan_section(wan_sec.raw)
-    except Exception:
-        existing_entries = []
-
-    # Check for duplicate by wan_name (stripped for comparison)
-    for entry in existing_entries:
+    doc = archive.document_from_prs(prs)
+    wan_list = _wan_list(doc, create=True)
+    for item in wan_list.items:
+        if item is None:
+            continue
+        entry, _ = P25TrkWanEntry.parse(item.parts[0], 0)
         if entry.wan_name.strip() == wan_name.strip():
-            return  # Already exists, skip
+            return  # already there
 
-    # Create new entry
     new_entry = P25TrkWanEntry(
         wan_name=wan_name,
         wacn=config.wacn,
         system_id=config.system_id,
     )
-    existing_entries.append(new_entry)
+    wan_list.items.append(Obj("CP25TrkWan", [new_entry.to_bytes()]))
+    archive.write_document(prs, doc)
 
-    # Rebuild CP25TrkWan section
-    new_wan_raw = build_wan_section(existing_entries)
-    prs.sections[wan_idx] = Section(
-        offset=0, raw=new_wan_raw, class_name="CP25TrkWan")
 
-    # Update CP25tWanOpts count
-    opts_idx = _find_section_index(prs, "CP25tWanOpts")
-    if opts_idx >= 0:
-        new_opts_raw = build_wan_opts_section(len(existing_entries))
-        prs.sections[opts_idx] = Section(
-            offset=0, raw=new_opts_raw, class_name="CP25tWanOpts")
+def _wan_list(doc, create=False):
+    """The WAN entry list inside the CP25tWanOpts option (None if absent).
+
+    With ``create``, adds an empty CP25tWanOpts option when the
+    personality has none, so P25 systems always get their WAN entry.
+    """
+    opts = doc.option("CP25tWanOpts")
+    if opts is None:
+        if not create:
+            return None
+        opts = Obj("CP25tWanOpts", [ObjList("WAN entries")])
+        doc.list("options").items.insert(0, opts)
+    return opts.lists()[0]
 
 
 def add_preferred_entries(prs, new_entries):
@@ -497,16 +546,14 @@ def add_preferred_entries(prs, new_entries):
         prs: PRSFile object
         new_entries: list of PreferredSystemEntry to add
     """
-    from .record_types import (
-        parse_preferred_section, build_preferred_section,
-    )
-
-    pref_idx = _find_section_index(prs, "CPreferredSystemTableEntry")
-    if pref_idx < 0 or not new_entries:
+    if not new_entries:
         return
-
-    sec = prs.sections[pref_idx]
-    entries, iden, tail, chain, ctype = parse_preferred_section(sec.raw)
+    doc = archive.document_from_prs(prs)
+    system = _first_ecc_system(doc)
+    if system is None:
+        return
+    ecc = system.lists()[0]
+    entries = _preferred_entries_of(system)
 
     # Compute next sequence index
     max_f2 = max((e.field2 for e in entries), default=0)
@@ -514,13 +561,29 @@ def add_preferred_entries(prs, new_entries):
         if entry.field2 == 0:
             entry.field2 = max_f2 + 1 + i
 
-    entries.extend(new_entries)
+    for entry in new_entries:
+        ecc.items.append(Obj("CPreferredSystemTableEntry",
+                             [entry.to_bytes()[:13]]))
+    archive.write_document(prs, doc)
 
-    # Rebuild section preserving tail
-    new_raw = build_preferred_section(entries, tail_bytes=tail)
-    prs.sections[pref_idx] = Section(
-        offset=0, raw=new_raw,
-        class_name="CPreferredSystemTableEntry")
+
+def _first_ecc_system(doc):
+    """The first P25 trunked system: the "preferred system table" is its
+    ECC list (the CPreferredSystemTableEntry objects inside it)."""
+    for obj in doc.list("systems").items:
+        if obj is not None and obj.cls == "CP25TrkSystem":
+            return obj
+    return None
+
+
+def _preferred_entries_of(system):
+    from .record_types import PreferredSystemEntry
+    entries = []
+    for item in system.lists()[0].items:
+        if item is not None:
+            entries.append(PreferredSystemEntry.from_bytes(
+                item.parts[0] + b"\x00\x00", 0))
+    return entries
 
 
 def get_preferred_entries(prs):
@@ -529,15 +592,26 @@ def get_preferred_entries(prs):
     Returns:
         (entries, iden_name, chain_name) or ([], None, None)
     """
-    from .record_types import parse_preferred_section
-
-    pref_idx = _find_section_index(prs, "CPreferredSystemTableEntry")
-    if pref_idx < 0:
+    try:
+        doc = archive.document_from_prs(prs)
+    except archive.WalkError:
+        doc = None
+    system = _first_ecc_system(doc) if doc else None
+    if system is None:
         return [], None, None
-
-    sec = prs.sections[pref_idx]
-    entries, iden, tail, chain, ctype = parse_preferred_section(sec.raw)
-    return entries, iden, chain
+    entries = _preferred_entries_of(system)
+    rest = system.parts[2]
+    iden, _ = archive.read_cstring(rest, 4)
+    # the next system in the list, which the old section layout called
+    # the "chain"
+    # The next system in the list is the "chain" when it is another P25
+    # trunked system (what the old section parser reported).
+    systems = [o for o in doc.list("systems").items if o is not None]
+    pos = systems.index(system)
+    chain = None
+    if pos + 1 < len(systems) and systems[pos + 1].cls == "CP25TrkSystem":
+        chain = _system_obj_names(systems[pos + 1])[0]
+    return entries, iden or None, chain
 
 
 def _find_set_insertion_point(prs):
@@ -610,42 +684,18 @@ def _safe_add_iden_set(prs, iden_set):
 
 
 def _create_trunk_sections(prs, sets):
-    """Create CTrunkSet + CTrunkChannel sections from scratch."""
-    set_raw = build_class_header('CTrunkSet', 0x64, 0x00) + \
-              write_uint16_le(len(sets[0].channels))
-    ch_raw = _build_trunk_channel_raw(sets, 0x64, 0x00)
-
-    insert_idx = _find_data_set_insert_point(prs)
-    prs.sections.insert(insert_idx, Section(
-        offset=0, raw=ch_raw, class_name="CTrunkChannel"))
-    prs.sections.insert(insert_idx, Section(
-        offset=0, raw=set_raw, class_name="CTrunkSet"))
+    """Write the first trunk sets of a personality that had none."""
+    _write_set_list(prs, "trunk sets", sets)
 
 
 def _create_group_sections(prs, sets):
-    """Create CP25GroupSet + CP25Group sections from scratch."""
-    set_raw = build_class_header('CP25GroupSet', 0x6a, 0x00) + \
-              write_uint16_le(len(sets[0].groups))
-    grp_raw = _build_group_raw(sets, 0x6a, 0x00)
-
-    insert_idx = _find_data_set_insert_point(prs)
-    prs.sections.insert(insert_idx, Section(
-        offset=0, raw=grp_raw, class_name="CP25Group"))
-    prs.sections.insert(insert_idx, Section(
-        offset=0, raw=set_raw, class_name="CP25GroupSet"))
+    """Write the first talkgroup sets of a personality that had none."""
+    _write_set_list(prs, "group sets", sets)
 
 
 def _create_iden_sections(prs, sets):
-    """Create CIdenDataSet + CDefaultIdenElem sections from scratch."""
-    set_raw = build_class_header('CIdenDataSet', 0x66, 0x00) + \
-              write_uint16_le(len(sets[0].elements))
-    elem_raw = _build_iden_raw(sets, 0x66, 0x00)
-
-    insert_idx = _find_data_set_insert_point(prs)
-    prs.sections.insert(insert_idx, Section(
-        offset=0, raw=elem_raw, class_name="CDefaultIdenElem"))
-    prs.sections.insert(insert_idx, Section(
-        offset=0, raw=set_raw, class_name="CIdenDataSet"))
+    """Write the first IDEN sets of a personality that had none."""
+    _write_set_list(prs, "IDEN sets", sets)
 
 
 def _find_data_set_insert_point(prs):
@@ -685,22 +735,12 @@ def add_conv_set(prs, conv_set):
                             set_byte1, set_byte2)
 
 
-def _replace_conv_sections(prs, sets, byte1, byte2, set_byte1, set_byte2):
-    """Replace CConvChannel and CConvSet sections with rebuilt data."""
+def _replace_conv_sections(prs, sets, byte1=None, byte2=None,
+                           set_byte1=None, set_byte2=None):
+    """Replace all conventional sets (header-byte arguments are ignored)."""
     if not sets:
         raise ValueError("No conv sets to write")
-    new_ch_raw = _build_conv_channel_raw(sets, byte1, byte2)
-    new_set_raw = _rebuild_set_section("CConvSet", len(sets[0].channels),
-                                        set_byte1, set_byte2)
-
-    ch_idx = _find_section_index(prs, "CConvChannel")
-    set_idx = _find_section_index(prs, "CConvSet")
-    if ch_idx < 0 or set_idx < 0:
-        raise ValueError("CConvChannel or CConvSet section not found")
-    prs.sections[ch_idx] = Section(offset=0, raw=new_ch_raw,
-                                    class_name="CConvChannel")
-    prs.sections[set_idx] = Section(offset=0, raw=new_set_raw,
-                                     class_name="CConvSet")
+    _write_set_list(prs, "conv sets", sets)
 
 
 def _build_conv_channel_raw(sets, byte1, byte2):
@@ -739,16 +779,8 @@ def _safe_add_conv_set(prs, conv_set):
 
 
 def _create_conv_sections(prs, sets):
-    """Create CConvSet + CConvChannel sections from scratch."""
-    set_raw = build_class_header('CConvSet', 0x65, 0x00) + \
-              write_uint16_le(len(sets[0].channels))
-    ch_raw = _build_conv_channel_raw(sets, 0x6a, 0x00)
-
-    insert_idx = _find_data_set_insert_point(prs)
-    prs.sections.insert(insert_idx, Section(
-        offset=0, raw=ch_raw, class_name="CConvChannel"))
-    prs.sections.insert(insert_idx, Section(
-        offset=0, raw=set_raw, class_name="CConvSet"))
+    """Write the first conventional sets of a personality that had none."""
+    _write_set_list(prs, "conv sets", sets)
 
 
 # ─── Conventional System Creation ──────────────────────────────────
@@ -764,21 +796,7 @@ def add_conv_system(prs, config, conv_set=None):
         config: ConvSystemConfig with system parameters
         conv_set: optional ConvSet to inject
     """
-    data_raw = config.build_data_section()
-    data_section = Section(offset=0, raw=data_raw, class_name="")
-
-    header_idx = _find_section_index(prs, "CConvSystem")
-
-    if header_idx < 0:
-        header_raw = config.build_header_section()
-        header_section = Section(offset=0, raw=header_raw,
-                                  class_name="CConvSystem")
-        insert_idx = _find_set_insertion_point(prs)
-        prs.sections.insert(insert_idx, data_section)
-        prs.sections.insert(insert_idx, header_section)
-    else:
-        insert_idx = _find_system_data_end(prs, header_idx)
-        prs.sections.insert(insert_idx, data_section)
+    _append_system(prs, Obj("CConvSystem", [config.object_data()]))
 
     if conv_set:
         _safe_add_conv_set(prs, conv_set)
@@ -795,20 +813,7 @@ def add_p25_conv_system(prs, config):
         prs: PRSFile object
         config: P25ConvSystemConfig with system parameters
     """
-    header_raw = config.build_header_section()
-    data_raw = config.build_data_section()
-    trailing_raw = config.build_trailing_section()
-
-    header_section = Section(offset=0, raw=header_raw,
-                              class_name="CP25ConvSystem")
-    data_section = Section(offset=0, raw=data_raw, class_name="")
-    trailing_section = Section(offset=0, raw=trailing_raw, class_name="")
-
-    # Insert before data sets
-    insert_idx = _find_set_insertion_point(prs)
-    prs.sections.insert(insert_idx, trailing_section)
-    prs.sections.insert(insert_idx, data_section)
-    prs.sections.insert(insert_idx, header_section)
+    _append_system(prs, Obj("CP25ConvSystem", [config.object_data()]))
 
 
 # ─── Set Removal ───────────────────────────────────────────────────
@@ -841,18 +846,8 @@ def remove_trunk_set(prs, set_name):
     if len(remaining) == len(existing_sets):
         return False  # not found
 
-    if not remaining:
-        # Last set removed — drop both sections
-        ch_idx = _find_section_index(prs, "CTrunkChannel")
-        set_idx = _find_section_index(prs, "CTrunkSet")
-        # Remove in reverse order to preserve indices
-        for idx in sorted([ch_idx, set_idx], reverse=True):
-            if idx >= 0:
-                prs.sections.pop(idx)
-    else:
-        _replace_trunk_sections(prs, remaining, byte1, byte2,
-                                 set_byte1, set_byte2)
-
+    # An empty list is fine: the archive then holds a count of 0.
+    _write_set_list(prs, "trunk sets", remaining)
     return True
 
 
@@ -884,16 +879,7 @@ def remove_group_set(prs, set_name):
     if len(remaining) == len(existing_sets):
         return False  # not found
 
-    if not remaining:
-        grp_idx = _find_section_index(prs, "CP25Group")
-        set_idx = _find_section_index(prs, "CP25GroupSet")
-        for idx in sorted([grp_idx, set_idx], reverse=True):
-            if idx >= 0:
-                prs.sections.pop(idx)
-    else:
-        _replace_group_sections(prs, remaining, byte1, byte2,
-                                 set_byte1, set_byte2)
-
+    _write_set_list(prs, "group sets", remaining)
     return True
 
 
@@ -925,16 +911,7 @@ def remove_conv_set(prs, set_name):
     if len(remaining) == len(existing_sets):
         return False  # not found
 
-    if not remaining:
-        ch_idx = _find_section_index(prs, "CConvChannel")
-        set_idx = _find_section_index(prs, "CConvSet")
-        for idx in sorted([ch_idx, set_idx], reverse=True):
-            if idx >= 0:
-                prs.sections.pop(idx)
-    else:
-        _replace_conv_sections(prs, remaining, byte1, byte2,
-                                set_byte1, set_byte2)
-
+    _write_set_list(prs, "conv sets", remaining)
     return True
 
 
@@ -1256,156 +1233,74 @@ def remove_wan_entry(prs, wan_name):
     Returns:
         True if entry was removed, False if not found.
     """
-    wan_idx = _find_section_index(prs, "CP25TrkWan")
-    if wan_idx < 0:
+    doc = archive.document_from_prs(prs)
+    wan_list = _wan_list(doc)
+    if wan_list is None:
         return False
 
-    wan_sec = prs.sections[wan_idx]
-    try:
-        entries = parse_wan_section(wan_sec.raw)
-    except Exception:
-        return False
+    def _name(item):
+        return P25TrkWanEntry.parse(item.parts[0], 0)[0].wan_name.strip()
 
-    remaining = [e for e in entries
-                 if e.wan_name.strip() != wan_name.strip()]
-    if len(remaining) == len(entries):
+    remaining = [i for i in wan_list.items
+                 if i is None or _name(i) != wan_name.strip()]
+    if len(remaining) == len(wan_list.items):
         return False  # not found
 
-    if not remaining:
-        # Remove WAN section entirely
-        prs.sections.pop(wan_idx)
-        opts_idx = _find_section_index(prs, "CP25tWanOpts")
-        if opts_idx >= 0:
-            prs.sections.pop(opts_idx)
-    else:
-        new_wan_raw = build_wan_section(remaining)
-        prs.sections[wan_idx] = Section(
-            offset=0, raw=new_wan_raw, class_name="CP25TrkWan")
-        opts_idx = _find_section_index(prs, "CP25tWanOpts")
-        if opts_idx >= 0:
-            new_opts_raw = build_wan_opts_section(len(remaining))
-            prs.sections[opts_idx] = Section(
-                offset=0, raw=new_opts_raw, class_name="CP25tWanOpts")
-
+    # An emptied WAN list stays as CP25tWanOpts with a count of 0.
+    wan_list.items = remaining
+    archive.write_document(prs, doc)
     return True
 
 
 # ─── System Removal ─────────────────────────────────────────────────
 
 def remove_system_config(prs, long_name):
-    """Remove a system config data section by its long display name.
-
-    Finds and removes the unnamed data section whose long name matches.
-    If this was the only config section after a system header, the
-    header is also removed.
+    """Remove the system whose long display name is ``long_name``.
 
     Args:
         prs: PRSFile object
         long_name: the system's long display name (e.g., "PSERN SEATTLE")
 
     Returns:
-        True if a section was removed, False if not found.
+        True if a system was removed, False if not found.
     """
-    from .record_types import parse_system_long_name, is_system_config_data
-
-    target_idx = None
-    for i, sec in enumerate(prs.sections):
-        if not sec.class_name and is_system_config_data(sec.raw):
-            name = parse_system_long_name(sec.raw)
-            if name == long_name:
-                target_idx = i
-                break
-
-    if target_idx is None:
-        return False
-
-    # Remove the config data section
-    prs.sections.pop(target_idx)
-
-    # Check if the preceding header now has no config data sections
-    _cleanup_orphan_headers(prs)
-
-    return True
+    doc = archive.document_from_prs(prs)
+    systems = doc.list("systems")
+    for i, obj in enumerate(systems.items):
+        if obj is not None and _system_obj_names(obj)[1] == long_name:
+            del systems.items[i]
+            archive.write_document(prs, doc)
+            return True
+    return False
 
 
 def remove_system_by_class(prs, class_name, system_name=None):
-    """Remove all sections for a system type (or a specific named system).
-
-    Removes the class header section and all following data sections that
-    belong to it (system config data, continuation data, etc.).
+    """Remove the systems of one class, or one of them by short name.
 
     Args:
         prs: PRSFile object
         class_name: "CP25TrkSystem", "CConvSystem", or "CP25ConvSystem"
-        system_name: optional short name to target a specific header.
-                     If None, removes ALL sections of this class type.
+        system_name: optional short name to target a specific system.
+                     If None, removes ALL systems of this class.
 
     Returns:
-        Number of sections removed.
+        Number of systems removed.
     """
-    from .record_types import (
-        parse_system_short_name, is_system_config_data,
-    )
-
+    doc = archive.document_from_prs(prs)
+    systems = doc.list("systems")
+    keep = []
     removed = 0
-    i = 0
-    while i < len(prs.sections):
-        sec = prs.sections[i]
-        if sec.class_name != class_name:
-            i += 1
-            continue
-
-        # Check system_name filter
-        if system_name:
-            short = parse_system_short_name(sec.raw)
-            if short != system_name:
-                i += 1
-                continue
-
-        # Remove this header
-        prs.sections.pop(i)
-        removed += 1
-
-        # Remove all following data sections until the next class header
-        while i < len(prs.sections):
-            next_sec = prs.sections[i]
-            if next_sec.class_name:
-                break  # hit the next class header, stop
-            prs.sections.pop(i)
+    for obj in systems.items:
+        if (obj is not None and obj.cls == class_name and
+                (system_name is None or
+                 _system_obj_names(obj)[0] == system_name)):
             removed += 1
-
+        else:
+            keep.append(obj)
+    if removed:
+        systems.items = keep
+        archive.write_document(prs, doc)
     return removed
-
-
-def _cleanup_orphan_headers(prs):
-    """Remove system headers that have no config data sections following them."""
-    from .record_types import is_system_config_data
-
-    system_classes = {'CP25TrkSystem', 'CConvSystem', 'CP25ConvSystem'}
-    to_remove = []
-
-    for i, sec in enumerate(prs.sections):
-        if sec.class_name not in system_classes:
-            continue
-
-        # Check if the next section is a config data section
-        has_config = False
-        j = i + 1
-        while j < len(prs.sections):
-            next_sec = prs.sections[j]
-            if next_sec.class_name:
-                break  # hit another class header
-            if is_system_config_data(next_sec.raw):
-                has_config = True
-                break
-            j += 1
-
-        if not has_config:
-            to_remove.append(i)
-
-    # Remove in reverse order to preserve indices
-    for idx in reversed(to_remove):
-        prs.sections.pop(idx)
 
 
 # ─── Bulk Edit Operations ────────────────────────────────────────────
@@ -1670,19 +1565,7 @@ def set_p25_conv_nac(prs, set_name, channel_index, nac_tx=None, nac_rx=None):
             raise ValueError(f"NAC RX {nac_rx:#x} out of range (0-FFF)")
         ch.nac_rx = nac_rx
 
-    # Rebuild sections
-    new_ch_raw = build_p25_conv_channel_section(existing_sets, byte1, byte2)
-    new_set_raw = build_p25_conv_set_section(
-        len(existing_sets[0].channels), set_byte1, set_byte2)
-
-    ch_idx = _find_section_index(prs, "CP25ConvChannel")
-    set_idx = _find_section_index(prs, "CP25ConvSet")
-    if ch_idx < 0 or set_idx < 0:
-        raise ValueError("CP25ConvChannel or CP25ConvSet section not found")
-    prs.sections[ch_idx] = Section(offset=0, raw=new_ch_raw,
-                                    class_name="CP25ConvChannel")
-    prs.sections[set_idx] = Section(offset=0, raw=new_set_raw,
-                                     class_name="CP25ConvSet")
+    _replace_p25_conv_sections(prs, existing_sets)
 
     logger.info("Set NAC on channel %d in '%s' (tx=%s, rx=%s)",
                 channel_index, set_name,
@@ -1706,24 +1589,16 @@ def reorder_preferred_entries(prs, new_order):
     Raises:
         ValueError: if new_order doesn't match existing entries.
     """
-    from .record_types import (
-        parse_preferred_section, build_preferred_section,
-    )
-
-    pref_idx = _find_section_index(prs, "CPreferredSystemTableEntry")
-    if pref_idx < 0:
+    doc = archive.document_from_prs(prs)
+    system = _first_ecc_system(doc)
+    if system is None:
         return False
-
-    sec = prs.sections[pref_idx]
-    entries, iden, tail, chain, ctype = parse_preferred_section(sec.raw)
+    entries = _preferred_entries_of(system)
 
     if len(new_order) != len(entries):
         raise ValueError(
             f"new_order has {len(new_order)} items but there are "
             f"{len(entries)} entries")
-
-    # Preserve the last_sep from the original last entry
-    original_last_sep = entries[-1].last_sep
 
     # Build a map of system_id -> entry
     entry_map = {}
@@ -1742,14 +1617,10 @@ def reorder_preferred_entries(prs, new_order):
         entry.field2 = i
         reordered.append(entry)
 
-    # Transfer the original last_sep to the new last entry
-    reordered[-1].last_sep = original_last_sep
-
-    # Rebuild section preserving tail
-    new_raw = build_preferred_section(reordered, tail_bytes=tail)
-    prs.sections[pref_idx] = Section(
-        offset=0, raw=new_raw,
-        class_name="CPreferredSystemTableEntry")
+    system.lists()[0].items = [
+        Obj("CPreferredSystemTableEntry", [e.to_bytes()[:13]])
+        for e in reordered]
+    archive.write_document(prs, doc)
 
     logger.info("Reordered %d preferred entries", len(reordered))
     return True
@@ -2520,55 +2391,25 @@ def clone_system(target, source, system_long_name):
     return result
 
 
-def _find_system_type(prs, data_sec):
-    """Determine the system class type that owns a data section.
-
-    Walks the section list to find the nearest preceding class header
-    (CP25TrkSystem, CConvSystem, CP25ConvSystem) before the data section.
-    """
-    target_idx = None
-    for i, sec in enumerate(prs.sections):
-        if sec is data_sec:
-            target_idx = i
-            break
-
-    if target_idx is None:
-        return None
-
-    # Walk backwards to find the owning header
-    for i in range(target_idx - 1, -1, -1):
-        sec = prs.sections[i]
-        if sec.class_name in ('CP25TrkSystem', 'CConvSystem',
-                               'CP25ConvSystem'):
-            return sec.class_name
-        # If we hit a different class header, stop
-        if sec.class_name and sec.class_name not in (
-                'CP25TrkSystem', 'CConvSystem', 'CP25ConvSystem'):
-            break
-
+def _system_ref_for(prs, data_sec):
+    from .record_types import list_system_configs
+    for ref in list_system_configs(prs):
+        if ref.section is data_sec:
+            return ref
     return None
+
+
+def _find_system_type(prs, data_sec):
+    """The system class (CP25TrkSystem, CConvSystem, CP25ConvSystem) that
+    owns a config data section, from the type byte in front of it."""
+    ref = _system_ref_for(prs, data_sec)
+    return ref.class_name if ref else None
 
 
 def _find_system_short_name(prs, data_sec):
-    """Find the short name of the system header that owns a data section."""
-    target_idx = None
-    for i, sec in enumerate(prs.sections):
-        if sec is data_sec:
-            target_idx = i
-            break
-
-    if target_idx is None:
-        return None
-
-    for i in range(target_idx - 1, -1, -1):
-        sec = prs.sections[i]
-        if sec.class_name in ('CP25TrkSystem', 'CConvSystem',
-                               'CP25ConvSystem'):
-            return parse_system_short_name(sec.raw)
-        if sec.class_name:
-            break
-
-    return None
+    """The short name of the system that owns a config data section."""
+    ref = _system_ref_for(prs, data_sec)
+    return ref.short_name if ref else None
 
 
 # ─── Channel Numbering & Auto-Naming ─────────────────────────────────

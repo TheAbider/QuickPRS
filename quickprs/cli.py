@@ -153,12 +153,12 @@ def cmd_info(filepath, detail=False):
         ('CConvSystem', 'Conventional'),
         ('CP25ConvSystem', 'P25 Conv'),
     ]
+    from .record_types import list_system_configs
+    refs = list_system_configs(prs)
     for cls, label in system_types:
-        secs = prs.get_sections_by_class(cls)
-        if not secs:
-            continue
-        names = [parse_system_short_name(s.raw) or "?" for s in secs]
-        print(f"{label} ({len(secs)}): {', '.join(names)}")
+        names = [r.short_name or "?" for r in refs if r.class_name == cls]
+        if names:
+            print(f"{label} ({len(names)}): {', '.join(names)}")
 
     # Config names
     config_names = []

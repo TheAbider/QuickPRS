@@ -42,6 +42,19 @@ IDEN_SET_MARKER = b'\x89\x83'     # used as: name + 2meta + 89 83 + count + 8b 8
 _MARKER_BYTE2_VALUES = frozenset({0x80, 0x81, 0x82, 0x83})
 
 
+def is_class_tag(word_bytes):
+    """True for a 2-byte MFC class tag (0x8000 | class index).
+
+    The index depends on how many objects precede the class in the file
+    (see archive.py), so parsers must not compare against fixed values such
+    as the ones observed in PAWSOVERMAWS.PRS.
+    """
+    if len(word_bytes) < 2:
+        return False
+    w = word_bytes[0] | (word_bytes[1] << 8)
+    return bool(w & 0x8000) and w not in (0xFFFF, 0x7FFF)
+
+
 def _is_record_marker(data, pos):
     """Check if data[pos:pos+2] looks like a valid record/set marker.
 
@@ -51,12 +64,17 @@ def _is_record_marker(data, pos):
     """
     if pos + 6 > len(data):
         return False
-    if data[pos + 1] not in _MARKER_BYTE2_VALUES:
+    # Class indices past 1023 put 0x84 and up in the second byte, so any
+    # tag value is accepted (large personalities used to stop parsing
+    # here).  The set class is always defined before its item class, so
+    # the set tag is the smaller one, and the item count is bounded.
+    if not (is_class_tag(data[pos:pos + 2]) and
+            is_class_tag(data[pos + 4:pos + 6])):
         return False
-    # Also verify the separator 2 bytes after the count
-    if data[pos + 5] not in _MARKER_BYTE2_VALUES:
-        return False
-    return True
+    set_tag = data[pos] | (data[pos + 1] << 8)
+    count = data[pos + 2] | (data[pos + 3] << 8)
+    item_tag = data[pos + 4] | (data[pos + 5] << 8)
+    return set_tag < item_tag and count <= 2048
 
 
 # Class header byte1 values (record type IDs)
@@ -1509,7 +1527,8 @@ class EnhancedCCEntry:
     @classmethod
     def from_bytes(cls, data, offset=0):
         """Parse from 15 bytes at the given offset."""
-        if data[offset:offset + 2] != ECC_MARKER:
+        if offset + ECC_ENTRY_SIZE > len(data) or \
+                not is_class_tag(data[offset:offset + 2]):
             return None
         entry_type = data[offset + 2]
         system_id = struct.unpack_from('<H', data, offset + 3)[0]
@@ -1550,7 +1569,8 @@ def parse_ecc_entries(raw_section):
         ecc_start = pos + 3
         if ecc_start + 2 > len(raw_section):
             continue
-        if raw_section[ecc_start:ecc_start + 2] != ECC_MARKER:
+        tag = raw_section[ecc_start:ecc_start + 2]
+        if not is_class_tag(tag):
             continue
 
         # Verify all entries fit
@@ -1558,11 +1578,13 @@ def parse_ecc_entries(raw_section):
         if ecc_end > len(raw_section):
             continue
 
-        # Parse entries — all must have valid 09 80 marker
+        # Parse entries — all are objects of one class, so they share a tag
         entries = []
         for i in range(count):
-            entry = EnhancedCCEntry.from_bytes(
-                raw_section, ecc_start + i * ECC_ENTRY_SIZE)
+            at = ecc_start + i * ECC_ENTRY_SIZE
+            if raw_section[at:at + 2] != tag:
+                break
+            entry = EnhancedCCEntry.from_bytes(raw_section, at)
             if entry:
                 entries.append(entry)
             else:
@@ -1663,9 +1685,11 @@ def parse_preferred_section(raw):
     # Parse class header to find data start
     _, _, _, data_start = parse_class_header(raw, 0)
 
-    # Parse entries until we hit a non-09-80 separator or end
+    # Parse entries; each later entry starts with the class tag of
+    # CPreferredSystemTableEntry, whatever its index is in this file.
     entries = []
     pos = data_start
+    entry_tag = None
     while pos + PREF_ENTRY_SIZE <= len(raw):
         entry = PreferredSystemEntry.from_bytes(raw, pos)
         if entry is None:
@@ -1674,7 +1698,9 @@ def parse_preferred_section(raw):
         # Check separator (last 2 bytes of this 15-byte entry)
         sep = raw[pos + 13:pos + 15]
         pos += PREF_ENTRY_SIZE
-        if sep != PREF_SEP:
+        if entry_tag is None and is_class_tag(sep):
+            entry_tag = sep
+        if sep != entry_tag:
             break  # last entry
 
     # Everything after entries is the tail
@@ -1688,21 +1714,12 @@ def parse_preferred_section(raw):
         tail_pos = pos + 2  # skip 2-byte gap
         if tail_pos < len(raw):
             iden_name, tail_pos = read_lps(raw, tail_pos)
-        # Look for chain marker at the end: 07 80 + LPS + type
-        # The 63-byte post-ECC tail sits between IDEN and chain
-        for scan in range(len(raw) - 4, pos, -1):
-            if raw[scan:scan + 2] == b'\x07\x80':
-                name_len = raw[scan + 2]
-                if (0 < name_len <= 8 and
-                        scan + 3 + name_len < len(raw)):
-                    try:
-                        chain_name = raw[
-                            scan + 3:scan + 3 + name_len
-                        ].decode('ascii')
-                        chain_type = raw[scan + 3 + name_len]
-                    except (UnicodeDecodeError, IndexError):
-                        pass
-                break
+        # The next system's header can follow the 63-byte post-ECC tail:
+        # class tag + LPS(name) + type byte, at the very end of the section.
+        # Only a following P25 trunked system counts as the chain.
+        owner = system_header_at_end(raw)
+        if owner and owner[0] == 0x05 and owner[2] >= pos + 2:
+            chain_type, chain_name = owner[0], owner[1]
     except (IndexError, ValueError):
         pass
 
@@ -1884,6 +1901,33 @@ class P25TrkSystemConfig:
 
         return b''.join(parts)
 
+    def object_parts(self):
+        """The system's archive data as ``(head, ecc_payloads, rest)``.
+
+        ``head`` runs from the short name to the ECC list marker, the ECC
+        payloads are each entry's 13 data bytes, and ``rest`` holds the
+        fields after the list.  Tags and counts are left to the archive
+        writer (see archive.py), so ``ecc_count_override`` and the chain
+        fields do not apply here.
+        """
+        saved = (self.ecc_entries, self.ecc_count_override,
+                 self.iden_set_name, self.next_system_name)
+        try:
+            self.ecc_entries = []
+            self.ecc_count_override = None
+            self.iden_set_name = ""
+            self.next_system_name = ""
+            config = self.build_data_section()
+        finally:
+            (self.ecc_entries, self.ecc_count_override,
+             self.iden_set_name, self.next_system_name) = saved
+        # build_data_section ends with 0x06 + uint16(count); drop the count
+        head = write_lps(self.system_name) + b'\x05' + config[:-2]
+        ecc = [e.to_bytes()[2:] for e in self.ecc_entries]
+        rest = (b'\x00' * 4 + write_lps(self.iden_set_name[:8]) +
+                _build_post_ecc_tail(self.post_ecc_float))
+        return head, ecc, rest
+
 
 @dataclass
 class ConvSystemConfig:
@@ -1938,6 +1982,17 @@ class ConvSystemConfig:
             parts.append(struct.pack('B', self.next_system_type))
         return b''.join(parts)
 
+    def object_data(self):
+        """The system's archive data (short name to last field), without
+        the next system's header (the archive writer adds that)."""
+        saved = self.next_system_name
+        try:
+            self.next_system_name = ""
+            config = self.build_data_section()
+        finally:
+            self.next_system_name = saved
+        return write_lps(self.system_name) + b'\x01' + config
+
 
 # CP25ConvSystem trailing section template (28 bytes after ffff marker)
 _P25CONV_TRAILING = (
@@ -1986,6 +2041,14 @@ class P25ConvSystemConfig:
     def build_trailing_section(self):
         """Build the second data section that follows CP25ConvSystem config."""
         return SECTION_MARKER + _P25CONV_TRAILING
+
+    def object_data(self):
+        """The system's archive data.  The last two bytes of the old
+        trailing section are the next list's count, not part of the
+        system, so they are left out."""
+        return (write_lps(self.system_name) + b'\x03' +
+                self.build_data_section() +
+                SECTION_MARKER + _P25CONV_TRAILING[:-2])
 
 
 def parse_system_long_name(raw):
@@ -2084,6 +2147,70 @@ def parse_system_short_name(raw):
         return name if name else None
     except (IndexError, ValueError):
         return None
+
+
+def system_header_at_end(raw):
+    """Find a system object's opening bytes at the end of ``raw``.
+
+    A system's config block (FF FF + prefix) is preceded by its short name
+    and a type byte (0x01 conventional, 0x03 P25 conventional, 0x05 P25
+    trunked), so a section split at that FF FF ends with LPS(name) + type.
+    Returns ``(type_byte, name, offset_of_name_length)`` or None.
+    """
+    if not raw or raw[-1] not in (0x01, 0x03, 0x05):
+        return None
+    # A length byte below 32 cannot be a name character, so the smallest
+    # matching length is the real one.
+    for n in range(0, min(32, len(raw) - 1)):
+        at = len(raw) - 2 - n
+        if at < 0:
+            break
+        if raw[at] == n and all(32 <= c < 127 for c in raw[at + 1:-1]):
+            return raw[-1], raw[at + 1:-1].decode('ascii'), at
+    return None
+
+
+SYSTEM_TYPE_CLASS_NAMES = {
+    0x01: 'CConvSystem',
+    0x03: 'CP25ConvSystem',
+    0x05: 'CP25TrkSystem',
+}
+
+
+@dataclass
+class SystemConfigRef:
+    """One system in file order (see list_system_configs)."""
+    class_name: str     # CConvSystem / CP25TrkSystem / CP25ConvSystem
+    short_name: str
+    index: int          # index of the config data section in prs.sections
+    section: object     # that Section (raw = FF FF + config ...)
+
+    @property
+    def long_name(self):
+        return parse_system_long_name(self.section.raw) or ""
+
+
+def list_system_configs(prs):
+    """Every system's config data section, in file order, with its class.
+
+    Only the first system of each class is written with a class header;
+    later ones start with a 2-byte tag (see archive.py), so "the last class
+    header seen" does not tell a system's type.  The bytes just before each
+    config block do: the short name and a type byte.
+    """
+    refs = []
+    for i in range(1, len(prs.sections)):
+        sec = prs.sections[i]
+        if sec.class_name or not sec.raw.startswith(b'\xff\xff'):
+            continue
+        owner = system_header_at_end(prs.sections[i - 1].raw)
+        if owner is None or len(sec.raw) < 44:
+            continue
+        if not is_system_config_data(sec.raw) and sec.raw[2:4] != b'\x01\x01':
+            continue
+        refs.append(SystemConfigRef(SYSTEM_TYPE_CLASS_NAMES[owner[0]],
+                                    owner[1], i, sec))
+    return refs
 
 
 def is_system_config_data(raw):
@@ -2518,9 +2645,9 @@ def parse_wan_section(raw):
         entry, pos = P25TrkWanEntry.parse(raw, pos)
         entries.append(entry)
 
-        # Check for separator (31 82)
-        if pos + 2 <= len(raw) and raw[pos:pos + 2] == WAN_ENTRY_SEP:
-            pos += 2  # skip separator
+        # Later entries start with the CP25TrkWan class tag
+        if pos + 2 <= len(raw) and is_class_tag(raw[pos:pos + 2]):
+            pos += 2  # skip tag
         else:
             break  # last entry or end of data
 

@@ -511,30 +511,11 @@ class PersonalityView(ttk.Frame):
         identified by is_system_config_data().  The header's short name
         is used as fallback for the first config entry with no long name.
         """
-        system_classes = {"CP25TrkSystem", "CConvSystem", "CP25ConvSystem"}
+        from ..record_types import list_system_configs
         systems = []
-        current_type = None
-        header_name = None
-        header_used = False
-
-        for sec in prs.sections:
-            if sec.class_name in system_classes:
-                current_type = sec.class_name
-                header_name = parse_system_short_name(sec.raw)
-                header_used = False
-                continue
-
-            if (not sec.class_name and current_type
-                    and is_system_config_data(sec.raw)):
-                long_name = parse_system_long_name(sec.raw) or ""
-                if long_name:
-                    name = long_name
-                elif header_name and not header_used:
-                    name = header_name
-                    header_used = True
-                else:
-                    name = "(unnamed)"
-                systems.append((name, current_type))
+        for ref in list_system_configs(prs):
+            name = ref.long_name or ref.short_name or "(unnamed)"
+            systems.append((name, ref.class_name))
 
         if not systems:
             return
@@ -1141,27 +1122,11 @@ class PersonalityView(ttk.Frame):
 
     def _collect_system_config_names(self, prs):
         """Collect system config long names from data sections."""
+        from ..record_types import list_system_configs
         result = {}
-        current_type = None
-
-        for sec in prs.sections:
-            if sec.class_name in ('CP25TrkSystem', 'CConvSystem',
-                                   'CP25ConvSystem'):
-                current_type = sec.class_name
-                if current_type not in result:
-                    result[current_type] = []
-                continue
-
-            if not sec.class_name and is_system_config_data(sec.raw):
-                long_name = parse_system_long_name(sec.raw) or ""
-                if current_type and current_type not in result:
-                    result[current_type] = []
-                target = current_type or 'CP25TrkSystem'
-                if target not in result:
-                    result[target] = []
-                result[target].append(
-                    ("", long_name, len(sec.raw), sec.raw))
-
+        for ref in list_system_configs(prs):
+            result.setdefault(ref.class_name, []).append(
+                ("", ref.long_name, len(ref.section.raw), ref.section.raw))
         return result
 
     # ─── Search ──────────────────────────────────────────────────────

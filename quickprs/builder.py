@@ -84,30 +84,28 @@ def create_blank_prs(
 
     Returns:
         PRSFile: parsed PRS object that roundtrips through to_bytes().
+
+    The file is built as an archive.Document, so its object headers, class
+    tags and list counts follow the layout RPM itself writes (header and
+    tail fields are copied from RPM-saved files).
     """
-    parts = []
+    from . import archive
+    from .archive import Obj, ObjList
 
-    # 1. CPersonality
-    personality = Personality(
-        filename=filename,
-        saved_by=saved_by,
-        version="0014",
-        mystery4=b'\x01\x00\x00\x00',
-        version_str="1",
-        footer=b'\x02\x00\x65\x00\x7e\x00\x03\x00',
-    )
-    parts.append(build_personality_section(personality))
+    # 1. CPersonality header: the 0x08-separated name/version block, four
+    #    flag bytes, six strings and the radio type list (101, 126 = XG-100P),
+    #    as in a fresh RPM personality.
+    header = build_personality_section(Personality(
+        filename=filename, saved_by=saved_by, version="0014",
+        mystery4=b'\x01\x00\x00\x00', version_str="1", footer=b''))
+    header = header[6 + len("CPersonality"):] + b'\x02\x00\x65\x00\x7e\x00'
 
-    # 2. CConvSystem header + data section
+    # 2. One conventional system and its set with a single channel.
     conv_sys = ConvSystemConfig(
         system_name="Conv 1",
         long_name="",
         conv_set_name="Conv 1",
     )
-    parts.append(conv_sys.build_header_section())
-    parts.append(conv_sys.build_data_section())
-
-    # 3. CConvSet + CConvChannel (one set, one default channel)
     default_channel = ConvChannel(
         short_name="CH 1",
         tx_freq=146.520,
@@ -120,26 +118,46 @@ def create_blank_prs(
         config_flag=0x01,
         has_band_limits=0x00,
     )
+    conv_set_obj = Obj("CConvSet", [
+        ObjList("items", [Obj("CConvChannel", [default_channel.to_bytes()])]),
+        default_set.metadata_to_bytes(),
+    ])
 
-    parts.append(build_conv_set_section(len(default_set.channels)))
-    parts.append(build_conv_channel_section([default_set]))
+    # 3. Options: an empty WAN list (P25 systems add their entries) and the
+    #    Type 99 options with their three tone objects.
+    import struct
+    options = [
+        Obj("CP25tWanOpts", [ObjList("WAN entries")]),
+        Obj("CType99Opts", [
+            b'\x00\x00\x24\x00',
+            ObjList("Type 99 tones",
+                    [Obj("CT99", [bytes(33)]) for _ in range(3)],
+                    counted=False),
+        ]),
+    ]
 
-    # 4. CP25tWanOpts (0 entries) + CP25TrkWan (empty)
-    parts.append(build_wan_opts_section(0))
-    # CP25TrkWan with 0 entries: just the header, no entry data
-    wan_header = build_class_header('CP25TrkWan', 0x64, 0x00)
-    parts.append(wan_header)
+    # 4. Personality name, user name and the radio's band limits.
+    doc_fields = (write_lps(filename) + b'\x00\x00' + write_lps(saved_by) +
+                  b'\x0e\x00' + struct.pack('<4d', 136.0, 870.0, 136.0, 870.0)
+                  + b'\x7e\x00')
 
-    # 5. CType99Opts + CT99
-    parts.append(_build_type99_opts_section())
-    parts.append(_build_ct99_section(filename))
-
-    # 6. File terminator: ffff ffff0001
-    # FILE_TERMINATOR already starts with ffff, so no extra SECTION_MARKER
-    parts.append(FILE_TERMINATOR)
-
-    # Assemble raw bytes and parse back into PRSFile
-    raw = b''.join(parts)
+    root = Obj("CPersonality", [
+        header,
+        ObjList("systems", [Obj("CConvSystem", [conv_sys.object_data()])]),
+        ObjList("trunk sets"),
+        b'\x00' * 6,
+        ObjList("conv sets", [conv_set_obj]),
+        ObjList("options", options),
+        doc_fields,
+        ObjList("group sets"),
+        ObjList("P25 conv sets"),
+        ObjList("unknown list"),
+        ObjList("IDEN sets"),
+        # Remaining document fields of a personality without platformConfig
+        # XML, as RPM writes them.
+        b'\x00' * 39 + FILE_TERMINATOR,
+    ])
+    raw = archive.serialize(archive.Document(root))
     prs = parse_prs_bytes(raw)
     prs.filepath = filename
 

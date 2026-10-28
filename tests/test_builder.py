@@ -131,10 +131,24 @@ def test_blank_prs_has_wan_opts():
     assert prs.get_section_by_class("CP25tWanOpts") is not None
 
 
-def test_blank_prs_has_wan():
-    """Blank PRS contains CP25TrkWan section."""
+def test_blank_prs_has_empty_wan_list():
+    """Blank PRS holds CP25tWanOpts with an empty WAN list and no
+    CP25TrkWan object (an object of that class needs entry data)."""
+    from quickprs import archive
     prs = create_blank_prs()
-    assert prs.get_section_by_class("CP25TrkWan") is not None
+    doc = archive.document_from_prs(prs)
+    wan_opts = doc.option("CP25tWanOpts")
+    assert wan_opts is not None
+    assert wan_opts.lists()[0].items == []
+    assert prs.get_section_by_class("CP25TrkWan") is None
+
+
+def test_blank_prs_archive_consistent():
+    """Every tag and list count in a blank PRS is what RPM expects."""
+    from quickprs import archive
+    prs = create_blank_prs()
+    assert prs.archive_ok is True
+    assert archive.check(prs) == []
 
 
 def test_blank_prs_has_type99_opts():

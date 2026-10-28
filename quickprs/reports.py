@@ -265,36 +265,23 @@ def _add_systems(parts, prs):
     parts.append("<tr><th>Name</th><th>Type</th>"
                  "<th>Long Name</th><th>Size</th></tr>")
 
-    for cls, label in system_types:
-        secs = prs.get_sections_by_class(cls)
-        if not secs:
-            continue
-        for sec in secs:
-            short = parse_system_short_name(sec.raw) or "(unnamed)"
-            parts.append(f"<tr><td>{_esc(short)}</td><td>{_esc(label)}</td>"
-                         f"<td></td><td>{len(sec.raw):,} bytes</td></tr>")
-
-        # Config data sections
-        current_type = None
-        for sec_obj in prs.sections:
-            if sec_obj.class_name == cls:
-                current_type = cls
-                continue
-            if (not sec_obj.class_name and current_type == cls
-                    and is_system_config_data(sec_obj.raw)):
-                long_name = parse_system_long_name(sec_obj.raw) or ""
-                wan_name = ""
-                try:
-                    wan_name = parse_system_wan_name(sec_obj.raw) or ""
-                except Exception:
-                    pass
-                detail = long_name
-                if wan_name:
-                    detail += f" (WACN: {wan_name})"
-                parts.append(
-                    f"<tr><td></td><td>{_esc(label)} Config</td>"
-                    f"<td>{_esc(detail)}</td>"
-                    f"<td>{len(sec_obj.raw):,} bytes</td></tr>")
+    from .record_types import list_system_configs
+    labels = dict(system_types)
+    # One row per system, in file order (the order the radio shows them).
+    for ref in list_system_configs(prs):
+        label = labels.get(ref.class_name, ref.class_name)
+        wan_name = ""
+        try:
+            wan_name = parse_system_wan_name(ref.section.raw) or ""
+        except Exception:
+            pass
+        detail = ref.long_name
+        if wan_name and ref.class_name == 'CP25TrkSystem':
+            detail += f" (WAN: {wan_name})"
+        parts.append(
+            f"<tr><td>{_esc(ref.short_name or '(unnamed)')}</td>"
+            f"<td>{_esc(label)}</td><td>{_esc(detail)}</td>"
+            f"<td>{len(ref.section.raw):,} bytes</td></tr>")
 
     parts.append("</table>")
 

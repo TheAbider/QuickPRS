@@ -127,12 +127,16 @@ def test_repair_orphan_data_section():
         home_unit_id=1, system_id=1,
     )
     data_raw = config.build_data_section()
-    # Insert at end (before terminator), without its header
-    prs.sections.insert(len(prs.sections) - 1,
-                        Section(offset=0, raw=data_raw, class_name=""))
+    # Insert among the systems (where QuickPRS before 1.1 put configs),
+    # without the name and type bytes that open a system object
+    at = next(i for i, s in enumerate(prs.sections)
+              if s.class_name == "CTrunkSet")
+    prs.sections.insert(at, Section(offset=0, raw=data_raw, class_name=""))
 
     _, repairs = repair_prs(prs)
     assert any("orphan" in r.lower() for r in repairs)
+    from quickprs import archive
+    assert archive.check(prs) == []
 
 
 # ─── Missing companion sections ─────────────────────────────────────

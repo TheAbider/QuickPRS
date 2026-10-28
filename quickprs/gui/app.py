@@ -412,7 +412,7 @@ class QuickPRSApp:
                    command=self.import_json, width=25).pack(pady=5)
 
         # Recent files
-        recent = get_recent_files()
+        recent = get_recent_files(self.settings)
         if recent:
             ttk.Label(self._welcome_frame, text="Recent Files:",
                       font=("", 11, "bold")).pack(pady=(20, 5))

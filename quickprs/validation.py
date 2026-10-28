@@ -1198,6 +1198,20 @@ def validate_structure(prs):
 
     issues = []
 
+    # 0. MFC archive structure: the one thing RPM itself checks on load.
+    from . import archive
+    archive_readable = False
+    try:
+        for problem in archive.check(prs):
+            issues.append((ERROR,
+                f"RPM will not open this file: {problem.message} "
+                f"(offset 0x{problem.offset:x}). Run 'quickprs repair "
+                f"<file>' or save it again with this version to fix it."))
+        archive_readable = True
+    except archive.WalkError as e:
+        issues.append((ERROR,
+            f"File structure not recognized ({e}). RPM may not open it."))
+
     # 1. CPersonality must be present and first
     personality = prs.get_section_by_class("CPersonality")
     if not personality:
@@ -1209,32 +1223,23 @@ def validate_structure(prs):
             "CPersonality is not the first section "
             f"(found at index {next(i for i, s in enumerate(prs.sections) if s.class_name == 'CPersonality')})"))
 
-    # 2. At least one system
+    # 2. At least one system.  RPM itself saves personalities without any
+    # (a new radio file), so this is a warning, not an error.
     system_classes = ['CP25TrkSystem', 'CConvSystem', 'CP25ConvSystem']
     total_systems = sum(len(prs.get_sections_by_class(c)) for c in system_classes)
     if total_systems == 0:
-        issues.append((ERROR,
-            "No system sections found — file must contain at least one "
-            "CConvSystem, CP25TrkSystem, or CP25ConvSystem"))
+        issues.append((WARNING,
+            "No systems defined: the radio will have no channels or "
+            "talkgroups to select"))
 
-    # 3. System config data sections must follow a system header
-    header_types = {'CP25TrkSystem', 'CConvSystem', 'CP25ConvSystem'}
+    # 3. Every system config block is preceded by its system's short name
+    #    and type byte (whether the system opens with a class header or a
+    #    tag), so a config without them is an orphan.
+    from .record_types import system_header_at_end
     for i, sec in enumerate(prs.sections):
         if not sec.class_name and is_system_config_data(sec.raw):
-            # Walk backward to find the nearest system header
-            found_header = False
-            for j in range(i - 1, -1, -1):
-                if prs.sections[j].class_name in header_types:
-                    found_header = True
-                    break
-                # CPreferredSystemTableEntry can appear between header and data
-                if prs.sections[j].class_name == 'CPreferredSystemTableEntry':
-                    continue
-                # Other unnamed data sections (small continuations) are OK
-                if not prs.sections[j].class_name:
-                    continue
-                # Hit a different class section — no header found
-                break
+            found_header = (i > 0 and system_header_at_end(
+                prs.sections[i - 1].raw) is not None)
             if not found_header:
                 long = parse_system_long_name(sec.raw) or "(unknown)"
                 issues.append((ERROR,
@@ -1246,13 +1251,15 @@ def validate_structure(prs):
         if not sec.class_name and is_system_config_data(sec.raw):
             actual_prefix = sec.raw[2:44]
             if actual_prefix != SYSTEM_CONFIG_PREFIX:
+                # These bytes hold system options QuickPRS has not decoded,
+                # so a difference means "not RPM's defaults", not damage.
                 long = parse_system_long_name(sec.raw) or "(unknown)"
                 diffs = [j for j in range(len(SYSTEM_CONFIG_PREFIX))
                          if j < len(actual_prefix) and
                          actual_prefix[j] != SYSTEM_CONFIG_PREFIX[j]]
-                issues.append((ERROR,
-                    f"System config '{long}' at index {i} has "
-                    f"corrupted prefix (differs at {len(diffs)} byte positions)"))
+                issues.append((INFO,
+                    f"System config '{long}' at index {i} differs from "
+                    f"RPM's default option bytes at {len(diffs)} positions"))
 
     # 5. Cross-reference: system config set names must resolve
     _validate_set_crossrefs(prs, issues, parse_system_set_refs, parse_system_long_name)
@@ -1290,8 +1297,10 @@ def validate_structure(prs):
         except Exception as e:
             logger.debug("ConvSet metadata check failed: %s", e)
 
-    # 8. Required companion sections
-    _validate_companion_sections(prs, issues)
+    # 8. Required companion sections (the archive walk above already
+    # proves the structure when it succeeds)
+    if not archive_readable:
+        _validate_companion_sections(prs, issues)
 
     return issues
 
