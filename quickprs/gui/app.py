@@ -90,28 +90,46 @@ class QuickPRSApp:
         self.root.bind('<Control-o>', lambda e: self.open_file())
         self.root.bind('<Control-s>', lambda e: self.save_file())
         self.root.bind('<Control-S>', lambda e: self.save_as())
-        self.root.bind('<Control-z>', lambda e: self.undo_injection())
-        self.root.bind('<Control-y>', lambda e: self.redo())
-        self.root.bind('<Control-Z>', lambda e: self.redo())
+        # Keys that also edit text do nothing app-wide while a text field
+        # has focus (Delete in the search box used to offer to delete the
+        # selected talkgroup).
+        self.root.bind('<Control-z>',
+                       self._unless_typing(self.undo_injection))
+        self.root.bind('<Control-y>', self._unless_typing(self.redo))
+        self.root.bind('<Control-Z>', self._unless_typing(self.redo))
         self.root.bind('<Control-d>', lambda e: self.compare_files())
         self.root.bind('<Control-e>', lambda e: self.export_json())
         self.root.bind('<Control-i>', lambda e: self._show_import_wizard())
         self.root.bind('<Control-m>', lambda e: self.merge_prs())
         self.root.bind('<Control-t>', lambda e: self.add_template_channels())
         self.root.bind('<Control-g>', lambda e: self.generate_report())
-        self.root.bind('<Delete>', lambda e: self._delete_selected())
-        self.root.bind('<F2>', lambda e: self._rename_selected())
+        self.root.bind('<Delete>', self._unless_typing(self._delete_selected))
+        self.root.bind('<F2>', self._unless_typing(self._rename_selected))
         self.root.bind('<F5>', lambda e: self.validate())
         self.root.bind('<F8>', lambda e: self._capacity_report())
-        self.root.bind('<Insert>', lambda e: self._insert_context_aware())
+        self.root.bind('<Insert>',
+                       self._unless_typing(self._insert_context_aware))
         self.root.bind('<F1>', lambda e: self.show_shortcuts())
 
         # Drag-and-drop file opening (Windows)
         if HAS_WINDND:
-            windnd.hook_dropfiles(self.root, func=self._on_file_drop)
+            windnd.hook_dropfiles(self.root, func=self._on_file_drop,
+                                  force_unicode=True)
 
         self._update_title()
         self._restore_geometry()
+
+    _TEXT_WIDGETS = (tk.Entry, tk.Text, tk.Spinbox, ttk.Entry, ttk.Combobox,
+                     ttk.Spinbox)
+
+    def _unless_typing(self, handler):
+        """Wrap a key handler so it is skipped while a text field has focus."""
+        def _on_key(event):
+            if isinstance(event.widget, self._TEXT_WIDGETS):
+                return None
+            handler()
+            return "break"
+        return _on_key
 
     # ─── Menu bar ────────────────────────────────────────────────────
 
@@ -436,12 +454,16 @@ class QuickPRSApp:
         import subprocess
         import shutil
 
-        # Find the Python executable
-        python = sys.executable or shutil.which("python") or "python"
+        if getattr(sys, "frozen", False):
+            # The packaged QuickPRS.exe takes the command directly
+            command = [sys.executable, "wizard"]
+        else:
+            python = sys.executable or shutil.which("python") or "python"
+            command = [python, "-m", "quickprs", "wizard"]
 
         try:
             subprocess.Popen(
-                [python, "-m", "quickprs", "wizard"],
+                command,
                 creationflags=subprocess.CREATE_NEW_CONSOLE,
             )
             self.status_set("Launched wizard in new console window")
@@ -687,32 +709,71 @@ class QuickPRSApp:
     def _on_file_drop(self, files):
         """Handle file(s) dropped onto the window from the OS."""
         for raw in files:
-            path = raw.decode('utf-8') if isinstance(raw, bytes) else str(raw)
+            path = self._dropped_path(raw)
             if path.lower().endswith('.prs'):
-                if self.modified:
-                    result = messagebox.askyesnocancel(
-                        "Unsaved Changes",
-                        "You have unsaved changes. Save before opening?")
-                    if result is None:
-                        return
-                    if result:
-                        self.save_file()
                 self._open_path(path)
                 return
         # No .PRS file found in drop
-        names = [Path(f.decode('utf-8') if isinstance(f, bytes) else str(f)).name
-                 for f in files]
+        names = [Path(self._dropped_path(f)).name for f in files]
         self.status_set(f"Not a PRS file: {', '.join(names)}", color="orange")
 
+    @staticmethod
+    def _dropped_path(raw):
+        """windnd hands over ANSI bytes unless asked for Unicode."""
+        if isinstance(raw, bytes):
+            try:
+                return raw.decode('mbcs')
+            except (LookupError, UnicodeDecodeError):
+                return raw.decode('utf-8', errors='replace')
+        return str(raw)
+
+    def _confirm_discard(self, action="continue"):
+        """Ask about unsaved changes.  True means go ahead: nothing to save,
+        the user chose not to, or the save worked."""
+        if not self.modified:
+            return True
+        result = messagebox.askyesnocancel(
+            "Unsaved Changes",
+            f"You have unsaved changes. Save before you {action}?")
+        if result is None:
+            return False
+        if result:
+            return self.save_file()
+        return True
+
+    def _set_document(self, prs, path):
+        """Make ``prs`` the open personality.  Undo history and the saved
+        baseline belong to one file, so both start fresh."""
+        self.prs = prs
+        self.prs_path = Path(path) if path else None
+        self._undo_stack = UndoStack(max_levels=20)
+        self._update_undo_menu()
+        self._last_saved_bytes = prs.to_bytes()
+        self.modified = False
+        self._hide_welcome()
+        self._update_title()
+        fg = "#e0e0e0" if self.dark_mode else "black"
+        self.file_label.config(
+            text=self.prs_path.name if self.prs_path else "", foreground=fg)
+        self.size_label.config(text=f"{len(self._last_saved_bytes):,} bytes")
+        self._status_modified.config(text="")
+        self.personality_view.refresh()
+        self._update_stats()
+        self._update_capacity_label()
+
+    def _remember_path(self, path):
+        """Recent files and last folder; a settings write failure must not
+        break opening or saving."""
+        self.settings["last_open_dir"] = str(Path(path).parent)
+        add_recent_file(self.settings, str(path))
+        try:
+            self._refresh_recent_menu()
+        except Exception as e:
+            log_error("recent_files", str(e))
+
     def open_file(self):
-        if self.modified:
-            result = messagebox.askyesnocancel(
-                "Unsaved Changes",
-                "You have unsaved changes. Save before opening a new file?")
-            if result is None:  # Cancel
-                return
-            if result:  # Yes
-                self.save_file()
+        if not self._confirm_discard("open another file"):
+            return
 
         initial_dir = self.settings.get("last_open_dir", "")
         path = filedialog.askopenfilename(
@@ -722,54 +783,41 @@ class QuickPRSApp:
         )
         if not path:
             return
-        self._open_path(path)
+        self._open_path(path, confirmed=True)
 
-    def _open_path(self, path):
+    def _open_path(self, path, confirmed=False):
         """Load a PRS file from a path string."""
         path = str(path)
-        # Remember directory and add to recent files
-        self.settings["last_open_dir"] = str(Path(path).parent)
-        add_recent_file(self.settings, path)
-        self._refresh_recent_menu()
-
+        if not confirmed and not self._confirm_discard("open another file"):
+            return
         try:
-            self.prs = parse_prs(Path(path))
-            self.prs_path = Path(path)
-            self.modified = False
-            self._last_saved_bytes = self.prs.to_bytes()
-            self._hide_welcome()
-            self._update_title()
-            fg = "#e0e0e0" if self.dark_mode else "black"
-            self.file_label.config(
-                text=str(self.prs_path.name), foreground=fg)
-            self.status_set(
-                f"Loaded {self.prs_path.name} "
-                f"({self.prs.file_size:,} bytes, "
-                f"{len(self.prs.sections)} sections)")
-            self.size_label.config(
-                text=f"{self.prs.file_size:,} bytes")
-            self.personality_view.refresh()
-            self._update_stats()
-            self._update_capacity_label()
-            self._status_modified.config(text="")
-            log_action("file_open",
-                       path=str(path),
-                       size=self.prs.file_size,
-                       sections=len(self.prs.sections))
+            prs = parse_prs(Path(path))
         except Exception as e:
             log_error("file_open", str(e), path=str(path))
             messagebox.showerror("Error", f"Failed to open file:\n{e}")
+            return
+
+        self._set_document(prs, path)
+        self._remember_path(path)
+        self.status_set(
+            f"Loaded {self.prs_path.name} "
+            f"({self.prs.file_size:,} bytes, "
+            f"{len(self.prs.sections)} sections)")
+        log_action("file_open",
+                   path=str(path),
+                   size=self.prs.file_size,
+                   sections=len(self.prs.sections))
 
     def save_file(self):
+        """Save to the current path; True when the file was written."""
         if not self.prs or not self.prs_path:
-            self.save_as()
-            return
-        self._do_save(self.prs_path)
+            return self.save_as()
+        return self._do_save(self.prs_path)
 
     def save_as(self):
         if not self.prs:
             messagebox.showwarning("Warning", "No file loaded.")
-            return
+            return False
 
         initial_dir = self.settings.get("last_open_dir", "")
         path = filedialog.asksaveasfilename(
@@ -780,34 +828,41 @@ class QuickPRSApp:
             initialdir=initial_dir or None,
         )
         if not path:
-            return
-        self._do_save(Path(path))
+            return False
+        return self._do_save(Path(path))
 
     def _do_save(self, path):
+        """Write the personality; True on success.  Callers that were about
+        to close or replace the document must stop when this is False."""
+        path = Path(path)
         try:
-            # Check if we have a previous state to diff against
             has_changes = (self._last_saved_bytes is not None
                            and self.prs.to_bytes() != self._last_saved_bytes)
-
             write_prs(self.prs, path, backup=True)
-            self.prs_path = path
-            self.modified = False
-            self._update_title()
-            self._status_modified.config(text="Saved", foreground="green")
-            self.status_set(f"Saved to {path.name}")
-            log_action("file_save",
-                       path=str(path),
-                       size=len(self.prs.to_bytes()))
-
-            # Offer to view change report if there were modifications
-            if has_changes:
-                self._offer_change_report()
-
-            # Update saved bytes snapshot
-            self._last_saved_bytes = self.prs.to_bytes()
         except Exception as e:
             log_error("file_save", str(e), path=str(path))
             messagebox.showerror("Error", f"Failed to save:\n{e}")
+            return False
+
+        self.prs_path = path
+        self.modified = False
+        self._update_title()
+        fg = "#e0e0e0" if self.dark_mode else "black"
+        self.file_label.config(text=path.name, foreground=fg)
+        saved = self.prs.to_bytes()
+        self.size_label.config(text=f"{len(saved):,} bytes")
+        self._status_modified.config(text="Saved", foreground="green")
+        self.status_set(f"Saved to {path.name}")
+        self._remember_path(path)
+        log_action("file_save", path=str(path), size=len(saved))
+
+        # Offer to view change report if there were modifications
+        if has_changes:
+            self._offer_change_report()
+
+        # Update saved bytes snapshot
+        self._last_saved_bytes = saved
+        return True
 
     def _offer_change_report(self):
         """Ask if the user wants to view a change report after save."""
@@ -1085,7 +1140,7 @@ class QuickPRSApp:
         results = run_health_check(self.prs)
         health_lines = format_health_report(results)
 
-        filepath = self.current_path or "file.PRS"
+        filepath = str(self.prs_path) if self.prs_path else "file.PRS"
         suggestions = suggest_improvements(self.prs, filepath=filepath)
         suggest_lines = format_suggestions(suggestions, filepath=filepath)
 
@@ -1705,14 +1760,8 @@ class QuickPRSApp:
 
     def new_blank(self):
         """Create a new blank personality file."""
-        if self.modified:
-            result = messagebox.askyesnocancel(
-                "Unsaved Changes",
-                "You have unsaved changes. Save before creating a new file?")
-            if result is None:
-                return
-            if result:
-                self.save_file()
+        if not self._confirm_discard("create a new file"):
+            return
 
         path = filedialog.asksaveasfilename(
             title="Create New Blank Personality",
@@ -1726,18 +1775,9 @@ class QuickPRSApp:
         try:
             from ..builder import create_blank_prs
             name = Path(path).name
-            self.prs = create_blank_prs(filename=name)
-            self.prs_path = Path(path)
-            self._do_save(self.prs_path)
-            self.modified = False
-            self._hide_welcome()
-            self._update_title()
-            fg = "#e0e0e0" if self.dark_mode else "black"
-            self.file_label.config(text=name, foreground=fg)
-            self.personality_view.refresh()
-            self._update_stats()
-            self.size_label.config(
-                text=f"{len(self.prs.to_bytes()):,} bytes")
+            self._set_document(create_blank_prs(filename=name), path)
+            if not self._do_save(self.prs_path):
+                return
             self.status_set("Created new blank personality")
             log_action("new_blank", path=str(path))
         except Exception as e:
@@ -1747,14 +1787,8 @@ class QuickPRSApp:
 
     def build_from_config(self):
         """Build a PRS personality from an INI config file."""
-        if self.modified:
-            result = messagebox.askyesnocancel(
-                "Unsaved Changes",
-                "You have unsaved changes. Save before building?")
-            if result is None:
-                return
-            if result:
-                self.save_file()
+        if not self._confirm_discard("build a new personality"):
+            return
 
         config_path = filedialog.askopenfilename(
             title="Select Config File",
@@ -1783,19 +1817,9 @@ class QuickPRSApp:
             return
 
         try:
-            self.prs = prs
-            self.prs_path = Path(save_path)
-            self._do_save(self.prs_path)
-            self.modified = False
-            self._hide_welcome()
-            self._update_title()
-            fg = "#e0e0e0" if self.dark_mode else "black"
-            self.file_label.config(
-                text=self.prs_path.name, foreground=fg)
-            self.personality_view.refresh()
-            self._update_stats()
-            self.size_label.config(
-                text=f"{len(self.prs.to_bytes()):,} bytes")
+            self._set_document(prs, save_path)
+            if not self._do_save(self.prs_path):
+                return
             self.status_set(
                 f"Built personality from {Path(config_path).name}")
             log_action("build_from_config", config=config_path,
@@ -1863,14 +1887,8 @@ class QuickPRSApp:
 
     def import_json(self):
         """Import a PRS personality from a JSON file."""
-        if self.modified:
-            result = messagebox.askyesnocancel(
-                "Unsaved Changes",
-                "You have unsaved changes. Save before importing?")
-            if result is None:
-                return
-            if result:
-                self.save_file()
+        if not self._confirm_discard("import a new personality"):
+            return
 
         json_path = filedialog.askopenfilename(
             title="Import JSON",
@@ -1902,19 +1920,9 @@ class QuickPRSApp:
             return
 
         try:
-            self.prs = prs
-            self.prs_path = Path(save_path)
-            self._do_save(self.prs_path)
-            self.modified = False
-            self._hide_welcome()
-            self._update_title()
-            fg = "#e0e0e0" if self.dark_mode else "black"
-            self.file_label.config(
-                text=self.prs_path.name, foreground=fg)
-            self.personality_view.refresh()
-            self._update_stats()
-            self.size_label.config(
-                text=f"{len(self.prs.to_bytes()):,} bytes")
+            self._set_document(prs, save_path)
+            if not self._do_save(self.prs_path):
+                return
             self.status_set(
                 f"Imported from {Path(json_path).name}")
             log_action("import_json", json_path=json_path,
@@ -2166,10 +2174,10 @@ class QuickPRSApp:
             for (element, attr), (entry_widget, orig_val) in entries.items():
                 new_val = entry_widget.get().strip()
                 if new_val != orig_val:
-                    # Resolve the section name for set_platform_option
-                    section = element.split('/')[0] if '/' in element else element
+                    # The full path, so a nested element such as
+                    # audioConfig/microphone[micType=INTERNAL] is the one set
                     try:
-                        set_platform_option(self.prs, section, attr, new_val)
+                        set_platform_option(self.prs, element, attr, new_val)
                         changed += 1
                     except Exception as e:
                         errors.append(f"{element}.{attr}: {e}")
@@ -2769,7 +2777,10 @@ class QuickPRSApp:
                           font=("Consolas", 10)).pack(side=tk.LEFT)
                 ttk.Label(row, text=desc).pack(side=tk.LEFT, padx=4)
 
-        btn = ttk.Button(frame, text="Close", command=win.destroy, width=10)
+        # Close through _on_close so the global mouse-wheel binding goes
+        # with the window
+        btn = ttk.Button(frame, text="Close", command=lambda: _on_close(),
+                         width=10)
         btn.pack(pady=(12, 0))
 
         frame.update_idletasks()
@@ -3296,15 +3307,12 @@ class QuickPRSApp:
             save_settings(self.settings)
 
     def _on_close(self):
-        if self.modified:
-            result = messagebox.askyesnocancel(
-                "Unsaved Changes",
-                "You have unsaved changes. Save before closing?")
-            if result is None:  # Cancel
-                return
-            if result:  # Yes
-                self.save_file()
-        self._save_geometry()
+        if not self._confirm_discard("close"):
+            return
+        try:
+            self._save_geometry()
+        except Exception as e:
+            log_error("save_geometry", str(e))
         self.root.destroy()
 
 

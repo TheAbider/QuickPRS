@@ -2351,7 +2351,7 @@ class PersonalityView(ttk.Frame):
                 self.app.status_set(
                     f"'{name}' is already in favorites")
         except Exception as e:
-            log_error(f"Failed to add favorite: {e}")
+            log_error("add_favorite", str(e))
             messagebox.showerror("Error", f"Could not add favorite: {e}")
 
     def _remove_from_favorites(self, category, name):
@@ -2366,7 +2366,7 @@ class PersonalityView(ttk.Frame):
             else:
                 self.app.status_set(f"'{name}' not found in favorites")
         except Exception as e:
-            log_error(f"Failed to remove favorite: {e}")
+            log_error("remove_favorite", str(e))
             messagebox.showerror("Error",
                                  f"Could not remove favorite: {e}")
 
@@ -3003,7 +3003,9 @@ class PersonalityView(ttk.Frame):
             set_name = set_name[:8]
 
         try:
-            from ..injector import add_group_set, make_group_set
+            # _safe_ variants also create the first set of a blank file
+            from ..injector import _safe_add_group_set as add_group_set
+            from ..injector import make_group_set
             group_set = make_group_set(set_name, [
                 (1, "TG 1", "TALKGROUP 1"),
             ])
@@ -3037,7 +3039,8 @@ class PersonalityView(ttk.Frame):
             set_name = set_name[:8]
 
         try:
-            from ..injector import add_trunk_set, make_trunk_set
+            from ..injector import _safe_add_trunk_set as add_trunk_set
+            from ..injector import make_trunk_set
             trunk_set = make_trunk_set(set_name, [
                 (851.0125, 806.0125),
             ])
@@ -3071,7 +3074,8 @@ class PersonalityView(ttk.Frame):
             set_name = set_name[:8]
 
         try:
-            from ..injector import add_conv_set, make_conv_set
+            from ..injector import _safe_add_conv_set as add_conv_set
+            from ..injector import make_conv_set
             conv_set = make_conv_set(set_name, [
                 {"short_name": "CH 1", "tx_freq": 462.5625},
             ])
@@ -3406,6 +3410,19 @@ class PersonalityView(ttk.Frame):
         except Exception as e:
             messagebox.showerror("Error", f"Batch operation failed:\n{e}")
 
+    def _selected_tg_pairs(self, tg_items):
+        """(set name, talkgroup ID) of each selected row.  Matching on the
+        pair matters: the same ID can sit in several sets, and selecting it
+        in one set must not change it in the others."""
+        pairs = set()
+        for iid, meta in tg_items:
+            gid = meta.get("group_id")
+            parent_meta = self._item_meta.get(self.tree.parent(iid), {})
+            set_name = parent_meta.get("name", "")
+            if gid is not None and set_name:
+                pairs.add((set_name, gid))
+        return pairs
+
     def _batch_selected_tgs(self, tg_items, set_names, field, value):
         """Batch-modify a field on specifically selected talkgroups."""
         prs = self.app.prs
@@ -3428,11 +3445,7 @@ class PersonalityView(ttk.Frame):
                 grp_sec, parse_group_section, first_count)
 
             # Build set of selected group IDs
-            selected_ids = set()
-            for _, meta in tg_items:
-                gid = meta.get("group_id")
-                if gid is not None:
-                    selected_ids.add(gid)
+            selected_ids = self._selected_tg_pairs(tg_items)
 
             label = "TX" if field == "tx" else "Scan"
             action = "Enable" if value else "Disable"
@@ -3449,7 +3462,7 @@ class PersonalityView(ttk.Frame):
                 if gs.name not in set_names:
                     continue
                 for g in gs.groups:
-                    if g.group_id in selected_ids:
+                    if (gs.name, g.group_id) in selected_ids:
                         setattr(g, field, value)
                         changed += 1
 
@@ -3492,11 +3505,7 @@ class PersonalityView(ttk.Frame):
             existing_sets = _parse_section_data(
                 grp_sec, parse_group_section, first_count)
 
-            selected_ids = set()
-            for _, meta in tg_items:
-                gid = meta.get("group_id")
-                if gid is not None:
-                    selected_ids.add(gid)
+            selected_ids = self._selected_tg_pairs(tg_items)
 
             self.app.save_undo_snapshot("Delete selected TGs")
             removed = 0
@@ -3505,7 +3514,7 @@ class PersonalityView(ttk.Frame):
                     continue
                 orig = len(gs.groups)
                 gs.groups = [g for g in gs.groups
-                             if g.group_id not in selected_ids]
+                             if (gs.name, g.group_id) not in selected_ids]
                 removed += orig - len(gs.groups)
 
             _replace_group_sections(prs, existing_sets, byte1, byte2,
@@ -3542,11 +3551,7 @@ class PersonalityView(ttk.Frame):
             messagebox.showerror("Error", f"Failed to parse groups:\n{e}")
             return
 
-        selected_ids = set()
-        for _, meta in tg_items:
-            gid = meta.get("group_id")
-            if gid is not None:
-                selected_ids.add(gid)
+        selected_ids = self._selected_tg_pairs(tg_items)
 
         count = len(selected_ids)
 
@@ -3627,7 +3632,7 @@ class PersonalityView(ttk.Frame):
                 if gs.name not in set_names:
                     continue
                 for g in gs.groups:
-                    if g.group_id in selected_ids:
+                    if (gs.name, g.group_id) in selected_ids:
                         if tx_choice == "enable":
                             g.tx = True
                         elif tx_choice == "disable":

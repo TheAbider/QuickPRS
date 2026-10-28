@@ -365,17 +365,10 @@ class TestDepartmentProfiles:
         profile = get_profile_template('search_rescue')
         assert 'marine' in profile['templates']
 
-    def test_fire_has_gps_30s(self):
-        profile = get_profile_template('fire_department')
-        assert profile['options']['gps.reportInterval'] == '30'
-
-    def test_ems_has_gps_15s(self):
-        profile = get_profile_template('ems')
-        assert profile['options']['gps.reportInterval'] == '15'
-
-    def test_search_rescue_has_gps_60s(self):
-        profile = get_profile_template('search_rescue')
-        assert profile['options']['gps.reportInterval'] == '60'
+    def test_profiles_turn_gps_on(self):
+        for name in ('fire_department', 'ems', 'search_rescue'):
+            profile = get_profile_template(name)
+            assert profile['options'] == {'gps.gpsMode': 'ON'}, name
 
     def test_all_profiles_listed(self):
         names = [name for name, _ in list_profile_templates()]

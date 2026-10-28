@@ -371,10 +371,10 @@ class TestPresets:
         assert preset['options']['gps.gpsMode'] == 'ON'
 
     def test_covert_preset(self):
-        """Covert preset disables GPS and LEDs."""
+        """Covert preset disables GPS and the tri-color LED."""
         preset = PRESETS['covert']
         assert preset['options']['gps.gpsMode'] == 'OFF'
-        assert preset['options']['misc.ledEnabled'] == 'false'
+        assert preset['options']['misc.enableTriColorLed'] == 'OFF'
 
     def test_training_preset(self):
         """Training preset enables GPS."""
@@ -382,10 +382,20 @@ class TestPresets:
         assert preset['options']['gps.gpsMode'] == 'ON'
 
     def test_gps_on_preset(self):
-        """GPS on preset enables GPS with interval."""
+        """GPS on preset enables GPS (the XG-100P options have no
+        reporting-interval attribute)."""
         preset = PRESETS['gps_on']
-        assert preset['options']['gps.gpsMode'] == 'ON'
-        assert 'gps.reportInterval' in preset['options']
+        assert preset['options'] == {'gps.gpsMode': 'ON'}
+
+    def test_every_preset_applies_to_a_blank(self):
+        """Every preset key is a real attribute with an allowed value."""
+        from quickprs.builder import create_blank_prs
+        from quickprs.option_maps import set_platform_option
+        for name, preset in PRESETS.items():
+            prs = create_blank_prs()
+            for key, value in preset['options'].items():
+                section, attr = key.split('.', 1)
+                set_platform_option(prs, section, attr, value)
 
     def test_gps_off_preset(self):
         """GPS off preset disables GPS."""

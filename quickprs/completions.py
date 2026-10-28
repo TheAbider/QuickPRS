@@ -53,22 +53,17 @@ OPTION_SECTIONS = ["gps", "misc", "audio", "bluetooth", "timedate",
                    "accessory", "mandown", "display"]
 
 # Common option paths for set-option
-OPTION_PATHS = [
-    "gps.gpsMode", "gps.type", "gps.operationMode", "gps.mapDatum",
-    "gps.positionFormat", "gps.elevationUnits", "gps.northingType",
-    "gps.gridDigits", "gps.angularUnits", "gps.reportInterval",
-    "audio.speakerMode", "audio.pttMode", "audio.noiseCancellation",
-    "audio.tones", "audio.cctTimer",
-    "bluetooth.friendlyName", "bluetooth.btMode", "bluetooth.btAdminMode",
-    "misc.password", "misc.maintenancePassword", "misc.topFpMode",
-    "misc.topFpOrient", "misc.topFpIntensity", "misc.topFpTimeout",
-    "misc.topFpLedColor", "misc.dateFormat", "misc.p25Optimize",
-    "misc.batteryType", "misc.autoRSSIThreshold", "misc.ledEnabled",
-    "timedate.time", "timedate.zone", "timedate.date",
-    "accessory.noiseCancellation", "accessory.micSelectMode",
-    "accessory.pttMode",
-    "mandown.inactivityTime", "mandown.warningTime",
-]
+def _option_paths():
+    """section.attribute for every top-level option RPM's XML has."""
+    from .option_maps import XML_FIELD_INDEX, SECTION_MAP
+    friendly = {}
+    for name, element in SECTION_MAP.items():
+        friendly.setdefault(element, name)
+    return sorted(f"{friendly[el]}.{attr}"
+                  for el, attr in XML_FIELD_INDEX if el in friendly)
+
+
+OPTION_PATHS = _option_paths()
 
 # Flags per subcommand
 _SUBCOMMAND_FLAGS = {

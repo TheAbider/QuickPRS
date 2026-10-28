@@ -18,6 +18,7 @@ This module provides:
 """
 
 import logging
+import re
 import struct
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -177,26 +178,74 @@ SECTION_MAP = {
 }
 
 
+# platformConfig of a new XG-100P personality exactly as RPM 14
+# writes it (every attribute at RPM's default), used when a
+# personality has no radio options block yet.
 _DEFAULT_PLATFORM_XML = (
     '<platformConfig>'
-    '<gpsConfig gpsMode="OFF" type="INTERNAL_GPS" operationMode="INTERNAL" '
+    '<progButtons _2PosFunction="PTCT" _2PosAValue="" _2PosBValue="" '
+    '_2PosA_VAIndex="0" _2PosB_VAIndex="0" _3PosAFunc="CHAN_BANK" '
+    '_3PosBFunc="CHAN_BANK" _3PosCFunc="CHAN_BANK" _3PosAIndex="1" '
+    '_3PosBIndex="2" _3PosCIndex="3" _3PosFunction="CHAN_BANK" '
+    '_3PosAValue="1" _3PosBValue="2" _3PosCValue="3">'
+    '<progButton buttonName="TOP_SIDE" function="MONITOR_CLEAR" delay="0.0"'
+    ' extraData="" />'
+    '<progButton buttonName="MID_SIDE" function="ZONE_UP" delay="0.0" '
+    'extraData="" />'
+    '<progButton buttonName="BOT_SIDE" function="ZONE_DOWN" delay="0.0" '
+    'extraData="" />'
+    '<progButton buttonName="EMERGENCY" function="EMERGENCY_CALL" delay="" '
+    'extraData="" />'
+    '</progButtons>'
+    '<accessoryConfig noiseCancellation="ON" micSelectMode="TOP" '
+    'pttMode="BOTH">'
+    '<accessoryButtons>'
+    '<accessoryButton buttonName="ACC_USER_1" function="UNASSIGNED" '
+    'extraData="" />'
+    '<accessoryButton buttonName="ACC_USER_2" function="UNASSIGNED" '
+    'extraData="" />'
+    '<accessoryButton buttonName="ACC_EMERGENCY" function="EMERGENCY_CALL" '
+    'extraData="" />'
+    '</accessoryButtons>'
+    '</accessoryConfig>'
+    '<manDownConfig inactivityTime="240" warningTime="30" sensitivity="0" '
+    'action="MD_EMERGENCY_CALL" />'
+    '<shortMenu>'
+    '<shortMenuItem name="startScan" position="0" extraData="" />'
+    '<shortMenuItem name="startMon" position="1" extraData="" />'
+    '<shortMenuItem name="nuisanceDel" position="2" extraData="" />'
+    '<shortMenuItem name="selChanGrp" position="3" extraData="" />'
+    '<shortMenuItem name="lockKeypad" position="4" extraData="" />'
+    '<shortMenuItem name="txPower" position="5" extraData="" />'
+    '<shortMenuItem name="dispSA" position="6" extraData="" />'
+    '<shortMenuItem name="empty" position="7" extraData="" />'
+    '<shortMenuItem name="empty" position="8" extraData="" />'
+    '<shortMenuItem name="empty" position="9" extraData="" />'
+    '<shortMenuItem name="empty" position="10" extraData="" />'
+    '<shortMenuItem name="empty" position="11" extraData="" />'
+    '<shortMenuItem name="empty" position="12" extraData="" />'
+    '<shortMenuItem name="empty" position="13" extraData="" />'
+    '<shortMenuItem name="empty" position="14" extraData="" />'
+    '<shortMenuItem name="empty" position="15" extraData="" />'
+    '</shortMenu>'
+    '<gpsConfig gpsMode="ON" type="INTERNAL_GPS" operationMode="INTERNAL" '
     'mapDatum="DATUM_WGD" positionFormat="LAT_LONG_DMS" '
-    'elevationUnits="METERS" northingType="TRUE" gridDigits="SIX" '
-    'angularUnits="CARDINAL" reportInterval="5" />'
+    'linearUnits="STATUTE" angularUnits="CARDINAL" '
+    'elevationBasis="SEA_LEVEL" gridDigits="10" northing="TRUE" />'
     '<audioConfig speakerMode="ON" pttMode="ON" noiseCancellation="OFF" '
-    'tones="ON" cctTimer="120" />'
-    '<bluetoothConfig friendlyName="" btMode="OFF" btAdminMode="OFF" />'
-    '<miscConfig password="" maintenancePassword="" topFpMode="BL_ON" '
-    'topFpOrient="FRONT" topFpIntensity="5" topFpTimeout="30" '
-    'topFpLedColor="GREEN" dateFormat="US_DATE_FORMAT" '
-    'p25Optimize="OFF" batteryType="STANDARD" '
-    'autoRSSIThreshold="3" ledEnabled="true" />'
+    'tones="OFF" cctTimer="120" minVol="0" pttAudio="RADIO_ACCESSORY">'
+    '<microphone micType="INTERNAL" alc="OFF" gain="0" />'
+    '<microphone micType="EXTERNAL" alc="OFF" gain="0" />'
+    '</audioConfig>'
+    '<bluetoothConfig friendlyName="MY RADIO" btMode="OFF" btAdminMode="ON"'
+    ' />'
+    '<miscConfig topFpMode="BL_MOMENTARY" topFpOrient="FRONT" '
+    'topFpIntensity="5" topFpTimeout="30" frontFpMode="BL_MOMENTARY" '
+    'frontFpIntensity="8" frontFpTimeout="30" enableTriColorLed="ON" '
+    'topColorInvert="OFF" batteryType="LITHIUM_ION_POLY" p25Optimize="ON" '
+    'keypadTones="OFF" />'
     '<TimeDateCfg time="TIME_12_HOUR_FORMAT" zone="EST" '
     'date="US_DATE_FORMAT" />'
-    '<accessoryConfig noiseCancellation="ON" micSelectMode="TOP" '
-    'pttMode="BOTH" />'
-    '<manDownConfig inactivityTime="240" warningTime="30" '
-    'sensitivity="0" action="MD_EMERGENCY_CALL" />'
     '</platformConfig>'
 )
 
@@ -206,123 +255,145 @@ def _create_default_platform_xml():
     return _DEFAULT_PLATFORM_XML
 
 
+def _cstring(text):
+    """Encode an MFC CString (1-byte length, or 0xFF + 16-bit length)."""
+    raw = text.encode("ascii")
+    if len(raw) < 0xFF:
+        return struct.pack("<B", len(raw)) + raw
+    if len(raw) < 0xFFFE:
+        return b"\xff" + struct.pack("<H", len(raw)) + raw
+    return b"\xff\xff\xff" + struct.pack("<I", len(raw)) + raw
+
+
 def _inject_platform_xml(prs, xml_str):
-    """Inject platformConfig XML into a PRS file that doesn't have one.
+    """Put platformConfig XML into a personality that has none.
 
-    Adds the XML to the IDEN section trailing data. If the IDEN section
-    exists, appends the XML with the proper length prefix. If not,
-    returns False.
+    The XML is a CString among the document fields after the IDEN sets
+    (see archive.py): 6 bytes, then the XML, then the rest.  A personality
+    without options holds an empty string (one 0x00 byte) there, which is
+    replaced.  Returns False when the file does not have that layout.
     """
-    from .record_types import (
-        parse_class_header, extract_iden_trailing_data,
-    )
-    from .binary_io import read_uint16_le
-
-    iden_sec = prs.get_section_by_class('CDefaultIdenElem')
-    iset_sec = prs.get_section_by_class('CIdenDataSet')
-    if not iden_sec or not iset_sec:
+    from . import archive
+    try:
+        doc = archive.document_from_prs(prs)
+    except archive.WalkError:
         return False
-
-    # Get the first count from the set section
-    _, _, _, ds = parse_class_header(iset_sec.raw, 0)
-    fc, _ = read_uint16_le(iset_sec.raw, ds)
-
-    # Get existing trailing data
-    trailing = extract_iden_trailing_data(iden_sec.raw, fc)
-
-    # Build new trailing data with XML inserted
-    xml_bytes = xml_str.encode('ascii')
-    # Format: [existing pre-XML padding] + ff + uint16(xml_len) + xml + [post-XML]
-    # For a file without XML, the trailing is typically just zeros.
-    # We need to: replace the trailing with: padding + xml block + original post-data
-    # Simple approach: insert XML at the start of trailing, keeping any
-    # existing trailing data (passwords, GUID) after it.
-
-    # Check if trailing already has some structure (non-zero bytes)
-    # If it's all zeros, just replace with XML block
-    new_trailing = bytearray()
-    # 6 zero bytes padding (matching PAWSOVERMAWS pattern)
-    new_trailing += b'\x00' * 6
-    # FF marker + uint16 XML length
-    new_trailing += b'\xff'
-    new_trailing += struct.pack('<H', len(xml_bytes))
-    # XML content
-    new_trailing += xml_bytes
-    # Append original trailing data (may contain passwords, GUID)
-    new_trailing += trailing
-
-    # Rebuild IDEN section: parse sets, rebuild with new trailing
-    from .record_types import parse_iden_section
-    _, _, _, cd = parse_class_header(iden_sec.raw, 0)
-    sets = parse_iden_section(iden_sec.raw, cd, len(iden_sec.raw), fc)
-
-    from .injector import _build_iden_raw
-    byte1, byte2 = iden_sec.raw[2], iden_sec.raw[3]
-    new_raw = _build_iden_raw(sets, byte1, byte2,
-                              trailing_data=bytes(new_trailing))
-
-    # Replace the section
-    for i, s in enumerate(prs.sections):
-        if s.class_name == 'CDefaultIdenElem':
-            prs.sections[i] = Section(
-                offset=s.offset, raw=new_raw,
-                class_name='CDefaultIdenElem')
-            break
-
+    tail = doc.root.parts[-1]
+    if len(tail) < 7 or tail[6] != 0:
+        return False
+    doc.root.parts[-1] = tail[:6] + _cstring(xml_str) + tail[7:]
+    archive.write_document(prs, doc)
     return True
 
 
-def set_platform_option(prs, section_name, attr_name, value):
-    """Modify a platformConfig XML attribute in the PRS file.
+_PATH_PART = re.compile(r"([A-Za-z_]\w*)(?:\[@?(\w+)='?([^'\]]*)'?\])?")
 
-    Finds the XML in the PRS data, modifies the specified attribute,
-    and rebuilds the section with the updated XML (including the
-    uint16 length prefix).
+
+def _find_option_element(root, path):
+    """Resolve "gps", "gpsConfig", "audioConfig/microphone[micType=INTERNAL]"
+    or the field index form "...[@micType='INTERNAL']" to an element."""
+    node = root
+    for depth, part in enumerate(path.split("/")):
+        m = _PATH_PART.fullmatch(part)
+        if not m:
+            return None
+        tag, key, val = m.groups()
+        if depth == 0:
+            tag = SECTION_MAP.get(tag, tag)
+        candidates = node.findall(tag) if depth == 0 else node.iter(tag)
+        found = None
+        for child in candidates:
+            if key is None or child.get(key) == val:
+                found = child
+                break
+        if found is None:
+            return None
+        node = found
+    return node
+
+
+def _field_def(path, attr_name):
+    """The XML_FIELD_INDEX entry for an element path and attribute."""
+    parts = []
+    for depth, part in enumerate(path.split("/")):
+        m = _PATH_PART.fullmatch(part)
+        if not m:
+            return None
+        tag, key, val = m.groups()
+        if depth == 0:
+            tag = SECTION_MAP.get(tag, tag)
+        parts.append(f"{tag}[@{key}='{val}']" if key else tag)
+    return XML_FIELD_INDEX.get(("/".join(parts), attr_name))
+
+
+def _check_option_value(field, value):
+    """Raise ValueError when ``value`` is not allowed for ``field``."""
+    if field is None:
+        return
+    value = str(value)
+    if field.field_type == "onoff" and value not in ("ON", "OFF"):
+        raise ValueError(f"{field.attribute} must be ON or OFF, got {value!r}")
+    if (field.field_type == "enum" and field.enum_values and
+            value not in field.enum_values):
+        raise ValueError(
+            f"{field.attribute} must be one of "
+            f"{', '.join(field.enum_values)}; got {value!r}")
+    if field.field_type == "int":
+        try:
+            num = int(value)
+        except ValueError:
+            raise ValueError(
+                f"{field.attribute} must be a whole number, got {value!r}")
+        if field.min_val is not None and num < field.min_val:
+            raise ValueError(f"{field.attribute} must be >= {field.min_val}")
+        if field.max_val is not None and num > field.max_val:
+            raise ValueError(f"{field.attribute} must be <= {field.max_val}")
+
+
+def set_platform_option(prs, section_name, attr_name, value,
+                        create=False):
+    """Modify a platformConfig XML attribute in the PRS file.
 
     Args:
         prs: parsed PRSFile object
-        section_name: friendly section name (e.g. 'gps', 'audio')
-            or XML element name (e.g. 'gpsConfig', 'audioConfig')
+        section_name: friendly section name ('gps', 'audio'), XML element
+            name ('gpsConfig') or a nested path such as
+            'audioConfig/microphone[micType=INTERNAL]'
         attr_name: XML attribute name (e.g. 'gpsMode', 'speakerMode')
         value: new value as string
+        create: allow adding an attribute QuickPRS does not know about
 
     Returns:
-        True if the attribute was modified, False on error.
+        True when the attribute was set.
 
     Raises:
-        ValueError: if no platformConfig found, section unknown,
-            or attribute not found in the XML.
+        ValueError: no platformConfig and none could be added, unknown
+            element or attribute, or a value the field does not allow.
     """
     xml_str = extract_platform_xml(prs)
     if xml_str is None:
-        # Create a default platformConfig XML and inject it
-        xml_str = _create_default_platform_xml()
-        if not _inject_platform_xml(prs, xml_str):
+        # Start from the options RPM writes for a new radio
+        if not _inject_platform_xml(prs, _create_default_platform_xml()):
             raise ValueError(
                 "No platformConfig XML found and unable to create one")
+        xml_str = extract_platform_xml(prs)
 
-    # Resolve friendly section name to XML element name
-    xml_element = SECTION_MAP.get(section_name, section_name)
-
-    # Parse the XML
     root = ET.fromstring(xml_str)
-
-    # Find the target element
-    target = root.find(xml_element)
+    target = _find_option_element(root, section_name)
     if target is None:
-        valid = [child.tag for child in root]
+        valid = sorted({child.tag for child in root})
         raise ValueError(
-            f"Section '{xml_element}' not found in platformConfig. "
-            f"Available: {', '.join(sorted(set(valid)))}")
+            f"Section '{section_name}' not found in platformConfig. "
+            f"Available: {', '.join(valid)}")
 
-    # Check if attribute exists (warn but still set it)
-    old_val = target.get(attr_name)
-    if old_val is None:
-        # Attribute doesn't exist — could be new. Set it anyway but log.
-        logger.info("Attribute '%s' not found in <%s>, creating it",
-                    attr_name, xml_element)
+    field = _field_def(section_name, attr_name)
+    if target.get(attr_name) is None and field is None and not create:
+        known = sorted(target.attrib)
+        raise ValueError(
+            f"<{target.tag}> has no attribute '{attr_name}'. "
+            f"Attributes: {', '.join(known) or '(none)'}")
+    _check_option_value(field, value)
 
-    # Set the attribute
     target.set(attr_name, str(value))
 
     # Rebuild XML and write back
