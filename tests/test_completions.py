@@ -40,14 +40,44 @@ class TestCompletionConstants:
         assert set(BULK_EDIT_TYPES) == {"talkgroups", "channels"}
 
     def test_freq_tools_types(self):
+        """identify, all-offsets and conflicts were missing from the
+        hand-kept list."""
         assert set(FREQ_TOOLS_TYPES) == {
-            "offset", "channel", "tones", "dcs", "nearest"
+            "offset", "channel", "tones", "dcs", "nearest", "identify",
+            "all-offsets", "conflicts",
         }
 
+    def test_flags_are_the_parsers(self):
+        """create --force, import-rr --password and the radio commands'
+        flags were missing from the hand-kept flag lists."""
+        assert "--force" in _SUBCOMMAND_FLAGS["create"]
+        assert "--password" in _SUBCOMMAND_FLAGS["import-rr"]
+        assert "radio" in _SUBCOMMAND_FLAGS
+
     def test_template_names(self):
-        assert set(TEMPLATE_NAMES) == {
-            "murs", "gmrs", "frs", "marine", "noaa"
-        }
+        """Every template inject conv --template takes (interop,
+        public_safety and the weather alias were missing)."""
+        from quickprs.templates import get_template_names
+        assert TEMPLATE_NAMES == get_template_names()
+        assert {"interop", "public_safety", "weather"} <= set(TEMPLATE_NAMES)
+
+    def test_subcommands_are_the_parsers(self, monkeypatch):
+        """The list was kept by hand and had 33 of the 63 commands (radio,
+        wizard, import-csv, convert ... were missing)."""
+        import argparse
+        from quickprs.cli import run_cli
+        seen = []
+
+        def capture(parser, args=None, namespace=None):
+            seen.append(parser)
+            raise SystemExit(0)
+
+        monkeypatch.setattr(argparse.ArgumentParser, "parse_args", capture)
+        with pytest.raises(SystemExit):
+            run_cli(["--version"])
+        sub = next(a for a in seen[0]._actions
+                   if isinstance(a, argparse._SubParsersAction))
+        assert sorted(SUBCOMMANDS) == sorted(sub.choices)
 
     def test_scanner_formats(self):
         assert set(SCANNER_FORMATS) == {

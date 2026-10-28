@@ -4179,12 +4179,9 @@ def cmd_diff_report(filepath_a, filepath_b, output=None):
     return 0
 
 
-def run_cli(args=None):
-    """Parse CLI arguments and dispatch to the appropriate command.
-
-    Returns exit code (0=success, 1=error/validation failure).
-    Returns None if no CLI flags found (caller should launch GUI).
-    """
+def build_parser():
+    """The CLI's argument parser, and the subcommand parsers whose help
+    run_cli prints itself, by command name."""
     import argparse
 
     fmt = argparse.RawDescriptionHelpFormatter
@@ -5612,6 +5609,26 @@ def run_cli(args=None):
             action_group._actions = []
             break
 
+    subcommand_parsers = {
+        "radio": p_radio,
+        "profiles": p_prof,
+        "inject": p_inject,
+        "bulk-edit": p_bulk,
+        "freq-tools": p_freq,
+        "systems": p_sys,
+        "favorites": p_fav,
+        "preset": p_preset,
+    }
+    return parser, subcommand_parsers
+
+
+def run_cli(args=None):
+    """Parse CLI arguments and dispatch to the appropriate command.
+
+    Returns exit code (0=success, 1=error/validation failure).
+    Returns None if no CLI flags found (caller should launch GUI).
+    """
+    parser, subcommand_parsers = build_parser()
     parsed = parser.parse_args(args)
 
     # Handle --no-color flag
@@ -5726,7 +5743,7 @@ def run_cli(args=None):
             if parsed.radio_cmd == "analyze":
                 return radio_commands.cmd_radio_analyze(
                     parsed.capture, extract=parsed.extract)
-            p_radio.print_help()
+            subcommand_parsers["radio"].print_help()
             return 1
         elif parsed.command == "import-csv":
             return cmd_import_csv(parsed.file, parsed.csv_files,
@@ -5756,7 +5773,7 @@ def run_cli(args=None):
             return cmd_export_config(parsed.file, output=parsed.output)
         elif parsed.command == "profiles":
             if parsed.prof_cmd is None:
-                p_prof.print_help()
+                subcommand_parsers["profiles"].print_help()
                 return 1
             elif parsed.prof_cmd == "list":
                 return cmd_profiles("list")
@@ -5884,7 +5901,7 @@ def run_cli(args=None):
             return cmd_report(parsed.file, output=parsed.output)
         elif parsed.command == "inject":
             if parsed.inject_cmd is None:
-                p_inject.print_help()
+                subcommand_parsers["inject"].print_help()
                 return 1
             elif parsed.inject_cmd == "p25":
                 return cmd_inject_p25(
@@ -5922,7 +5939,7 @@ def run_cli(args=None):
             return cmd_list(parsed.file, parsed.type)
         elif parsed.command == "bulk-edit":
             if parsed.bulk_cmd is None:
-                p_bulk.print_help()
+                subcommand_parsers["bulk-edit"].print_help()
                 return 1
             elif parsed.bulk_cmd == "talkgroups":
                 return cmd_bulk_edit_talkgroups(
@@ -5945,7 +5962,7 @@ def run_cli(args=None):
                 )
         elif parsed.command == "freq-tools":
             if parsed.freq_cmd is None:
-                p_freq.print_help()
+                subcommand_parsers["freq-tools"].print_help()
                 return 1
             freq_val = getattr(parsed, 'freq', None)
             freq_list = None
@@ -5957,7 +5974,7 @@ def run_cli(args=None):
                                    freq_list=freq_list)
         elif parsed.command == "systems":
             if parsed.sys_cmd is None:
-                p_sys.print_help()
+                subcommand_parsers["systems"].print_help()
                 return 1
             elif parsed.sys_cmd == "list":
                 return cmd_systems("list")
@@ -6079,9 +6096,9 @@ def run_cli(args=None):
             print(generate_cheat_sheet())
             return 0
         elif parsed.command == "favorites":
-            return cmd_favorites(parsed, p_fav)
+            return cmd_favorites(parsed, subcommand_parsers["favorites"])
         elif parsed.command == "preset":
-            return cmd_preset(parsed, p_preset)
+            return cmd_preset(parsed, subcommand_parsers["preset"])
         elif parsed.command == "convert":
             return cmd_convert(parsed.file, parsed.to_format,
                                output_path=parsed.output)
