@@ -7,6 +7,8 @@ All notable changes to QuickPRS will be documented in this file.
 ### Added
 - `quickprs radio sniff`: record RPM's session with the radio from a Bluetooth trace served by Microsoft's Bluetooth Virtual Sniffer (or a saved pcap/pcapng file), without a virtual COM port driver. It keeps only the serial bytes RPM and the radio exchange, in the capture format `analyze` reads, reads traces with or without direction headers, and ends with a report of what the trace held (and why, when it found no serial data). com0com, which the relay needs, cannot load while Windows 11's Memory Integrity is on
 - `quickprs radio analyze --transcript`: the conversation in a capture, message by message (chunks going the same way within 50 ms are one message), and the common message sizes and first bytes in each direction
+- `quickprs radio replay`: send RPM's requests from a captured read to the radio again and compare each answer with the one RPM got, the first test of reading a radio without RPM. It stops at the first answer that differs (`--keep-going` carries on) or when the radio does not answer, keeps RPM's pauses and modem lines, and refuses any capture that is not a read (the radio's answers must hold a personality and RPM's requests must not)
+- `radio sniff` records each side's modem lines (RFCOMM modem status) as events
 - `--skip-encrypted` for `import-rr`, `auto-setup` and `import-paste`: leave out talkgroups RadioReference lists as fully encrypted
 
 ### Fixed
@@ -19,6 +21,7 @@ All notable changes to QuickPRS will be documented in this file.
 - GUI: Save always kept a backup whatever the auto backup setting said; sixteen settings nothing read (a default NAC, a scan limit, an export folder and thirteen P25 system options QuickPRS cannot write) are gone
 - GUI: editors that change only the open personality say Apply, not Save; a failure writing the recent files list no longer fails a save
 - Shell completions listed 33 of the 63 commands and stale flags; they are now read from the CLI's parser
+- `radio probe`, `relay` and `sniff` wrote over an existing capture file (`sniff` and `relay` default to `session.jsonl`, so a second session replaced the first); a capture is now never written over, and the next free name is used
 
 ## [1.2.0] - 2026-10-28
 

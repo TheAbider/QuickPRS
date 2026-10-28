@@ -24,6 +24,10 @@ import struct
 LINKTYPE_H4 = 187              # H4 packet, no direction
 LINKTYPE_H4_WITH_PHDR = 201    # 4-byte direction (0 = sent, 1 = received)
 
+# RFCOMM multiplexer control: modem status command (type 0x38, with the
+# C/R and EA bits set)
+MSC_COMMAND = 0xE3
+
 # H4 packet types
 H4_COMMAND, H4_ACL, H4_SCO, H4_EVENT = 1, 2, 3, 4
 
@@ -346,10 +350,16 @@ class SerialFromHci:
         name = FRAME_NAMES.get(frame.frame_type, hex(frame.frame_type))
         self.stats.rfcomm_frames[name] = self.stats.rfcomm_frames.get(
             name, 0) + 1
-        if frame.frame_type != RFCOMM_UIH or not frame.dlci:
+        if frame.frame_type != RFCOMM_UIH:
             return []
         if direction is None:
             direction = SENT if frame.cr else RECEIVED
+        if not frame.dlci:
+            # the multiplexer's control channel, on a channel already
+            # known to be RFCOMM's
+            if cid in link.cid_dirs or link.learned.get(direction) == cid:
+                return modem_status(direction, frame.payload)
+            return []
         if cid not in link.cid_dirs:
             # no connection setup seen: the first data frame each way
             # names that way's CID
@@ -384,6 +394,21 @@ class SerialFromHci:
                     link.cid_dirs[dcid] = SENT if pc_asked else RECEIVED
 
 
+def modem_status(direction, data):
+    """A line event for a modem status command on RFCOMM's control channel
+    (TS 07.10 5.4.6.3.7), as (direction, text).  Each side sends its own
+    lines: the PC its DTR and RTS, the radio what the PC sees as DSR, CTS,
+    RI and DCD.  The answers, which only echo a command, are left out."""
+    if len(data) < 4 or data[0] != MSC_COMMAND or data[1] >> 1 < 2:
+        return []
+    signals = data[3]
+    rtc, rtr = (signals >> 2) & 1, (signals >> 3) & 1
+    if direction == SENT:
+        return [(direction, f"pc dtr={rtc} rts={rtr}")]
+    ic, dv = (signals >> 6) & 1, (signals >> 7) & 1
+    return [(direction, f"radio dsr={rtc} cts={rtr} ri={ic} dcd={dv}")]
+
+
 def h4_with_direction(linktype, data):
     """(direction, H4 packet) from a pcap record, or None for link types
     this reader does not handle.  A trace without a direction header
@@ -400,7 +425,8 @@ def h4_with_direction(linktype, data):
 
 def serial_chunks(packets, address=None, stats=None):
     """(seconds since the first packet, direction, bytes) for every serial
-    chunk in an iterable of (timestamp, linktype, data) pcap records.
+    chunk in an iterable of (timestamp, linktype, data) pcap records, and
+    (seconds, direction, text) for every modem status change.
     ``stats``, a TraceStats, is filled in as the trace is read."""
     decoder = SerialFromHci(address, stats)
     stats = decoder.stats

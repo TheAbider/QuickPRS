@@ -16,6 +16,10 @@ needed to learn it from RPM, without guessing at commands:
 * ``probe``      open the radio's port and listen; never transmits
 * ``relay``      sit between RPM and the radio and log what they say
 * ``analyze``    summarise a capture and pull out any personality in it
+* ``hci``        the serial bytes in a Bluetooth HCI trace (``sniff``)
+* ``replay``     send RPM's requests from a captured read to the radio
+                 again, and compare the answers with RPM's
 
-Nothing here sends a byte of its own to the radio.
+Nothing here sends a byte of its own to the radio: ``replay`` sends only
+what RPM sent, and only from a session that read a personality.
 """
