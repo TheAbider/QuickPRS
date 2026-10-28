@@ -11,49 +11,36 @@ Usage:
 """
 
 import sys
+from pathlib import Path
+
+
+def _gui_target(argv):
+    """(True, file or None) when the arguments ask for the GUI.
+
+    No arguments, or a personality file, opens the GUI; anything else is a
+    CLI command (argparse reports unknown ones), so new commands never
+    need to be listed here.
+    """
+    if len(argv) < 2:
+        return True, None
+    arg = argv[1]
+    if arg.startswith("-"):
+        return False, None
+    path = Path(arg)
+    if path.suffix.lower() == ".prs" or path.is_file():
+        return True, arg
+    return False, None
 
 
 def main():
-    # Check if any CLI subcommand is being used
-    cli_commands = {
-        # Create & Build
-        "create", "build", "profiles", "wizard", "fleet",
-        # Modify
-        "inject", "remove", "edit", "merge", "clone", "clone-personality",
-        "rename", "sort", "renumber", "auto-name", "bulk-edit",
-        # Import
-        "import-rr", "import-paste", "import-scanner", "import-json",
-        "auto-setup", "systems", "template-csv",
-        # Export
-        "export", "export-csv", "export-json", "export-config",
-        "report", "card",
-        # Inspect & Validate
-        "info", "validate", "compare", "diff-report", "diff-options",
-        "stats", "capacity", "list", "dump",
-        # Radio Options
-        "set-option", "encrypt", "set-nac",
-        # Planning & Tools
-        "zones", "freq-tools", "iden-templates",
-        # Maintenance
-        "repair", "cleanup", "search", "backup",
-    }
-    cli_flags = {"--version", "-V", "--completion"}
-
-    has_cli = (len(sys.argv) > 1 and
-               (sys.argv[1] in cli_commands or sys.argv[1] in cli_flags))
-
-    if has_cli:
+    gui, filepath = _gui_target(sys.argv)
+    if not gui:
         from quickprs.cli import run_cli
         result = run_cli()
         sys.exit(result if result is not None else 0)
-    else:
-        # GUI mode — pass first arg as filepath if it looks like a file
-        filepath = None
-        if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
-            filepath = sys.argv[1]
 
-        from quickprs.gui.app import main as gui_main
-        gui_main(filepath=filepath)
+    from quickprs.gui.app import main as gui_main
+    gui_main(filepath=filepath)
 
 
 if __name__ == "__main__":

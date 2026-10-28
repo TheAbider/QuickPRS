@@ -338,3 +338,39 @@ class TestFormatSearchResults:
         ]
         lines = format_search_results(results, 'freq')
         assert any("2 match" in line for line in lines)
+
+
+def _personality_with_channel(path, short_name="ODD", freq=851.00625,
+                              tx_tone=""):
+    from quickprs.builder import create_blank_prs
+    from quickprs.injector import make_conv_set, _safe_add_conv_set
+    from quickprs.prs_writer import write_prs
+    prs = create_blank_prs()
+    _safe_add_conv_set(prs, make_conv_set("ODD", [
+        {"short_name": short_name, "tx_freq": freq, "rx_freq": freq,
+         "tx_tone": tx_tone, "rx_tone": tx_tone}]))
+    write_prs(prs, str(path), backup=False)
+    return prs
+
+
+class TestCmdSearchUnreadable:
+    """search says which files it could not read, and fails when it
+    could read none."""
+
+    def test_unreadable_file_is_reported(self, tmp_path, capsys):
+        from quickprs.cli import cmd_search
+        good = tmp_path / "good.PRS"
+        _personality_with_channel(good)
+        bad = tmp_path / "bad.PRS"
+        bad.write_bytes(b"not a personality")
+        cmd_search([str(good), str(bad)], name="ODD")
+        captured = capsys.readouterr()
+        assert "cannot read" in captured.err
+        assert "bad.PRS" in captured.err
+        assert "good.PRS" in captured.out
+
+    def test_nothing_readable_fails(self, tmp_path):
+        from quickprs.cli import cmd_search
+        bad = tmp_path / "bad.PRS"
+        bad.write_bytes(b"not a personality")
+        assert cmd_search([str(bad)], name="ODD") == 1

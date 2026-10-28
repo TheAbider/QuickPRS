@@ -72,6 +72,11 @@ def _get_system_config_refs(prs):
             if sn:
                 refs.add(sn.strip().lower())
 
+    # The sets each system actually names (trunk, talkgroup, conventional,
+    # P25 conventional and IDEN sets)
+    from .injector import system_set_references
+    refs |= {name.strip().lower() for name in system_set_references(prs)}
+
     return refs
 
 

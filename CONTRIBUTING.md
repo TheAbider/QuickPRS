@@ -30,7 +30,10 @@ Note: Test PRS data files are not included in this repository (gitignored). Test
 ## Project Structure
 
 - `quickprs/` -- Main package (parser, writer, CLI, GUI, validation, etc.)
-- `tests/` -- Test suite (26 test files, 3,265+ tests)
+  - `archive.py` -- The .PRS document model: reads the MFC archive, checks it, and writes it back with class tags and list counts recomputed ([format notes](docs/prs-format.md))
+  - `radio/` -- Bluetooth and serial tools for talking to the radio ([notes](docs/bluetooth.md))
+- `docs/` -- Format and Bluetooth notes
+- `tests/` -- Test suite (pytest)
 - `dist/` -- Built executable (gitignored)
 - `local/` -- Developer scratch files (gitignored)
 
@@ -51,5 +54,6 @@ Note: Test PRS data files are not included in this repository (gitignored). Test
 ## Code Style
 
 - Follow existing code conventions (PEP 8, type hints where practical)
-- Add tests for new features
+- Add tests for new features, and check that a new test fails when the fix it covers is undone
+- Change personalities through `archive.Document` (or the injector helpers built on it) rather than by splicing bytes, so class tags and list counts stay right
 - Keep CLI help text clear and include usage examples

@@ -393,3 +393,28 @@ class TestCLIBackup:
             assert rc == 1
             err = capsys.readouterr().err
             assert "No backups" in err
+
+
+class TestBackupsOfExactFile:
+    """Backups are matched on the exact file name and ordered by the
+    timestamp create_backup puts in the name."""
+
+    def test_similar_name_is_not_listed(self, tmp_path):
+        radio = _make_test_prs(tmp_path, "radio.PRS", b"A")
+        other = _make_test_prs(tmp_path, "radio_v2.PRS", b"B")
+        create_backup(radio)
+        create_backup(other)
+        listed = [Path(p).name for _, p, _ in list_backups(radio)]
+        assert len(listed) == 1
+        assert listed[0].startswith("radio_2")
+
+    def test_newest_by_name_not_file_time(self, tmp_path):
+        radio = _make_test_prs(tmp_path, "radio.PRS", b"A")
+        first = Path(create_backup(radio))
+        time.sleep(0.01)
+        second = Path(create_backup(radio))
+        # a restored or copied backup can carry a newer file time
+        later = second.stat().st_mtime + 100
+        os.utime(first, (later, later))
+        listed = [Path(p) for _, p, _ in list_backups(radio)]
+        assert listed == [second, first]

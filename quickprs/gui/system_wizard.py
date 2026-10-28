@@ -565,6 +565,10 @@ class SystemWizard(tk.Toplevel):
                 continue
         return tgs
 
+    def _bad_talkgroup_ids(self, tgs):
+        """IDs outside 1-65535, which a talkgroup cannot hold."""
+        return [gid for gid, _, _ in tgs if not 1 <= gid <= 65535]
+
     def _finish(self):
         """Add the system to the personality and close."""
         if not self.app.prs:
@@ -573,20 +577,35 @@ class SystemWizard(tk.Toplevel):
 
         name = self.sys_name.get().strip()[:8]
         long_name = self.sys_long_name.get().strip()[:16] or name
-        sys_id = int(self.sys_id.get().strip())
-        wacn = int(self.sys_wacn.get().strip())
+        try:
+            sys_id = int(self.sys_id.get().strip())
+            wacn = int(self.sys_wacn.get().strip())
+        except ValueError:
+            messagebox.showerror("Invalid Input",
+                                 "System ID and WACN must be numbers.",
+                                 parent=self)
+            return
         band = self.sys_band.get()
         sys_type = self.sys_type.get()
 
+        # Check everything before touching the personality
+        freqs = self._parse_freqs()
+        tgs = self._parse_talkgroups()
+        bad = self._bad_talkgroup_ids(tgs)
+        if bad:
+            messagebox.showerror(
+                "Invalid Talkgroups",
+                "Talkgroup IDs must be 1-65535. Out of range: " +
+                ", ".join(str(b) for b in bad[:10]),
+                parent=self)
+            return
+
         # Save undo state
         self.app.save_undo_snapshot("Add P25 System via Wizard")
+        before = self.app.prs.to_bytes()
 
         try:
             prs = self.app.prs
-
-            # Parse data
-            freqs = self._parse_freqs()
-            tgs = self._parse_talkgroups()
 
             # Build sets
             trunk_set = make_trunk_set(name, freqs) if freqs else None
@@ -639,15 +658,13 @@ class SystemWizard(tk.Toplevel):
             issues = validate_prs(prs)
             errors = [(s, m) for s, m in issues if s == ERROR]
 
-            self.app.modified = True
-            self.app._update_title()
+            self.app.mark_modified()
             self.app.personality_view.refresh()
 
             freq_str = f"{len(freqs)} freqs" if freqs else "no freqs"
             tg_str = f"{len(tgs)} TGs" if tgs else "no TGs"
-            log_action("wizard_add",
-                       f"Added P25 system '{name}' "
-                       f"(SysID {sys_id}, {freq_str}, {tg_str})")
+            log_action("wizard_add", system=name, sysid=sys_id,
+                       freqs=freq_str, talkgroups=tg_str)
 
             if errors:
                 messagebox.showwarning(
@@ -667,6 +684,12 @@ class SystemWizard(tk.Toplevel):
             self.destroy()
 
         except Exception as e:
+            # Put the personality back the way it was, so a failed add
+            # cannot leave half a system behind
+            from ..prs_parser import parse_prs_bytes
+            self.app.prs.sections = parse_prs_bytes(
+                before, verify=False).sections
+            self.app.personality_view.refresh()
             log_error("wizard_add", str(e))
             messagebox.showerror(
                 "Error",
@@ -819,6 +842,13 @@ class SystemDatabaseDialog(tk.Toplevel):
                 parent=self):
             return
 
+        from ..system_database import unverified_warning
+        warning = unverified_warning(sys)
+        if warning and not messagebox.askyesno(
+                "Unverified IDs", warning + "\n\nAdd it anyway?",
+                icon=messagebox.WARNING, parent=self):
+            return
+
         self.app.save_undo_snapshot("Add System from Database")
 
         try:
@@ -826,8 +856,7 @@ class SystemDatabaseDialog(tk.Toplevel):
             self.app.modified = True
             self.app._update_title()
             self.app.personality_view.refresh()
-            log_action("db_add",
-                       f"Added '{sys.name}' from system database")
+            log_action("db_add", system=sys.name)
             messagebox.showinfo(
                 "System Added",
                 f"P25 system '{sys.name}' added.\n"

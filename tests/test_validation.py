@@ -143,11 +143,18 @@ def test_validate_group_set_name_too_long():
 def test_validate_trunk_set_clean():
     """A valid trunk set produces no issues."""
     ts = make_trunk_set("TEST", [
-        (851.0125, 806.0125),
-        (852.0125, 807.0125),
+        (806.0125, 851.0125),
+        (807.0125, 852.0125),
     ])
     issues = validate_trunk_set(ts)
     assert len(issues) == 0
+
+
+def test_validate_trunk_set_swapped_tx_rx():
+    """TX on the site downlink and RX on its uplink is flagged."""
+    ts = make_trunk_set("TEST", [(851.0125, 806.0125)])
+    issues = validate_trunk_set(ts)
+    assert any("swapped" in m for s, m in issues if s == WARNING)
 
 
 def test_validate_trunk_set_duplicate_freq():
@@ -878,17 +885,48 @@ def test_structure_personality_not_first():
 
 
 def test_structure_no_systems():
-    """File with no system sections triggers an error."""
-    from quickprs.record_types import is_system_config_data
+    """A personality without systems is valid (RPM saves new radios that
+    way) but gets a warning, not an error."""
+    from quickprs.injector import remove_system_by_class
     prs = create_blank_prs()
-    prs.sections = [
-        s for s in prs.sections
-        if s.class_name != "CConvSystem"
-        and not (not s.class_name and is_system_config_data(s.raw))
-    ]
+    assert remove_system_by_class(prs, "CConvSystem") == 1
     issues = validate_structure(prs)
     errors = [m for s, m in issues if s == ERROR]
-    assert any("No system sections" in e for e in errors)
+    warnings = [m for s, m in issues if s == WARNING]
+    assert errors == []
+    assert any("No systems defined" in w for w in warnings)
+
+
+def test_structure_rpm_blank_has_no_errors():
+    """RPM's own new-radio personality (no systems, no sets) validates
+    without errors."""
+    blank = (Path(__file__).parent / "testdata" / "every option" /
+             "new radio - xg 100 portable .PRS")
+    if not blank.exists():
+        pytest.skip("test file not found")
+    from quickprs.prs_parser import parse_prs
+    issues = validate_structure(parse_prs(blank))
+    assert [m for s, m in issues if s == ERROR] == []
+
+
+def test_structure_reports_stale_tags():
+    """A file whose class tags no longer match (what older QuickPRS
+    versions wrote after edits) is an error: RPM will not open it."""
+    from quickprs import archive
+    from quickprs.injector import make_group_set, add_group_set
+    import struct
+    prs = create_blank_prs()
+    from quickprs.injector import _create_group_sections
+    _create_group_sections(prs, [make_group_set(
+        "G", [(1, "A", "A"), (2, "B", "B")])])
+    data = bytearray(prs.to_bytes())
+    _, rep = archive.read_document(bytes(data))
+    tag = next(t for t in rep.tags if t.class_name == "CP25Group")
+    struct.pack_into("<H", data, tag.offset, 0x8291)   # PAWSOVERMAWS value
+    from quickprs.prs_parser import parse_prs_bytes
+    issues = validate_structure(parse_prs_bytes(bytes(data)))
+    assert any("RPM will not open this file" in m
+               for s, m in issues if s == ERROR)
 
 
 def test_structure_wan_count_mismatch():

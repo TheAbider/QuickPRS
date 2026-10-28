@@ -807,3 +807,33 @@ class TestWizardValidation:
         raw1 = prs.to_bytes()
         raw2 = parse_prs_bytes(raw1).to_bytes()
         assert raw1 == raw2
+
+
+class TestWizardOptionsReachTheRadio:
+    """The wizard's GPS, password and time zone answers end up in the
+    radio's options (the time zone used to go to an attribute the radio
+    does not have)."""
+
+    def _run(self, tmp_path, answers):
+        from quickprs.prs_parser import parse_prs
+        from quickprs.option_maps import extract_platform_xml
+        out = str(tmp_path / "OPTS.PRS")
+        inputs = ["OPTS.PRS", out, "n", "murs"] + answers
+        with patch('builtins.input', side_effect=inputs):
+            assert run_wizard() == 0
+        return extract_platform_xml(parse_prs(out))
+
+    def test_answers_are_set(self, tmp_path):
+        import xml.etree.ElementTree as ET
+        from quickprs.option_maps import _DEFAULT_PLATFORM_XML
+        root = ET.fromstring(self._run(tmp_path, ["off", "1234", "pst"]))
+        assert root.find("TimeDateCfg").get("zone") == "PST"
+        assert root.find("gpsConfig").get("gpsMode") == "OFF"
+        assert root.find("miscConfig").get("password") == "1234"
+        assert ([c.tag for c in root] ==
+                [c.tag for c in ET.fromstring(_DEFAULT_PLATFORM_XML)])
+
+    def test_unknown_zone_is_asked_again(self, tmp_path, capsys):
+        xml = self._run(tmp_path, ["", "", "UTC", "GMT"])
+        assert "Choose one of" in capsys.readouterr().out
+        assert 'zone="GMT"' in xml

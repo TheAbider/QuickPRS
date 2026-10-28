@@ -330,7 +330,8 @@ class TestWatchCLI:
             if call_count[0] == 1:
                 # Simulate file change by bumping mtime
                 import os
-                os.utime(str(test_file), None)
+                st = test_file.stat()
+                os.utime(str(test_file), (st.st_atime, st.st_mtime + 10))
             elif call_count[0] >= 2:
                 raise KeyboardInterrupt
 
@@ -359,7 +360,10 @@ class TestWatchCLI:
             call_count[0] += 1
             if call_count[0] == 1:
                 import os
-                os.utime(str(test_file), None)
+                # An explicit later mtime: "now" can equal the copy's mtime
+                # within the clock's granularity, which made this flaky.
+                st = test_file.stat()
+                os.utime(str(test_file), (st.st_atime, st.st_mtime + 10))
             elif call_count[0] >= 2:
                 raise KeyboardInterrupt
 

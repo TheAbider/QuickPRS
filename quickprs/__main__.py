@@ -18,8 +18,11 @@ if os.environ.get("QUICKPRS_NO_GUI"):
 try:
     from .gui.app import main
     main()
-except Exception:
-    # GUI unavailable (no display, no tkinter, etc.) — offer wizard
-    print("GUI not available. Use 'quickprs wizard' for interactive mode,")
+except Exception as exc:
+    # GUI unavailable (no display, no tkinter, etc.) — offer wizard.  The
+    # error itself is shown too: a bare message once hid a startup crash.
+    print(f"GUI not available ({type(exc).__name__}: {exc}).",
+          file=sys.stderr)
+    print("Use 'quickprs wizard' for interactive mode,")
     print("or run 'quickprs --help' for CLI commands.")
     sys.exit(1)

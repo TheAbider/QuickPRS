@@ -86,8 +86,31 @@ def repair_prs(prs, issues=None):
 
     Returns:
         (repaired_prs, list_of_repairs_made)
+
+    A file whose archive structure can be followed (see archive.py) only
+    gets its class tags and list counts rewritten; the section surgery
+    below is for files that cannot be followed at all.
     """
+    from . import archive
+
     repairs = []
+
+    try:
+        problems = archive.check(prs)
+    except archive.WalkError:
+        problems = None
+    if problems is not None:
+        if problems:
+            tags = sum(1 for p in problems if "tag" in p.message)
+            counts = len(problems) - tags
+            archive.repair(prs)
+            repairs.append(
+                f"Rewrote {tags} class tag(s) and {counts} list count(s) "
+                f"so RPM can load the file")
+        # The walk treats the fields after the IDEN sets as opaque, so a
+        # cut-off terminator there is still worth completing.
+        _fix_terminator(prs, repairs)
+        return prs, repairs
 
     # 1. Fix missing CPersonality
     personality = prs.get_section_by_class("CPersonality")
@@ -131,21 +154,14 @@ def repair_prs(prs, issues=None):
         parts = [f"{name} (x{count})" for name, count in counts.items()]
         repairs.append(f"Removed duplicate sections: {', '.join(parts)}")
 
-    # 4. Remove orphan system config data sections
-    header_types = {"CP25TrkSystem", "CConvSystem", "CP25ConvSystem"}
+    # 4. Remove orphan system config data sections: every real config block
+    #    is preceded by its system's short name and type byte.
+    from .record_types import system_header_at_end
     to_remove = []
     for i, sec in enumerate(prs.sections):
         if not sec.class_name and is_system_config_data(sec.raw):
-            found_header = False
-            for j in range(i - 1, -1, -1):
-                if prs.sections[j].class_name in header_types:
-                    found_header = True
-                    break
-                if prs.sections[j].class_name == "CPreferredSystemTableEntry":
-                    continue
-                if not prs.sections[j].class_name:
-                    continue
-                break
+            found_header = (i > 0 and system_header_at_end(
+                prs.sections[i - 1].raw) is not None)
             if not found_header:
                 long = parse_system_long_name(sec.raw) or "(unknown)"
                 to_remove.append(i)
@@ -189,6 +205,17 @@ def repair_prs(prs, issues=None):
     # don't have terminators at all.
     if prs.sections:
         _fix_terminator(prs, repairs)
+
+    # If the surgery left a structure the archive walker can follow, set
+    # its tags and counts the way RPM expects.
+    try:
+        if archive.check(prs):
+            archive.repair(prs)
+            repairs.append("Rewrote class tags and list counts so RPM can "
+                           "load the file")
+    except archive.WalkError:
+        repairs.append("File structure still not recognized; RPM may not "
+                       "open it")
 
     # Recalculate offsets
     offset = 0

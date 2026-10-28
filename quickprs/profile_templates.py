@@ -31,7 +31,7 @@ PROFILE_TEMPLATES = {
         'description': 'Public safety interoperability setup',
         'templates': ['interop', 'public_safety'],
         'custom_channels': [],
-        'options': {'gps.gpsMode': 'ON', 'gps.reportInterval': '30'},
+        'options': {'gps.gpsMode': 'ON'},
     },
     'ham_portable': {
         'description': 'Amateur radio operator portable setup',
@@ -69,7 +69,7 @@ PROFILE_TEMPLATES = {
             {'short_name': 'HAZCHEM', 'tx_freq': 155.175,
              'long_name': 'HazMat/Chemical'},
         ],
-        'options': {'gps.gpsMode': 'ON', 'gps.reportInterval': '30'},
+        'options': {'gps.gpsMode': 'ON'},
     },
     'law_enforcement': {
         'description': 'Law enforcement base configuration',
@@ -97,7 +97,7 @@ PROFILE_TEMPLATES = {
             {'short_name': 'CLEMARS', 'tx_freq': 155.205,
              'long_name': 'CLEMARS'},
         ],
-        'options': {'gps.gpsMode': 'ON', 'gps.reportInterval': '15'},
+        'options': {'gps.gpsMode': 'ON'},
     },
     'search_rescue': {
         'description': 'Search and Rescue configuration',
@@ -108,7 +108,7 @@ PROFILE_TEMPLATES = {
             {'short_name': 'SAR CMD', 'tx_freq': 155.205,
              'long_name': 'SAR Command'},
         ],
-        'options': {'gps.gpsMode': 'ON', 'gps.reportInterval': '60'},
+        'options': {'gps.gpsMode': 'ON'},
     },
 }
 

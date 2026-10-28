@@ -162,10 +162,9 @@ def clear_favorites(category=None):
 
 PRESETS = {
     'field_ops': {
-        'description': 'Field operations (GPS on, high power, long timeout)',
+        'description': 'Field operations (GPS on, long display timeout)',
         'options': {
             'gps.gpsMode': 'ON',
-            'gps.reportInterval': '30',
             'misc.topFpTimeout': '60',
         },
     },
@@ -173,22 +172,21 @@ PRESETS = {
         'description': 'Covert operations (no GPS, no LED, short timeout)',
         'options': {
             'gps.gpsMode': 'OFF',
-            'misc.ledEnabled': 'false',
+            'misc.enableTriColorLed': 'OFF',
             'misc.topFpTimeout': '5',
             'misc.topFpIntensity': '1',
         },
     },
     'training': {
-        'description': 'Training mode (GPS on, low power)',
+        'description': 'Training mode (GPS on)',
         'options': {
             'gps.gpsMode': 'ON',
         },
     },
     'gps_on': {
-        'description': 'Enable GPS with 5-second reporting',
+        'description': 'Enable GPS',
         'options': {
             'gps.gpsMode': 'ON',
-            'gps.reportInterval': '5',
         },
     },
     'gps_off': {

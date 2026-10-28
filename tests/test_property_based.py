@@ -199,8 +199,8 @@ def test_freq_to_channel_unknown(freq):
 
 
 @pytest.mark.parametrize("freq,expected_offset,expected_dir", [
-    (146.52, 0.6, "+"),
-    (147.36, 0.6, "-"),
+    (146.94, 0.6, "-"),
+    (147.36, 0.6, "+"),
     (223.5, 1.6, "-"),
     (440.0, 5.0, "+"),
     (449.0, 5.0, "-"),

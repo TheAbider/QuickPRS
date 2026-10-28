@@ -110,18 +110,20 @@ def test_overwrite_preserves_content():
     """Overwriting with modified PRS should update file content."""
     if not CLAUDE.exists():
         pytest.skip("test file not found")
-    prs = cached_parse_prs(CLAUDE)
+    prs = parse_prs(CLAUDE)   # edited below, so not the shared cached copy
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.PRS"
         write_prs(prs, out)
 
-        # Modify a section to make the output different
+        # Make a real edit so the output differs
+        from quickprs.injector import edit_personality
         original_raw = prs.sections[0].raw
-        prs.sections[0].raw = b'\xff\xff' + b'\x00' * 10
+        edit_personality(prs, saved_by="TESTER")
         write_prs(prs, out)
 
         written = out.read_bytes()
         assert written != CLAUDE.read_bytes()
+        assert b"TESTER" in written
 
         # Backup should have the original content
         bak = out.with_suffix(".PRS.bak")
@@ -129,3 +131,43 @@ def test_overwrite_preserves_content():
 
         # Restore
         prs.sections[0].raw = original_raw
+
+
+def test_refuses_to_write_broken_structure():
+    """An edit that leaves a readable personality unreadable is not
+    written, and the existing file is left alone."""
+    if not CLAUDE.exists():
+        pytest.skip("test file not found")
+    from quickprs.prs_parser import parse_prs
+    from quickprs.prs_writer import UnsafeWriteError
+    prs = parse_prs(CLAUDE)
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d) / "out.PRS"
+        write_prs(prs, out)
+        before = out.read_bytes()
+        prs.sections[0].raw = b'\xff\xff' + b'\x00' * 10
+        with pytest.raises(UnsafeWriteError):
+            write_prs(prs, out)
+        assert out.read_bytes() == before
+
+
+def test_write_fixes_stale_tags():
+    """write_prs rewrites stale class tags (left by older QuickPRS versions)
+    so RPM can open the file."""
+    if not PAWS.exists():
+        pytest.skip("test file not found")
+    import struct
+    from quickprs import archive
+    from quickprs.prs_parser import parse_prs, parse_prs_bytes
+    data = bytearray(PAWS.read_bytes())
+    # Corrupt the first CDefaultIdenElem tag the way an old edit would
+    _, rep = archive.read_document(bytes(data))
+    site = next(t for t in rep.tags if t.class_name == "CDefaultIdenElem")
+    struct.pack_into("<H", data, site.offset, 0x8000 | (site.value + 2))
+    prs = parse_prs_bytes(bytes(data))
+    assert archive.check(prs)
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d) / "fixed.PRS"
+        write_prs(prs, out)
+        assert out.read_bytes() == PAWS.read_bytes()
+        assert archive.check(parse_prs(out)) == []

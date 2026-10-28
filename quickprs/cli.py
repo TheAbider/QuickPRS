@@ -6,14 +6,14 @@ Non-GUI operations for scripting and batch processing:
     quickprs export-csv file.PRS output_dir/
     quickprs compare file_a.PRS file_b.PRS [--detail]
     quickprs dump file.PRS [-s N] [-x BYTES]
-    quickprs inject file.PRS p25 --name PSERN --sysid 892 ...
+    quickprs inject file.PRS p25 --name PSERN --sysid 939 ...
     quickprs inject file.PRS conv --name MURS --channels-csv ch.csv
     quickprs inject file.PRS conv --name MURS --template murs
     quickprs inject file.PRS talkgroups --set "PSERN PD" --tgs-csv tgs.csv
     quickprs merge target.PRS source.PRS [--systems] [--channels] [--all]
     quickprs clone target.PRS source.PRS "PSERN SEATTLE" [-o output.PRS]
     quickprs import-rr file.PRS --sid 8155 --username USER --apikey KEY
-    quickprs import-paste file.PRS --name PSERN --sysid 892 --tgs-file tgs.txt
+    quickprs import-paste file.PRS --name PSERN --sysid 939 --tgs-file tgs.txt
     quickprs export-json file.PRS [-o output.json]
     quickprs import-json file.json [-o output.PRS]
     quickprs remove file.PRS system "PSERN SEATTLE"
@@ -153,12 +153,12 @@ def cmd_info(filepath, detail=False):
         ('CConvSystem', 'Conventional'),
         ('CP25ConvSystem', 'P25 Conv'),
     ]
+    from .record_types import list_system_configs
+    refs = list_system_configs(prs)
     for cls, label in system_types:
-        secs = prs.get_sections_by_class(cls)
-        if not secs:
-            continue
-        names = [parse_system_short_name(s.raw) or "?" for s in secs]
-        print(f"{label} ({len(secs)}): {', '.join(names)}")
+        names = [r.short_name or "?" for r in refs if r.class_name == cls]
+        if names:
+            print(f"{label} ({len(names)}): {', '.join(names)}")
 
     # Config names
     config_names = []
@@ -774,6 +774,68 @@ def cmd_freq_map(filepath, band=None):
     return 0
 
 
+def cmd_import_csv(filepath, csv_files, output=None):
+    """Import CSV files (the export-csv format, or RPM-style columns) into
+    a PRS file.  Each file's type is detected from its header:
+    GROUP_SET (talkgroups), TRK_SET (trunk frequencies), CONV_SET (analog
+    conventional) or P25_CONV_SET (P25 conventional, with NACs).
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    from .csv_import import import_csv
+    from .injector import (
+        _safe_add_group_set, _safe_add_trunk_set, _safe_add_conv_set,
+        add_p25_conv_set,
+    )
+    from .prs_writer import write_prs
+
+    adders = {
+        "groups": (_safe_add_group_set, "talkgroup set", "groups"),
+        "trunk": (_safe_add_trunk_set, "trunk set", "channels"),
+        "conv": (_safe_add_conv_set, "conv set", "channels"),
+        "p25conv": (add_p25_conv_set, "P25 conv set", "channels"),
+    }
+    prs = parse_prs(filepath)
+    added = []
+    for csv_path in csv_files:
+        try:
+            kind, sets = import_csv(csv_path)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if kind == "unknown" or not sets:
+            print(f"Error: {csv_path}: no talkgroup, trunk, conventional or "
+                  f"P25 conventional columns found", file=sys.stderr)
+            return 1
+        add, label, attr = adders[kind]
+        for obj in sets:
+            try:
+                add(prs, obj)
+            except ValueError as e:
+                print(f"Error: {csv_path}: {label} '{obj.name}': {e}",
+                      file=sys.stderr)
+                return 1
+            added.append(f"{label} '{obj.name}' "
+                         f"({len(getattr(obj, attr))} {attr})")
+
+    issues = validate_prs(prs)
+    errors = [m for sev, m in issues if sev == ERROR]
+    if errors:
+        print(f"Not written: {len(errors)} validation error(s)",
+              file=sys.stderr)
+        for msg in errors:
+            print(f"  [ERROR] {msg}", file=sys.stderr)
+        return 1
+
+    out_path = output or filepath
+    write_prs(prs, out_path, backup=True)
+    for line in added:
+        print(f"Imported {line}")
+    print(f"Saved {out_path}")
+    return 0
+
+
 def cmd_export_csv(filepath, output_dir):
     """Export personality data to CSV files."""
     prs = parse_prs(filepath)
@@ -792,6 +854,12 @@ def cmd_export_csv(filepath, output_dir):
     sets = _parse_conv_sets(prs)
     if sets:
         exported.append(export_conv_sets(out / "CONV_SET.csv", sets))
+
+    from .csv_export import export_p25_conv_sets
+    from .injector import get_p25_conv_sets
+    sets = get_p25_conv_sets(prs)
+    if sets:
+        exported.append(export_p25_conv_sets(out / "P25_CONV_SET.csv", sets))
 
     sets = _parse_iden_sets(prs)
     if sets:
@@ -1264,7 +1332,7 @@ def cmd_inject_p25(filepath, name, sysid, long_name=None, wacn=0,
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Injected P25 system '{name}' (SysID {sysid}) into {out_path}")
     if errors:
@@ -1342,7 +1410,7 @@ def cmd_inject_conv(filepath, name, channels_csv=None, template=None,
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     source = f"template '{template}'" if template else channels_csv
     print(f"Injected conv system '{name}' ({len(channels_data)} channels "
@@ -1422,7 +1490,7 @@ def cmd_import_scanner(filepath, csv_file, scanner_fmt='auto',
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Imported {len(channels)} channels from {csv_file} "
           f"(format: {fmt}) as conv system '{name}' into {out_path}")
@@ -1470,7 +1538,7 @@ def cmd_inject_talkgroups(filepath, set_name, tgs_csv, output=None):
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Added {len(tgs)} talkgroups to set '{set_name}' in {out_path}")
     if errors:
@@ -1714,7 +1782,7 @@ def cmd_renumber(filepath, set_name=None, start=1, set_type="conv",
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
     target = f"set '{set_name}'" if set_name else "all sets"
     print(f"Renumbered {count} channels in {target} "
           f"(starting at {start}) in {out_path}")
@@ -1744,7 +1812,7 @@ def cmd_auto_name(filepath, set_name, style="compact", output=None):
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
     print(f"Auto-named {count} talkgroups in set '{set_name}' "
           f"(style: {style}) in {out_path}")
     return 0
@@ -1827,11 +1895,17 @@ def cmd_import_json(filepath, output=None):
 
     if output is None:
         output = Path(filepath).with_suffix('.PRS')
+        if output.exists():
+            print(f"Error: {output} already exists (probably the "
+                  f"personality this JSON came from); choose the output "
+                  f"with -o", file=sys.stderr)
+            return 1
 
+    from .prs_writer import write_prs
     out = Path(output)
     out.parent.mkdir(parents=True, exist_ok=True)
+    write_prs(prs, out, backup=True)
     raw = prs.to_bytes()
-    out.write_bytes(raw)
 
     print(f"Created: {out}")
     print(f"  Size: {len(raw):,} bytes")
@@ -2134,26 +2208,32 @@ def cmd_snapshot(filepath, output=None, compare=None):
         return 0
 
 
-def cmd_create(output_path, name=None, author=""):
+def cmd_create(output_path, name=None, author="", force=False):
     """Create a new blank PRS file.
 
     Args:
         output_path: path for the output .PRS file
         name: personality name (defaults to output filename)
         author: saved-by field (default empty)
+        force: replace an existing file (a .bak copy is kept)
 
     Returns:
         0 on success, 1 on error.
     """
     from .builder import create_blank_prs
+    from .prs_writer import write_prs
 
     out = Path(output_path)
+    if out.exists() and not force:
+        print(f"Error: {out} already exists; use --force to replace it "
+              f"(a .bak copy is kept)", file=sys.stderr)
+        return 1
     filename = name if name else out.name
     prs = create_blank_prs(filename=filename, saved_by=author)
-    raw = prs.to_bytes()
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(raw)
+    write_prs(prs, out, backup=True)
+    raw = prs.to_bytes()
 
     print(f"Created: {out}")
     print(f"Size: {len(raw):,} bytes")
@@ -2209,7 +2289,7 @@ def cmd_remove(filepath, remove_type, name, output=None):
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Removed {label} from {out_path}")
     if errors:
@@ -2287,7 +2367,7 @@ def cmd_edit(filepath, name=None, author=None,
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Edited {out_path}: {', '.join(changes)}")
     if errors:
@@ -2380,14 +2460,41 @@ def cmd_set_option(filepath, option_path=None, value=None, list_opts=False,
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Set {section}.{attr} = {value} in {out_path}")
     return 0
 
 
+def _rr_credentials(username, apikey, password):
+    """RadioReference login: username, password and app key.
+
+    Each comes from its option, else QUICKPRS_RR_USER /
+    QUICKPRS_RR_PASSWORD / QUICKPRS_RR_APIKEY, and the password is asked
+    for (hidden) when a terminal is attached, so it need not appear in
+    shell history.  Returns None (after printing why) when one is missing.
+    """
+    import os
+    username = username or os.environ.get("QUICKPRS_RR_USER")
+    apikey = apikey or os.environ.get("QUICKPRS_RR_APIKEY")
+    password = password or os.environ.get("QUICKPRS_RR_PASSWORD")
+    if not password and username and sys.stdin.isatty():
+        import getpass
+        password = getpass.getpass(f"RadioReference password for "
+                                   f"{username}: ")
+    missing = [name for name, val in (("--username", username),
+                                      ("--password", password),
+                                      ("--apikey", apikey)) if not val]
+    if missing:
+        print(f"Error: RadioReference login needs {', '.join(missing)} "
+              f"(or the QUICKPRS_RR_* environment variables)",
+              file=sys.stderr)
+        return None
+    return username, password, apikey
+
+
 def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
-                   categories=None, tags=None, output=None):
+                  categories=None, tags=None, output=None, password=None):
     """Import a P25 trunked system from RadioReference and inject into PRS.
 
     Args:
@@ -2432,10 +2539,14 @@ def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
         print("Error: --sid or --url is required", file=sys.stderr)
         return 1
 
+    creds = _rr_credentials(username, apikey, password)
+    if creds is None:
+        return 1
+
     # Fetch system from API
     print(f"Fetching system {sid} from RadioReference...")
     try:
-        api = RadioReferenceAPI(username, apikey, apikey)
+        api = RadioReferenceAPI(*creds)
         rr_system = api.get_system(sid)
     except (ImportError, ConnectionError) as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -2533,7 +2644,7 @@ def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     # Print summary
     n_tgs = len(data['talkgroups'])
@@ -2641,6 +2752,10 @@ def cmd_import_paste(filepath, name, sysid, wacn=0, long_name=None,
             print("Error: no frequencies found in pasted text",
                   file=sys.stderr)
             return 1
+        # RadioReference lists the sites' downlink (receive) frequencies;
+        # the radio transmits on the band's paired uplink.
+        from .iden_library import calculate_tx_freq
+        freqs = [(calculate_tx_freq(rx), rx) for _, rx in freqs]
 
         trunk_set = make_trunk_set(name, freqs)
         freq_count = len(freqs)
@@ -2682,7 +2797,7 @@ def cmd_import_paste(filepath, name, sysid, wacn=0, long_name=None,
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Injected P25 system '{name}' (SysID {sysid}) into {out_path}")
     print(f"  Talkgroups: {tg_count}  Frequencies: {freq_count}")
@@ -2804,7 +2919,7 @@ def cmd_repair(filepath, output=None, salvage=False):
         print("\nStructural validation: PASS")
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
     print(f"\nRepaired file written to: {out_path}")
     return 0
 
@@ -2965,13 +3080,13 @@ def cmd_list(filepath, list_type):
                 if ch.tx_tone:
                     tone = f"tone={ch.tx_tone}"
                 print(f"{cs.name}\t{ch.short_name}\t"
-                      f"{ch.tx_freq:.4f}\t{ch.rx_freq:.4f}\t{tone}")
+                      f"{ch.tx_freq:.5f}\t{ch.rx_freq:.5f}\t{tone}")
 
     elif list_type == "frequencies":
         sets = _parse_trunk_sets(prs)
         for ts in sets:
             for ch in ts.channels:
-                print(f"{ts.name}\t{ch.tx_freq:.4f}\t{ch.rx_freq:.4f}")
+                print(f"{ts.name}\t{ch.tx_freq:.5f}\t{ch.rx_freq:.5f}")
 
     elif list_type == "sets":
         for kind, parser_fn in [("group", _parse_group_sets),
@@ -3037,7 +3152,7 @@ def cmd_bulk_edit_talkgroups(filepath, set_name, enable_scan=None,
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Bulk-edited {count} talkgroups in set '{set_name}' "
           f"-> {out_path}")
@@ -3079,7 +3194,7 @@ def cmd_bulk_edit_channels(filepath, set_name, set_tone=None,
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Bulk-edited {count} channels in set '{set_name}' "
           f"-> {out_path}")
@@ -3127,7 +3242,7 @@ def cmd_encrypt(filepath, set_name, tg_id=None, encrypt_all=False,
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     action = "Encrypted" if encrypted else "Decrypted"
     target = f"TG {tg_id}" if tg_id else f"{count} TGs"
@@ -3183,7 +3298,7 @@ def cmd_set_nac(filepath, set_name, channel=0, nac="293", nac_rx=None,
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Set NAC on channel {channel} in '{set_name}' "
           f"(TX:{nac_tx_val:03X} RX:{nac_rx_val:03X}) -> {out_path}")
@@ -3228,7 +3343,7 @@ def cmd_rename(filepath, set_name, pattern, replace,
         return 0
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Renamed {count} items in set '{set_name}' -> {out_path}")
 
@@ -3270,7 +3385,7 @@ def cmd_sort(filepath, set_name, key="frequency", set_type="conv",
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     order = "descending" if reverse else "ascending"
     print(f"Sorted set '{set_name}' by {sort_by} ({order}) -> {out_path}")
@@ -3368,7 +3483,7 @@ def cmd_freq_tools(subcmd, freq=None, freq_list=None):
 
 
 def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
-                   categories=None, tags=None, output=None):
+                   categories=None, tags=None, output=None, password=None):
     """One-click RadioReference system setup with ECC and IDEN.
 
     Like import-rr but also auto-configures ECC entries and IDEN
@@ -3408,10 +3523,14 @@ def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
         print("Error: --sid or --url is required", file=sys.stderr)
         return 1
 
+    creds = _rr_credentials(username, apikey, password)
+    if creds is None:
+        return 1
+
     # Fetch system from API
     print(f"Fetching system {sid} from RadioReference...")
     try:
-        api = RadioReferenceAPI(username, apikey, apikey)
+        api = RadioReferenceAPI(*creds)
         rr_system = api.get_system(sid)
     except (ImportError, ConnectionError) as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -3445,7 +3564,7 @@ def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
                                  selected_tags)
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     # Print summary
     print(f"Auto-setup complete: '{summary['full_name']}' (SID {sid})")
@@ -3485,7 +3604,7 @@ def cmd_systems(subcmd, query=None, filepath=None, system_name=None,
     """
     from .system_database import (
         list_all_systems, search_systems, get_system_by_name,
-        get_iden_template_key, get_default_iden_name,
+        get_iden_template_key, get_default_iden_name, unverified_warning,
     )
 
     if subcmd == "list":
@@ -3498,8 +3617,10 @@ def cmd_systems(subcmd, query=None, filepath=None, system_name=None,
         print("-" * 75)
         for s in systems:
             print(f"{s.name:<10} {s.location:<25} {s.band:<10} "
-                  f"{s.system_type:<10} {s.system_id:>6}  {s.wacn:>8}")
-        print(f"\n{len(systems)} systems in database")
+                  f"{s.system_type:<10} {s.system_id:>6}  {s.wacn:>8}"
+                  f"{'' if s.verified else '  (unverified)'}")
+        print(f"\n{len(systems)} systems in database. IDs marked "
+              f"unverified are examples: confirm them on RadioReference.")
         return 0
 
     elif subcmd == "search":
@@ -3545,6 +3666,8 @@ def cmd_systems(subcmd, query=None, filepath=None, system_name=None,
         print(f"State:       {sys_obj.state}")
         print(f"System ID:   {sys_obj.system_id}")
         print(f"WACN:        {sys_obj.wacn}")
+        if not sys_obj.verified:
+            print(f"Warning:     {unverified_warning(sys_obj)}")
         print(f"Band:        {sys_obj.band}")
         print(f"Type:        {sys_obj.system_type}")
         print(f"IDEN Key:    {iden_key}")
@@ -3581,6 +3704,10 @@ def cmd_systems(subcmd, query=None, filepath=None, system_name=None,
         )
         from .record_types import P25TrkSystemConfig
         from .iden_library import get_template
+
+        warning = unverified_warning(sys_obj)
+        if warning:
+            print(f"Warning: {warning}", file=sys.stderr)
 
         prs = parse_prs(filepath)
 
@@ -3622,7 +3749,7 @@ def cmd_systems(subcmd, query=None, filepath=None, system_name=None,
         errors = [(s, m) for s, m in issues if s == ERROR]
 
         out_path = output or filepath
-        write_prs(prs, out_path, backup=(out_path == filepath))
+        write_prs(prs, out_path, backup=True)
 
         print(f"Added P25 system '{name}' (SysID {sys_obj.system_id}, "
               f"WACN {sys_obj.wacn}) to {out_path}")
@@ -3730,7 +3857,18 @@ def cmd_search(filepaths, freq=None, tg=None, name=None):
         print("No PRS files found.", file=sys.stderr)
         return 1
 
-    print(f"Searching {len(prs_files)} file(s)...")
+    unreadable = []
+    for f in prs_files:
+        try:
+            parse_prs(f)
+        except Exception as e:
+            unreadable.append((f, e))
+    for f, e in unreadable:
+        print(f"Warning: cannot read {f}: {e}", file=sys.stderr)
+    if len(unreadable) == len(prs_files):
+        return 1
+
+    print(f"Searching {len(prs_files) - len(unreadable)} file(s)...")
     print()
 
     from .search import (
@@ -3776,8 +3914,9 @@ def cmd_template_csv(template_type, output=None):
             'default_name': 'freqs.csv',
             'content': (
                 "tx_freq,rx_freq\n"
-                "# Example: 851.0125,806.0125\n"
-                "# One frequency pair per line\n"
+                "# Example: 806.0125,851.0125\n"
+                "# TX is the radio's transmit (site uplink), RX the site\n"
+                "# downlink RadioReference lists.  One pair per line.\n"
             ),
         },
         'talkgroups': {
@@ -3821,8 +3960,9 @@ def cmd_template_csv(template_type, output=None):
                 "#wacn = 0\n"
                 "\n"
                 "#[system.MYSYS.frequencies]\n"
-                "#1 = 851.0125,806.0125\n"
-                "#2 = 851.0375,806.0375\n"
+                "# tx_freq (site uplink),rx_freq (site downlink)\n"
+                "#1 = 806.0125,851.0125\n"
+                "#2 = 806.0375,851.0375\n"
                 "\n"
                 "#[system.MYSYS.talkgroups]\n"
                 "#1 = 1,DISP,Dispatch\n"
@@ -4054,6 +4194,9 @@ def run_cli(args=None):
         "  fleet-check       Compare fleet for consistency\n"
         "  snapshot          Save/compare configuration snapshots\n"
         "\n"
+        "Radio link (Bluetooth / serial):\n"
+        "  radio             scan, probe, relay (log RPM), analyze\n"
+        "\n"
         "Modify:\n"
         "  inject            Add systems/channels/talkgroups\n"
         "  remove            Remove systems or sets\n"
@@ -4243,6 +4386,72 @@ def run_cli(args=None):
                            help="Output file (default: overwrite input)")
 
     # export-csv
+    # radio (Bluetooth / serial link to the radio itself)
+    p_radio = sub.add_parser(
+        "radio",
+        help="Find a paired radio, listen to it, or log RPM talking to it",
+        formatter_class=fmt,
+        epilog="The XG-100P's Bluetooth is Classic (serial port profile), "
+               "which RPM\n"
+               "programs over just like the USB cable. These commands "
+               "never send\n"
+               "their own bytes to the radio.\n"
+               "Examples:\n"
+               "  quickprs radio scan\n"
+               "  quickprs radio probe --port COM6 --seconds 15 "
+               "--log first.jsonl\n"
+               "  quickprs radio relay --pc-port COM21 --radio-port COM6 "
+               "--log read.jsonl\n"
+               "  quickprs radio analyze read.jsonl --extract radio.PRS")
+    radio_sub = p_radio.add_subparsers(dest="radio_cmd")
+    p_rscan = radio_sub.add_parser(
+        "scan", help="List paired Bluetooth serial ports (radios)")
+    p_rscan.add_argument("--ble", action="store_true",
+                         help="Also list advertising BLE devices")
+    p_rscan.add_argument("--ble-seconds", type=float, default=5.0)
+    p_rprobe = radio_sub.add_parser(
+        "probe", help="Connect and listen without sending anything")
+    p_rprobe.add_argument("--port", default=None,
+                          help="COM port (default: the one paired radio)")
+    p_rprobe.add_argument("--seconds", type=float, default=10.0)
+    p_rprobe.add_argument("--log", default=None,
+                          help="Save the received bytes to a capture file")
+    p_rprobe.add_argument("--dtr", action="store_true",
+                          help="Assert DTR when connecting")
+    p_rprobe.add_argument("--quiet", action="store_true",
+                          help="Do not hex-dump as data arrives")
+    p_rrelay = radio_sub.add_parser(
+        "relay", help="Pass bytes between RPM and the radio, logging both")
+    p_rrelay.add_argument("--pc-port", required=True,
+                          help="Your end of a virtual null-modem pair "
+                               "(RPM opens the other end)")
+    p_rrelay.add_argument("--radio-port", default=None,
+                          help="The radio's port (default: the one paired "
+                               "radio)")
+    p_rrelay.add_argument("--log", default="session.jsonl")
+    p_rrelay.add_argument("--note", default="",
+                          help="What this session is, e.g. 'RPM extract'")
+    p_ranalyze = radio_sub.add_parser(
+        "analyze", help="Summarise a capture file")
+    p_ranalyze.add_argument("capture", help="Capture (.jsonl) file")
+    p_ranalyze.add_argument("--extract", default=None,
+                            help="Write a personality archive found in the "
+                                 "radio's replies to this .PRS path")
+
+    p_icsv = sub.add_parser(
+        "import-csv",
+        help="Import CSV files (talkgroups, trunk, conv, P25 conv)",
+        formatter_class=fmt,
+        epilog="The type of each file is read from its header, so the\n"
+               "files written by export-csv import directly.\n"
+               "Example:\n"
+               "  quickprs import-csv radio.PRS GROUP_SET.csv "
+               "P25_CONV_SET.csv")
+    p_icsv.add_argument("file", help="PRS file path")
+    p_icsv.add_argument("csv_files", nargs="+", help="CSV file(s)")
+    p_icsv.add_argument("-o", "--output", default=None,
+                        help="Output file (default: modify in place)")
+
     p_csv = sub.add_parser("export-csv", help="Export to CSV files",
         formatter_class=fmt,
         epilog="Example:\n"
@@ -4329,6 +4538,8 @@ def run_cli(args=None):
                            help="Personality name (default: output filename)")
     p_create.add_argument("--author", default="",
                            help="Saved-by field")
+    p_create.add_argument("--force", action="store_true",
+                           help="Replace an existing file (keeps a .bak)")
 
     # build
     p_build = sub.add_parser("build",
@@ -4472,10 +4683,16 @@ def run_cli(args=None):
                       help="RadioReference system ID (from URL: /db/sid/XXXX)")
     p_rr.add_argument("--url", default=None,
                       help="RadioReference system URL (alternative to --sid)")
-    p_rr.add_argument("--username", required=True,
-                      help="RadioReference username")
-    p_rr.add_argument("--apikey", required=True,
-                      help="RadioReference API key")
+    p_rr.add_argument("--username", default=None,
+                      help="RadioReference username "
+                           "(or QUICKPRS_RR_USER)")
+    p_rr.add_argument("--password", default=None,
+                      help="RadioReference password (or "
+                           "QUICKPRS_RR_PASSWORD; asked for "
+                           "when omitted)")
+    p_rr.add_argument("--apikey", default=None,
+                      help="RadioReference API (app) key "
+                           "(or QUICKPRS_RR_APIKEY)")
     p_rr.add_argument("--categories", default=None,
                       help="Comma-separated category IDs to include "
                            "(default: all)")
@@ -4492,7 +4709,7 @@ def run_cli(args=None):
         formatter_class=fmt,
         epilog="Example:\n"
                "  quickprs import-paste radio.PRS --name PSERN "
-               "--sysid 892 --wacn 781824 "
+               "--sysid 939 --wacn 781824 "
                "--tgs-file tgs.txt --freqs-file freqs.txt")
     p_paste.add_argument("file", help="PRS file to inject into")
     p_paste.add_argument("--name", required=True,
@@ -4660,7 +4877,7 @@ def run_cli(args=None):
         epilog="Subcommands: p25, conv, talkgroups\n\n"
                "Examples:\n"
                "  quickprs inject radio.PRS p25 --name PSERN "
-               "--sysid 892 --freqs-csv freqs.csv --tgs-csv tgs.csv\n"
+               "--sysid 939 --freqs-csv freqs.csv --tgs-csv tgs.csv\n"
                "  quickprs inject radio.PRS conv --template murs\n"
                "  quickprs inject radio.PRS talkgroups "
                "--set \"PSERN PD\" --tgs-csv more_tgs.csv")
@@ -4673,7 +4890,7 @@ def run_cli(args=None):
         formatter_class=fmt,
         epilog="Example:\n"
                "  quickprs inject radio.PRS p25 --name PSERN "
-               "--sysid 892 --wacn 781824 "
+               "--sysid 939 --wacn 781824 "
                "--freqs-csv freqs.csv --tgs-csv tgs.csv")
     p_inj_p25.add_argument("--name", required=True,
                             help="System short name (8 chars max)")
@@ -4939,10 +5156,16 @@ def run_cli(args=None):
     p_auto.add_argument("--url", default=None,
                         help="RadioReference system URL (alternative "
                              "to --sid)")
-    p_auto.add_argument("--username", required=True,
-                        help="RadioReference username")
-    p_auto.add_argument("--apikey", required=True,
-                        help="RadioReference API key")
+    p_auto.add_argument("--username", default=None,
+                        help="RadioReference username "
+                             "(or QUICKPRS_RR_USER)")
+    p_auto.add_argument("--password", default=None,
+                        help="RadioReference password (or "
+                             "QUICKPRS_RR_PASSWORD; asked for "
+                             "when omitted)")
+    p_auto.add_argument("--apikey", default=None,
+                        help="RadioReference API (app) key "
+                             "(or QUICKPRS_RR_APIKEY)")
     p_auto.add_argument("--categories", default=None,
                         help="Comma-separated category IDs to include")
     p_auto.add_argument("--tags", default=None,
@@ -5240,7 +5463,7 @@ def run_cli(args=None):
         epilog="Examples:\n"
                "  quickprs favorites list\n"
                "  quickprs favorites list systems\n"
-               "  quickprs favorites add system PSERN --sysid 892\n"
+               "  quickprs favorites add system PSERN --sysid 939\n"
                "  quickprs favorites add template murs\n"
                "  quickprs favorites remove system PSERN\n"
                "  quickprs favorites clear")
@@ -5454,6 +5677,27 @@ def run_cli(args=None):
                 list_opts=parsed.list_opts,
                 output=parsed.output,
             )
+        elif parsed.command == "radio":
+            from .radio import commands as radio_commands
+            if parsed.radio_cmd == "scan":
+                return radio_commands.cmd_radio_scan(
+                    ble=parsed.ble, ble_seconds=parsed.ble_seconds)
+            if parsed.radio_cmd == "probe":
+                return radio_commands.cmd_radio_probe(
+                    port=parsed.port, seconds=parsed.seconds,
+                    log=parsed.log, dtr=parsed.dtr, quiet=parsed.quiet)
+            if parsed.radio_cmd == "relay":
+                return radio_commands.cmd_radio_relay(
+                    parsed.pc_port, radio_port=parsed.radio_port,
+                    log=parsed.log, note=parsed.note)
+            if parsed.radio_cmd == "analyze":
+                return radio_commands.cmd_radio_analyze(
+                    parsed.capture, extract=parsed.extract)
+            p_radio.print_help()
+            return 1
+        elif parsed.command == "import-csv":
+            return cmd_import_csv(parsed.file, parsed.csv_files,
+                                  output=parsed.output)
         elif parsed.command == "export-csv":
             return cmd_export_csv(parsed.file, parsed.output_dir)
         elif parsed.command == "export-json":
@@ -5472,7 +5716,7 @@ def run_cli(args=None):
                                     raw=parsed.raw)
         elif parsed.command == "create":
             return cmd_create(parsed.output, name=parsed.name,
-                              author=parsed.author)
+                              author=parsed.author, force=parsed.force)
         elif parsed.command == "build":
             return cmd_build(parsed.config, output=parsed.output)
         elif parsed.command == "export-config":
@@ -5519,6 +5763,7 @@ def run_cli(args=None):
                 url=parsed.url,
                 username=parsed.username,
                 apikey=parsed.apikey,
+                password=parsed.password,
                 categories=parsed.categories,
                 tags=parsed.tags,
                 output=parsed.output,
@@ -5698,6 +5943,7 @@ def run_cli(args=None):
                 url=parsed.url,
                 username=parsed.username,
                 apikey=parsed.apikey,
+                password=parsed.password,
                 categories=parsed.categories,
                 tags=parsed.tags,
                 output=parsed.output,

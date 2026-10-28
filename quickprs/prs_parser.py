@@ -7,6 +7,7 @@ Writer just concatenates raw bytes → guaranteed byte-identical output.
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import struct
 
 from .binary_io import find_all_ffff, try_read_class_name
 
@@ -21,10 +22,16 @@ class Section:
 
 @dataclass
 class PRSFile:
-    """Parsed .PRS file — ordered list of sections."""
+    """Parsed .PRS file — ordered list of sections.
+
+    ``archive_ok`` records whether the bytes followed RPM's archive layout
+    when they were loaded (see archive.py); write_prs uses it to refuse an
+    edit that broke a readable file.
+    """
     sections: list = field(default_factory=list)
     filepath: str = ""
     file_size: int = 0
+    archive_ok: object = None
 
     def get_sections_by_class(self, class_name):
         """Get all sections with a given class name."""
@@ -50,6 +57,30 @@ class PRSFile:
             name = s.class_name if s.class_name else "(data)"
             lines.append(f"  [{i:3d}] 0x{s.offset:04x} {len(s.raw):5d} bytes  {name}")
         return "\n".join(lines)
+
+
+# Classes whose objects hold user values (talkgroup and key IDs, unit IDs,
+# frequencies) that can contain the bytes FF FF.  The splitter would start
+# a new section there; such pieces belong to the section before them.
+_JOIN_CONTINUATIONS = frozenset({
+    "CTrunkChannel", "CConvChannel", "CP25Group", "CP25ConvChannel",
+    "CDefaultIdenElem", "CICall", "CPhoneCall", "CP25TrkWan",
+})
+
+
+def _join_continuations(sections):
+    joined = []
+    for sec in sections:
+        if (joined and not sec.class_name and
+                joined[-1].class_name in _JOIN_CONTINUATIONS and
+                sec.raw != b'\xff\xff' and
+                not sec.raw.startswith(b'\xff\xff\x00\x01')):
+            prev = joined[-1]
+            joined[-1] = Section(offset=prev.offset, raw=prev.raw + sec.raw,
+                                 class_name=prev.class_name)
+        else:
+            joined.append(sec)
+    return joined
 
 
 def parse_prs(filepath):
@@ -86,17 +117,29 @@ def parse_prs(filepath):
         ))
 
     prs = PRSFile(
-        sections=sections,
+        sections=_join_continuations(sections),
         filepath=str(path),
         file_size=len(data),
+        archive_ok=_archive_readable(data),
     )
     return prs
 
 
-def parse_prs_bytes(data):
+def _archive_readable(data):
+    from .archive import read_document, WalkError
+    try:
+        read_document(data, lenient=True)
+        return True
+    except (WalkError, IndexError, UnicodeDecodeError, struct.error):
+        return False
+
+
+def parse_prs_bytes(data, verify=True):
     """Parse PRS data from raw bytes (no file I/O).
 
     Used for undo/restore operations where we have the bytes in memory.
+    ``verify=False`` skips the archive check (for callers that only want
+    the sections of bytes they just serialized).
     """
     markers = find_all_ffff(data)
 
@@ -120,7 +163,8 @@ def parse_prs_bytes(data):
         ))
 
     return PRSFile(
-        sections=sections,
+        sections=_join_continuations(sections),
         filepath="(from bytes)",
         file_size=len(data),
+        archive_ok=_archive_readable(data) if verify else None,
     )

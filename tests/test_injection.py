@@ -840,13 +840,20 @@ def test_remove_system_by_class():
     prs = cached_parse_prs(TESTDATA / "claude test.PRS")
     original_count = len(prs.sections)
 
-    # Remove CConvSystem
-    removed = remove_system_by_class(prs, "CConvSystem")
-    assert removed >= 2, f"Expected at least 2 sections removed, got {removed}"
-    assert len(prs.sections) == original_count - removed
+    from quickprs import archive
+    from quickprs.record_types import list_system_configs
+    before = [r.short_name for r in list_system_configs(prs)]
 
-    # CConvSystem header should be gone
+    # Remove CConvSystem: one system object, the header and config with it
+    removed = remove_system_by_class(prs, "CConvSystem")
+    assert removed == 1, f"Expected 1 system removed, got {removed}"
+    assert len(prs.sections) < original_count
+
+    # CConvSystem header should be gone, the other systems kept
     assert prs.get_section_by_class("CConvSystem") is None
+    after = [r.short_name for r in list_system_configs(prs)]
+    assert after == [n for n in before if n != "convent"]
+    assert archive.check(prs) == []
 
     # Double roundtrip
     tmp = TESTDATA / "remove_class_test.tmp"
@@ -1177,80 +1184,78 @@ def test_add_conv_set_no_existing_raises():
 
 # ─── Create-from-scratch tests (via add_p25_trunked_system) ─────────
 
+def _claude_without(list_name):
+    """claude test.PRS with one set list emptied the way RPM would store it
+    (a count of 0), not by deleting the sections holding it."""
+    from quickprs import archive
+    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
+    doc = archive.document_from_prs(prs)
+    doc.list(list_name).items = []
+    archive.write_document(prs, doc)
+    return prs
+
+
+def _new_p25_config(**kw):
+    return P25TrkSystemConfig(system_name="NEW", long_name="NEW SYSTEM",
+                              trunk_set_name="NEW", group_set_name="NEW",
+                              wan_name="NEW", **kw)
+
+
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_create_trunk_from_scratch():
-    """Injecting a system with trunk set into a file without trunk sections
-    should create them from scratch via _safe_add_trunk_set."""
-    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
-    # Remove trunk sections
-    prs.sections = [s for s in prs.sections
-                    if s.class_name not in ("CTrunkChannel", "CTrunkSet")]
+    """Injecting a system with a trunk set into a personality without trunk
+    sets creates the first one (class header, count and tags right)."""
+    from quickprs import archive
+    prs = _claude_without("trunk sets")
     assert prs.get_section_by_class("CTrunkChannel") is None
 
     ts = make_trunk_set("NEW", [(851.0125, 851.0125), (851.5125, 851.5125)])
-    config = P25TrkSystemConfig(
-        system_name="NEW",
-        long_name="NEW SYSTEM",
-        trunk_set_name="NEW",
-        group_set_name="NEW",
-        wan_name="NEW",
-    )
-    add_p25_trunked_system(prs, config, trunk_set=ts)
+    add_p25_trunked_system(prs, _new_p25_config(), trunk_set=ts)
 
-    # Should now have trunk sections
     assert prs.get_section_by_class("CTrunkChannel") is not None
     assert prs.get_section_by_class("CTrunkSet") is not None
+    assert archive.check(prs) == []
+    doc = archive.document_from_prs(prs)
+    assert len(doc.list("trunk sets").items) == 1
 
 
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_create_group_from_scratch():
-    """Injecting a system with group set into a file without group sections
-    should create them from scratch."""
-    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
-    prs.sections = [s for s in prs.sections
-                    if s.class_name not in ("CP25Group", "CP25GroupSet")]
+    """Injecting a system with a group set into a personality without group
+    sets creates the first one."""
+    from quickprs import archive
+    prs = _claude_without("group sets")
     assert prs.get_section_by_class("CP25Group") is None
 
     gs = make_group_set("NEW", [(100, "TEST", "TEST TG"),
                                  (200, "TEST2", "TEST TG 2")])
-    config = P25TrkSystemConfig(
-        system_name="NEW",
-        long_name="NEW SYSTEM",
-        trunk_set_name="NEW",
-        group_set_name="NEW",
-        wan_name="NEW",
-    )
-    add_p25_trunked_system(prs, config, group_set=gs)
+    add_p25_trunked_system(prs, _new_p25_config(), group_set=gs)
 
     assert prs.get_section_by_class("CP25Group") is not None
     assert prs.get_section_by_class("CP25GroupSet") is not None
+    assert archive.check(prs) == []
 
 
 @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
 def test_create_iden_from_scratch():
-    """Injecting a system with IDEN set into a file without IDEN sections
-    should create them from scratch."""
-    prs = cached_parse_prs(TESTDATA / "claude test.PRS")
-    prs.sections = [s for s in prs.sections
-                    if s.class_name not in ("CDefaultIdenElem", "CIdenDataSet")]
+    """Injecting a system with an IDEN set into a personality without IDEN
+    sets creates the first one and keeps the fields after the list."""
+    from quickprs import archive
+    prs = _claude_without("IDEN sets")
+    tail = archive.document_from_prs(prs).root.parts[-1]
     assert prs.get_section_by_class("CDefaultIdenElem") is None
 
     iset = make_iden_set("NEW", [
         {"base_freq_hz": 851012500, "chan_spacing_hz": 12500,
          "bandwidth_hz": 12500, "tx_offset_mhz": -45.0, "iden_type": 0},
     ])
-    config = P25TrkSystemConfig(
-        system_name="NEW",
-        long_name="NEW SYSTEM",
-        trunk_set_name="NEW",
-        group_set_name="NEW",
-        wan_name="NEW",
-        iden_set_name="NEW",
-    )
-    add_p25_trunked_system(prs, config, iden_set=iset)
+    add_p25_trunked_system(prs, _new_p25_config(iden_set_name="NEW"),
+                           iden_set=iset)
 
     assert prs.get_section_by_class("CDefaultIdenElem") is not None
     assert prs.get_section_by_class("CIdenDataSet") is not None
+    assert archive.check(prs) == []
+    assert archive.document_from_prs(prs).root.parts[-1] == tail
 
 
 # ─── WAN Auto-Update Tests ──────────────────────────────────────────────

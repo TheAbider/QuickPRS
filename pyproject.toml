@@ -1,6 +1,6 @@
 [project]
 name = "quickprs"
-version = "1.0.2"
+version = "1.1.0"
 description = "Generate Harris XG-100P personality files without Harris RPM"
 requires-python = ">=3.8"
 dependencies = [
@@ -12,6 +12,7 @@ dependencies = [
 [project.optional-dependencies]
 gui = ["sv-ttk>=2.5", "darkdetect>=0.8", "windnd>=1.0.7"]
 build = ["pyinstaller>=6.0"]
+radio = ["pyserial>=3.5", "bleak>=0.22"]
 
 [project.scripts]
 quickprs = "quickprs.cli:run_cli"

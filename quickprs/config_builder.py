@@ -147,8 +147,8 @@ def _parse_freq_lines(cfg, section_name):
     for key, value in cfg.items(section_name):
         # The key might be a number or 'freq1', etc. Use the value.
         # But configparser stores "key = value", so if the user writes
-        # "851.0125,806.0125" it becomes key="851.0125,806.0125" value=""
-        # or the user can write "1 = 851.0125,806.0125"
+        # "806.0125,851.0125" it becomes key="806.0125,851.0125" value=""
+        # or the user can write "1 = 806.0125,851.0125"
         line = value if value else key
         parts = line.split(',')
         try:
@@ -405,33 +405,15 @@ def _apply_options(cfg, prs):
                 f"[options]: key '{key}' must be dot-separated "
                 f"(e.g., gps.gpsMode)")
 
-    from .option_maps import (
-        extract_platform_config, config_to_xml, write_platform_config,
-    )
-
-    # Get current platform config (may not exist in blank PRS)
-    config = extract_platform_config(prs)
-    if config is None:
-        # Blank PRS has no platformConfig — nothing to modify
-        logger.debug("No platformConfig found, skipping options")
-        return
-
-    # Apply each option
-    for key, value in options:
-        parts = key.split('.')
-
-        # Navigate into the config dict
-        target = config
-        for part in parts[:-1]:
-            if part not in target:
-                target[part] = {}
-            target = target[part]
-
-        target[parts[-1]] = value
-
-    # Write back
-    xml_str = config_to_xml(config)
-    write_platform_config(prs, xml_str)
+    # Checked like `quickprs set-option`, against the options RPM writes
+    # for a new radio when the personality has none yet.  Unknown
+    # attributes and disallowed values are errors: written into the XML
+    # they would add elements the radio does not have.
+    from .option_maps import apply_platform_options
+    try:
+        apply_platform_options(prs, options)
+    except ValueError as e:
+        raise ConfigError(f"[options] {e}") from e
 
 
 # ─── Export: PRS → INI config ──────────────────────────────────────

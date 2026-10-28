@@ -64,9 +64,12 @@ def build_standard_iden_entries(frequencies, system_type=""):
     if not frequencies:
         return []
 
+    # Phase II carriers are 12.5 kHz wide like Phase I (two TDMA slots
+    # each); every TDMA IDEN entry in RPM-saved personalities uses 12.5 kHz
+    # spacing and bandwidth.
     is_tdma = "Phase II" in system_type
-    spacing = 6250 if is_tdma else 12500
-    bw = 6250 if is_tdma else 12500
+    spacing = 12500
+    bw = 12500
     iden_type = 1 if is_tdma else 0
 
     # Find the band from the first frequency
@@ -81,7 +84,9 @@ def build_standard_iden_entries(frequencies, system_type=""):
     tx_offset_mhz = tx_offset
 
     if band_name == '800':
-        return _standard_800_iden(spacing, bw, tx_offset_mhz, iden_type)
+        return _standard_800_iden(spacing, bw, tx_offset_mhz, iden_type,
+                                  base_hz=_TDMA_800_BASE_HZ if is_tdma
+                                  else _FDMA_800_BASE_HZ)
     elif band_name in ('700', '700_upper'):
         return _standard_700_iden(spacing, bw, tx_offset_mhz, iden_type)
     elif band_name == '900':
@@ -91,16 +96,25 @@ def build_standard_iden_entries(frequencies, system_type=""):
             frequencies, spacing, bw, tx_offset_mhz, iden_type)
 
 
-def _standard_800_iden(spacing, bw, tx_offset_mhz, iden_type):
+# 851.0125 MHz with 12.5 kHz steps lands on every 800 MHz channel centre
+# whichever of the element's two 12500 fields is the spacing, and is the
+# FDMA and TDMA entry RPM-saved personalities hold (e.g. IDEN set 92738).
+# The old 851.00625 base needs 6.25 kHz steps to reach 851.0125.
+_FDMA_800_BASE_HZ = 851012500
+_TDMA_800_BASE_HZ = 851012500
+
+
+def _standard_800_iden(spacing, bw, tx_offset_mhz, iden_type,
+                       base_hz=_FDMA_800_BASE_HZ):
     """Standard 800 MHz rebanded IDEN table (16 entries).
 
-    Covers 851.00625 - 867.88125 MHz in 1.125 MHz blocks.
-    This is the standard table used by PSERN, BEE00, and all
-    standard 800 MHz rebanded P25 systems.
+    Covers the 851-869 MHz downlink in 1.125 MHz blocks starting at
+    ``base_hz``.  Systems publish their own IDEN tables; check them
+    against what the system broadcasts.
     """
     return [
         {
-            'base_freq_hz': 851006250 + i * 1125000,
+            'base_freq_hz': base_hz + i * 1125000,
             'chan_spacing_hz': spacing,
             'bandwidth_hz': bw,
             'tx_offset_mhz': tx_offset_mhz,
@@ -224,16 +238,18 @@ def _build_templates():
         key="800-TDMA",
         label="800 MHz TDMA (Phase II)",
         band="800", mode="TDMA",
-        description="Standard 800 MHz rebanded, 6.25 kHz TDMA. "
-                    "16 entries covering 851-868 MHz.",
-        entries=_standard_800_iden(6250, 6250, -45.0, 1),
+        description="Standard 800 MHz rebanded, 12.5 kHz TDMA carriers "
+                    "(two slots each). 16 entries covering 851-868 MHz.",
+        entries=_standard_800_iden(12500, 12500, -45.0, 1,
+                                   base_hz=_TDMA_800_BASE_HZ),
     )
     templates[t.key] = t
 
-    # 800 MHz Mixed (FDMA slots 0-1 + TDMA slots 2-15)
-    # Like BEE00 in PAWSOVERMAWS — systems with both Phase I and Phase II
+    # 800 MHz Mixed (FDMA slots 0-1 + TDMA slots 2-15), for systems
+    # carrying both Phase I and Phase II traffic
     fdma_entries = _standard_800_iden(12500, 12500, -45.0, 0)
-    tdma_entries = _standard_800_iden(6250, 6250, -45.0, 1)
+    tdma_entries = _standard_800_iden(12500, 12500, -45.0, 1,
+                                      base_hz=_TDMA_800_BASE_HZ)
     mixed_entries = fdma_entries[:2] + tdma_entries[2:]
     t = IdenTemplate(
         key="800-Mixed",
@@ -261,9 +277,9 @@ def _build_templates():
         key="700-TDMA",
         label="700 MHz TDMA (Phase II)",
         band="700", mode="TDMA",
-        description="Standard 700 MHz, 6.25 kHz TDMA. "
+        description="Standard 700 MHz, 12.5 kHz TDMA carriers. "
                     "16 entries covering 764-776 MHz, TX +30 MHz.",
-        entries=_standard_700_iden(6250, 6250, 30.0, 1),
+        entries=_standard_700_iden(12500, 12500, 30.0, 1),
     )
     templates[t.key] = t
 
@@ -283,9 +299,9 @@ def _build_templates():
         key="900-TDMA",
         label="900 MHz TDMA (Phase II)",
         band="900", mode="TDMA",
-        description="Standard 900 MHz, 6.25 kHz TDMA. "
+        description="Standard 900 MHz, 12.5 kHz TDMA carriers. "
                     "8 active entries (935-939 MHz), TX -39 MHz.",
-        entries=_standard_900_iden(6250, 6250, -39.0, 1),
+        entries=_standard_900_iden(12500, 12500, -39.0, 1),
     )
     templates[t.key] = t
 

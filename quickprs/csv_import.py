@@ -4,6 +4,7 @@ Supports:
   - GROUP_SET.csv → P25GroupSet objects
   - TRK_SET.csv → TrunkSet objects
   - CONV_SET.csv → ConvSet objects
+  - P25_CONV_SET.csv → P25ConvSet objects (NACs, TX/RX/scan)
   - Generic CSV with flexible column matching
 
 RPM CSV format uses header rows with known column names. This module
@@ -24,8 +25,8 @@ def import_csv(filepath):
 
     Returns:
         tuple of (data_type, objects) where:
-          data_type: "groups" | "trunk" | "conv" | "unknown"
-          objects: list of P25GroupSet | TrunkSet | ConvSet
+          data_type: "groups" | "trunk" | "conv" | "p25conv" | "unknown"
+          objects: list of P25GroupSet | TrunkSet | ConvSet | P25ConvSet
     """
     filepath = Path(filepath)
     try:
@@ -42,6 +43,10 @@ def import_csv(filepath):
 
     if _is_group_csv(header_lower):
         return "groups", import_group_csv(filepath)
+    elif _is_p25_conv_csv(header_lower):
+        # Before the analog check: a P25 conventional CSV also has
+        # ShortName, TxFreq and RxFreq columns.
+        return "p25conv", import_p25_conv_csv(filepath)
     elif _is_conv_csv(header_lower):
         return "conv", import_conv_csv(filepath)
     elif _is_trunk_csv(header_lower):
@@ -61,6 +66,12 @@ def _is_trunk_csv(header):
     return (('txfreq' in header or 'tx_freq' in header or
              'frequency' in header or 'freq' in header) and
             'groupid' not in header and 'talkgroup' not in header)
+
+
+def _is_p25_conv_csv(header):
+    """Check if header matches P25_CONV_SET format (has NAC columns)."""
+    cols = {h.replace(' ', '_') for h in header}
+    return bool(cols & {'txnac', 'rxnac', 'tx_nac', 'rx_nac', 'nac'})
 
 
 def _is_conv_csv(header):
@@ -250,6 +261,74 @@ def import_conv_csv(filepath):
 
     return [ConvSet(name=name, channels=channels)
             for name, channels in sets_dict.items()]
+
+
+def _parse_nac(val, default=0x293):
+    """A NAC as hex ("293", "0x293", "$293"); blank gives the default."""
+    val = (val or '').strip().lstrip('$')
+    if not val:
+        return default
+    nac = int(val, 16)
+    if not 0 <= nac <= 0xFFF:
+        raise ValueError(f"NAC {val} out of range (000-FFF)")
+    return nac
+
+
+def import_p25_conv_csv(filepath):
+    """Import P25_CONV_SET.csv → list of P25ConvSet.
+
+    Expected columns (flexible matching):
+      Set, ShortName, TxFreq, RxFreq, TxNAC, RxNAC, TX, RX, Scan, LongName
+    NACs are hex.  Rows with a bad frequency or NAC are skipped.
+    """
+    from .injector import make_p25_conv_set
+
+    filepath = Path(filepath)
+    rows = _read_csv(filepath)
+    if not rows:
+        return []
+
+    col_map = _map_columns(rows[0], {
+        'set': ['set', 'setname', 'set_name', 'zone'],
+        'short_name': ['shortname', 'short_name', 'name', 'channel', 'short'],
+        'tx_freq': ['txfreq', 'tx_freq', 'frequency', 'freq'],
+        'rx_freq': ['rxfreq', 'rx_freq'],
+        'nac_tx': ['txnac', 'tx_nac', 'nac'],
+        'nac_rx': ['rxnac', 'rx_nac'],
+        'tx': ['tx', 'transmit'],
+        'rx': ['rx', 'receive'],
+        'scan': ['scan'],
+        'long_name': ['longname', 'long_name', 'long', 'description'],
+    })
+
+    sets_dict = {}
+    default_set = filepath.stem[:8].upper()
+    for row in rows[1:]:
+        if not row or row[0].lstrip().startswith('#'):
+            continue
+        short = _get_field(row, col_map, 'short_name', '')[:8]
+        if not short:
+            continue
+        try:
+            tx = float(_get_field(row, col_map, 'tx_freq', ''))
+            rx = float(_get_field(row, col_map, 'rx_freq', str(tx)))
+            nac_tx = _parse_nac(_get_field(row, col_map, 'nac_tx', ''))
+            nac_rx = _parse_nac(_get_field(row, col_map, 'nac_rx', ''),
+                                default=nac_tx)
+        except ValueError:
+            continue
+        set_name = _get_field(row, col_map, 'set', default_set)[:8]
+        sets_dict.setdefault(set_name, []).append({
+            'short_name': short, 'tx_freq': tx, 'rx_freq': rx,
+            'nac_tx': nac_tx, 'nac_rx': nac_rx,
+            'tx': _parse_bool(_get_field(row, col_map, 'tx', 'Y')),
+            'rx': _parse_bool(_get_field(row, col_map, 'rx', 'Y')),
+            'scan': _parse_bool(_get_field(row, col_map, 'scan', 'Y')),
+            'long_name': _get_field(row, col_map, 'long_name', short)[:16],
+        })
+
+    return [make_p25_conv_set(name, data)
+            for name, data in sets_dict.items()]
 
 
 # ─── Helpers ────────────────────────────────────────────────────────

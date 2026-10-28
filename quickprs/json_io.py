@@ -24,7 +24,7 @@ from .record_types import (
     parse_system_short_name, parse_system_long_name,
     parse_system_wan_name, parse_system_set_refs,
     is_system_config_data, parse_ecc_entries,
-    parse_sets_from_sections,
+    parse_sets_from_sections, list_system_configs,
 )
 from .option_maps import extract_platform_config
 
@@ -214,33 +214,11 @@ def _collect_systems(prs):
         'CConvSystem': 'Conventional',
         'CP25ConvSystem': 'P25Conv',
     }
-
-    current_type = None
-    current_name = None
-
-    for sec in prs.sections:
-        if sec.class_name in system_class_map:
-            current_type = system_class_map[sec.class_name]
-            current_name = parse_system_short_name(sec.raw) or ""
-        elif (not sec.class_name and is_system_config_data(sec.raw)
-              and current_type is not None):
-            sys_dict = _config_to_sys_dict(sec.raw, current_type)
-            # Use the header short name for the first config after a header
-            if current_name is not None:
-                sys_dict["name"] = current_name
-                current_name = None  # consumed
-            else:
-                # Chained inline system — derive name from long_name
-                ln = sys_dict.get("long_name", "")
-                sys_dict["name"] = ln[:8] if ln else ""
-            systems.append(sys_dict)
-        elif sec.class_name and sec.class_name not in (
-            'CPreferredSystemTableEntry',
-        ):
-            # Non-config named section breaks the chain
-            current_type = None
-            current_name = None
-
+    for ref in list_system_configs(prs):
+        sys_dict = _config_to_sys_dict(ref.section.raw,
+                                       system_class_map[ref.class_name])
+        sys_dict["name"] = ref.short_name
+        systems.append(sys_dict)
     return systems
 
 

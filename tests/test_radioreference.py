@@ -163,17 +163,17 @@ def test_iden_table_800mhz():
     assert len(entries) == 16
 
     # First entry should be standard 800 MHz base
-    assert entries[0]['base_freq_hz'] == 851006250
-    assert entries[0]['chan_spacing_hz'] == 6250   # TDMA
-    assert entries[0]['bandwidth_hz'] == 6250
+    assert entries[0]['base_freq_hz'] == 851012500
+    assert entries[0]['chan_spacing_hz'] == 12500   # as RPM files hold
+    assert entries[0]['bandwidth_hz'] == 12500
     assert entries[0]['tx_offset_mhz'] == -45.0      # -45 MHz
     assert entries[0]['iden_type'] == 1             # TDMA
 
     # Second entry should be 1.125 MHz higher
-    assert entries[1]['base_freq_hz'] == 852131250
+    assert entries[1]['base_freq_hz'] == 852137500
 
     # Last entry
-    assert entries[15]['base_freq_hz'] == 851006250 + 15 * 1125000
+    assert entries[15]['base_freq_hz'] == 851012500 + 15 * 1125000
 
     print("  PASS: 800 MHz IDEN table")
 

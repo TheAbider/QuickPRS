@@ -37,14 +37,15 @@ def clone_personality(source_prs, modifications=None):
     Args:
         source_prs: PRSFile to clone
         modifications: dict with optional keys:
-            'name': new personality name (stored in options)
+            'name': new personality name (in the CPersonality header;
+                '.PRS' is added when missing)
             'remove_sets': list of set names to remove (trunk/group/conv)
             'remove_systems': list of system long names to remove
             'add_talkgroups': {set_name: [(id, short_name, long_name), ...]}
             'remove_talkgroups': {set_name: [group_id, ...]}
             'enable_tx_sets': [set_names where TX should be enabled]
             'disable_tx_sets': [set_names where TX should be disabled]
-            'unit_id': int for HomeUnitID
+            'unit_id': Home Unit ID for every P25 trunked system
             'password': str for radio password
 
     Returns:
@@ -101,13 +102,11 @@ def clone_personality(source_prs, modifications=None):
     if 'name' in mods:
         _set_personality_name(clone, mods['name'])
 
-    # 8. Set unit ID via option_maps
+    # 8. Set the Home Unit ID in every P25 trunked system (where the
+    #    radio keeps it; the options XML has no unit ID attribute)
     if 'unit_id' in mods:
-        try:
-            set_platform_option(clone, 'misc', 'homeUnitID',
-                                str(mods['unit_id']))
-        except (ValueError, KeyError) as e:
-            logger.warning("Could not set unit_id: %s", e)
+        from .fleet import set_home_unit_id
+        set_home_unit_id(clone, int(mods['unit_id']))
 
     # 9. Set password via option_maps
     if 'password' in mods:
@@ -200,11 +199,9 @@ def _set_tx_on_set(prs, set_name, enable=True):
 
 
 def _set_personality_name(prs, name):
-    """Set the personality file name stored in the PRS header."""
-    # The personality name is stored in the first section's raw bytes.
-    # Try setting it via option maps first.
-    try:
-        set_platform_option(prs, 'misc', 'personalityName', name)
-    except (ValueError, KeyError, TypeError):
-        # Not all files have this option — log and continue
-        logger.debug("Could not set personality name via option_maps")
+    """Set the personality name stored in the CPersonality header (the
+    options XML has no name attribute)."""
+    from .injector import edit_personality
+    if not name.upper().endswith(".PRS"):
+        name = f"{name}.PRS"
+    edit_personality(prs, filename=name)

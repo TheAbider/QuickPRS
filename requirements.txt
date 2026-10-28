@@ -5,3 +5,4 @@ sv-ttk>=2.5
 darkdetect>=0.8
 windnd>=1.0.7
 pyinstaller>=6.0
+pyserial>=3.5

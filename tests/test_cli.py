@@ -880,15 +880,23 @@ class TestCmdCreate:
         p = parse_personality_section(sec.raw)
         assert p.filename == "MyPersonality.PRS"
 
-    def test_create_overwrites_existing(self, capsys, tmp_path):
-        """Create should silently overwrite an existing file."""
+    def test_create_refuses_existing(self, capsys, tmp_path):
+        """Create must not wipe an existing personality by accident."""
         out_file = tmp_path / "existing.PRS"
         out_file.write_bytes(b"old data")
         result = cmd_create(str(out_file))
+        assert result == 1
+        assert out_file.read_bytes() == b"old data"
+        assert "already exists" in capsys.readouterr().err
+
+    def test_create_force_replaces_and_keeps_bak(self, capsys, tmp_path):
+        out_file = tmp_path / "existing.PRS"
+        out_file.write_bytes(b"old data")
+        result = cmd_create(str(out_file), force=True)
         assert result == 0
         content = out_file.read_bytes()
-        assert content != b"old data"
         assert content[:2] == b'\xff\xff'  # valid PRS header
+        assert (tmp_path / "existing.PRS.bak").read_bytes() == b"old data"
 
     def test_create_section_count(self, capsys, tmp_path):
         """Output should report section count."""
@@ -934,7 +942,8 @@ class TestFreqToolsCLI:
         assert result == 0
         out = capsys.readouterr().out
         assert "146.9400" in out
-        assert "+0.6" in out
+        assert "-0.6" in out
+        assert "146.3400" in out
 
     def test_freq_tools_offset_70cm(self, capsys):
         """freq-tools offset for 70cm should show 5 MHz offset."""
@@ -977,3 +986,32 @@ class TestFreqToolsCLI:
         """freq-tools without subcommand should show help."""
         result = run_cli(["freq-tools"])
         assert result == 1
+
+
+class TestImportJsonKeepsSource:
+    """import-json's default output is the .PRS the JSON was exported
+    from, so it must not overwrite it silently."""
+
+    def _export(self, tmp_path):
+        from quickprs.cli import cmd_create, cmd_export_json
+        prs_path = tmp_path / "radio.PRS"
+        assert cmd_create(str(prs_path), name="RADIO") == 0
+        json_path = tmp_path / "radio.json"
+        assert cmd_export_json(str(prs_path), str(json_path)) == 0
+        return prs_path, json_path
+
+    def test_default_output_is_not_overwritten(self, tmp_path, capsys):
+        from quickprs.cli import cmd_import_json
+        prs_path, json_path = self._export(tmp_path)
+        before = prs_path.read_bytes()
+        prs_path.write_bytes(before + b"edited since export")
+        assert cmd_import_json(str(json_path)) == 1
+        assert prs_path.read_bytes() == before + b"edited since export"
+        assert "already exists" in capsys.readouterr().err
+
+    def test_explicit_output_is_written(self, tmp_path):
+        from quickprs.cli import cmd_import_json
+        _, json_path = self._export(tmp_path)
+        out = tmp_path / "copy.PRS"
+        assert cmd_import_json(str(json_path), str(out)) == 0
+        assert out.exists()

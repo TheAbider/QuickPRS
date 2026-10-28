@@ -1,12 +1,14 @@
-"""Built-in database of common US P25 trunked radio systems.
+"""Built-in list of common US P25 trunked radio systems.
 
-Provides a searchable catalog of well-known P25 systems with their
-basic parameters (System ID, WACN, band, type). Users can select
-from the database instead of looking up info on RadioReference.
-
-Data sourced from public FCC/NTIA records and RadioReference wiki.
-System IDs and WACNs are public information published by the FCC
-Universal Licensing System and NTIA spectrum management databases.
+A searchable starting point (name, area, band, phase) for setting up a
+system.  The System IDs and WACNs here are NOT verified: they do not come
+from any authoritative source (the FCC's licensing database does not
+publish P25 System IDs or WACNs) and several are known to be wrong.
+Only entries marked ``verified`` were checked, against a personality
+saved by RPM for a radio on that system.  Confirm every ID on
+RadioReference (or with the system's administrator) before a radio is
+programmed with it: a wrong System ID or WACN keeps the radio off the
+system.
 """
 
 from dataclasses import dataclass
@@ -25,6 +27,16 @@ class P25System:
     band: str               # frequency band ("700", "800", "700/800", "900")
     system_type: str        # "Phase I" or "Phase II"
     description: str = ""   # brief description of coverage/purpose
+    verified: bool = False  # IDs checked against an RPM-saved personality
+
+
+def unverified_warning(system):
+    """Warning text for an entry whose IDs nobody checked, else ''."""
+    if system.verified:
+        return ""
+    return (f"System ID {system.system_id} and WACN {system.wacn:#x} for "
+            f"{system.name} are unverified; confirm both on RadioReference "
+            f"before programming a radio.")
 
 
 # ─── System Database ─────────────────────────────────────────────────
@@ -38,8 +50,10 @@ SYSTEMS: List[P25System] = [
         long_name="Puget Sound Emergency Radio Network",
         location="Seattle Metro, WA",
         state="WA",
-        system_id=892,
+        # 939 (0x3AB) / WACN BEE00 as RPM saved them for a radio on PSERN
+        system_id=939,
         wacn=781824,
+        verified=True,
         band="800",
         system_type="Phase II",
         description="King County regional public safety, replaces KCERS",

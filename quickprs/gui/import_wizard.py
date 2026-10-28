@@ -599,9 +599,16 @@ class ImportWizard(tk.Toplevel):
             return
 
         name = selection[0]
-        from ..system_database import get_system_by_name, get_iden_template_key
+        from ..system_database import (
+            get_system_by_name, get_iden_template_key, unverified_warning,
+        )
         sys = get_system_by_name(name)
         if not sys:
+            return
+        warning = unverified_warning(sys)
+        if warning and not messagebox.askyesno(
+                "Unverified IDs", warning + "\n\nAdd it anyway?",
+                icon=messagebox.WARNING, parent=self):
             return
 
         self.app.save_undo_snapshot(f"Add system {sys.name}")
@@ -616,28 +623,33 @@ class ImportWizard(tk.Toplevel):
                 get_template, get_default_name, find_matching_iden_set,
             )
 
+            # Auto-select IDEN template
+            iden_key = get_iden_template_key(sys)
+            existing_iden = find_matching_iden_set(self.app.prs, iden_key)
+            iden_set = None
+            iden_name = existing_iden or ""
+            if not existing_iden:
+                template = get_template(iden_key)
+                if template:
+                    iden_name = get_default_name(iden_key)
+                    iden_set = make_iden_set(iden_name, template.entries)
+
             # Create an empty P25 system with the database info
             config = P25TrkSystemConfig(
-                short_name=sys.name[:8],
+                system_name=sys.name[:8],
                 long_name=sys.long_name[:16],
-                sys_id=sys.system_id,
+                trunk_set_name=sys.name[:8],
+                group_set_name=sys.name[:8],
+                wan_name=sys.name[:8],
+                system_id=sys.system_id,
                 wacn=sys.wacn,
-                flags=build_sys_flags(),
+                sys_flags=build_sys_flags(self.app.settings),
+                iden_set_name=iden_name,
             )
 
             # Add empty group and trunk sets
             group_set = make_group_set(sys.name[:8], [])
             trunk_set = make_trunk_set(sys.name[:8], [])
-
-            # Auto-select IDEN template
-            iden_key = get_iden_template_key(sys)
-            existing_iden = find_matching_iden_set(self.app.prs, iden_key)
-            iden_set = None
-            if not existing_iden:
-                template = get_template(iden_key)
-                if template:
-                    iden_name = get_default_name(iden_key)
-                    iden_set = make_iden_set(iden_name, template)
 
             add_p25_trunked_system(
                 self.app.prs, config,
@@ -793,9 +805,7 @@ class ImportWizard(tk.Toplevel):
             lines.append(f"Detected: {len(channels)} conventional channels")
             lines.append("")
             for i, ch in enumerate(channels[:30]):
-                name = ch.get('short_name', ch.get('name', ''))
-                freq = ch.get('tx_freq', ch.get('freq', 0))
-                lines.append(f"  {i+1}. {name} - {freq:.4f} MHz")
+                lines.append(f"  {i+1}. {ch.name} - {ch.freq:.5f} MHz")
             if len(channels) > 30:
                 lines.append(f"... and {len(channels) - 30} more")
 
@@ -863,15 +873,19 @@ class ImportWizard(tk.Toplevel):
                 self._inject_channels(set_name, channels_data)
 
             elif self._clip_data_type == 'channels':
+                # parse_pasted_conv_channels returns ConvChannelData
+                # objects: freq is the receive frequency, tx_freq 0 means
+                # simplex.
                 channels_data = []
                 for ch in self._clip_data:
+                    rx = ch.freq
                     channels_data.append({
-                        'short_name': ch.get('short_name', ch.get('name', ''))[:8],
-                        'tx_freq': ch.get('tx_freq', ch.get('freq', 0)),
-                        'rx_freq': ch.get('rx_freq', ch.get('freq', 0)),
-                        'tx_tone': ch.get('tx_tone', ''),
-                        'rx_tone': ch.get('rx_tone', ''),
-                        'long_name': ch.get('long_name', '')[:16],
+                        'short_name': (ch.name or f"{rx:.4f}")[:8],
+                        'tx_freq': ch.tx_freq or rx,
+                        'rx_freq': rx,
+                        'tx_tone': ch.tx_tone or ch.tone,
+                        'rx_tone': ch.tone,
+                        'long_name': (ch.description or ch.name)[:16],
                     })
                 self._inject_channels(set_name, channels_data)
 
@@ -891,12 +905,15 @@ class ImportWizard(tk.Toplevel):
         from ..record_types import ConvSystemConfig
 
         conv_set = make_conv_set(set_name, channels_data)
-        config = ConvSystemConfig(short_name=set_name[:8])
+        config = ConvSystemConfig(system_name=set_name[:8],
+                                  long_name=set_name[:16],
+                                  conv_set_name=set_name[:8])
         add_conv_system(self.app.prs, config, conv_set=conv_set)
 
     def _inject_talkgroups(self, set_name, tgs_data):
         """Inject a list of talkgroup dicts as a new group set."""
-        from ..injector import make_group_set, add_group_set
+        from ..injector import make_group_set
+        from ..injector import _safe_add_group_set as add_group_set
 
         tg_tuples = []
         for tg in tgs_data:
