@@ -12,6 +12,7 @@ from unittest import mock
 import pytest
 
 tk = pytest.importorskip("tkinter")
+from tkinter import ttk  # noqa: E402
 
 TESTDATA = Path(__file__).parent / "testdata"
 PAWS = TESTDATA / "PAWSOVERMAWS.PRS"
@@ -46,6 +47,14 @@ def app(tk_root, tmp_path, monkeypatch):
     top.destroy()
 
 
+def _change(app, label):
+    """A real edit through the app, as the GUI makes one."""
+    from quickprs.injector import edit_personality
+    app.save_undo_snapshot(label)
+    edit_personality(app.prs, saved_by=label)
+    app.mark_modified()
+
+
 def test_app_starts(app):
     assert app.prs is None
     assert "QuickPRS" in app.root.title()
@@ -59,7 +68,7 @@ def test_open_resets_undo_history(app, tmp_path):
     write_prs(create_blank_prs("b.PRS"), b)
 
     app._open_path(a, confirmed=True)
-    app.save_undo_snapshot("edit A")
+    _change(app, "edit A")
     assert app._undo_stack.can_undo()
     app._open_path(b, confirmed=True)
     # Undo history belonged to A; undoing must not put A's bytes into B
@@ -459,6 +468,16 @@ def _button(widget, text):
     return None
 
 
+def _first(widget, kind):
+    for child in widget.winfo_children():
+        if isinstance(child, kind):
+            return child
+        found = _first(child, kind)
+        if found is not None:
+            return found
+    return None
+
+
 def _options_personality(tmp_path):
     from quickprs.builder import create_blank_prs
     from quickprs.option_maps import set_platform_option
@@ -476,6 +495,7 @@ def test_option_editor_save_can_be_undone(app, tmp_path):
     app._open_path(_options_personality(tmp_path), confirmed=True)
     assert not app._undo_stack.can_undo()
     win = _editor_window(app)
+    _first(win, ttk.Checkbutton).invoke()       # change one setting
     _button(win, "Save").invoke()
     assert app._undo_stack.can_undo()
 
@@ -484,15 +504,45 @@ def test_option_editor_after_undo_does_not_write(app, tmp_path):
     """An editor kept the personality it opened on; after Undo replaced
     it, Save wrote into an object nothing used and said 'Saved'."""
     app._open_path(_options_personality(tmp_path), confirmed=True)
-    app.save_undo_snapshot("something")
-    app.undo_injection()
+    _change(app, "something")
     current = app.prs
     win = _editor_window(app)
-    app.save_undo_snapshot("another")
-    app.undo_injection()
+    with mock.patch("quickprs.gui.app.messagebox"):
+        app.undo_injection()
     assert app.prs is not current
     before = app.prs.to_bytes()
     with mock.patch("quickprs.gui.personality_view.messagebox") as mb:
         _button(win, "Save").invoke()
         mb.showwarning.assert_called_once()
     assert app.prs.to_bytes() == before
+
+
+
+def test_snapshot_without_a_change_leaves_no_undo_step(app, tmp_path):
+    """A dialog cancelled, an Apply that changed nothing, or an operation
+    that failed after the snapshot left an undo step that changed nothing
+    (and cleared the redo history)."""
+    from quickprs.builder import create_blank_prs
+    from quickprs.prs_writer import write_prs
+    path = tmp_path / "a.PRS"
+    write_prs(create_blank_prs("a.PRS"), path)
+    app._open_path(path, confirmed=True)
+    _change(app, "first")
+    with mock.patch("quickprs.gui.app.messagebox"):
+        app.undo_injection()
+    assert app._undo_stack.can_redo()
+    app.save_undo_snapshot("cancelled")      # nothing changes after it
+    app.mark_modified()
+    assert not app._undo_stack.can_undo()
+    assert app._undo_stack.can_redo()
+
+
+def test_moving_the_last_channel_down_leaves_no_undo_step(app, tmp_path):
+    app._open_path(_gui_personality(tmp_path), confirmed=True)
+    pv = app.personality_view
+    with mock.patch("quickprs.gui.personality_view.messagebox"):
+        pv._move_trunk_channel("CITY", 2, +1)     # already last
+    assert not app._undo_stack.can_undo()
+    with mock.patch("quickprs.gui.personality_view.messagebox"):
+        pv._move_trunk_channel("CITY", 1, +1)
+    assert app._undo_stack.can_undo()
