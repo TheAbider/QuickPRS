@@ -355,12 +355,14 @@ class TestFormatComparison:
         assert "= item4" in text
 
     def test_format_with_only_same(self):
-        """SAME-only diffs still produce output (not 'identical')."""
+        """SAME-only entries are listed, and nothing differs: compare
+        always lists the section count, so this is what identical files
+        give."""
         diffs = [(SAME, "File", "Sections", "26")]
         lines = format_comparison(diffs)
-        # Should NOT say "Files are identical" since there are diffs
-        assert "Files are identical." not in lines
+        assert "  = Sections: 26" in lines
         assert any("Summary" in line for line in lines)
+        assert lines[-1] == "Files are identical."
 
 
 # ═══════════════════════════════════════════════════════════════════════
