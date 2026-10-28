@@ -546,3 +546,28 @@ def test_moving_the_last_channel_down_leaves_no_undo_step(app, tmp_path):
     with mock.patch("quickprs.gui.personality_view.messagebox"):
         pv._move_trunk_channel("CITY", 1, +1)
     assert app._undo_stack.can_undo()
+
+
+def test_system_from_database_can_be_undone(app, tmp_path):
+    """The database dialog set app.modified itself instead of calling
+    mark_modified(), so the change never became an undo step (and the
+    size and statistics shown went stale)."""
+    from quickprs.builder import create_blank_prs
+    from quickprs.gui.system_wizard import SystemDatabaseDialog
+    from quickprs.prs_writer import write_prs
+    path = tmp_path / "db.PRS"
+    write_prs(create_blank_prs("db.PRS"), path)
+    app._open_path(path, confirmed=True)
+    before = app.prs.to_bytes()
+    dialog = SystemDatabaseDialog(app.root, app)
+    dialog.withdraw()
+    dialog._tree.selection_set("PSERN")
+    with mock.patch("quickprs.gui.system_wizard.messagebox") as mb:
+        mb.askyesno.return_value = True
+        dialog._add_system()
+    dialog.destroy()
+    assert app.prs.to_bytes() != before
+    assert app._undo_stack.can_undo()
+    with mock.patch("quickprs.gui.app.messagebox"):
+        app.undo_injection()
+    assert app.prs.to_bytes() == before
