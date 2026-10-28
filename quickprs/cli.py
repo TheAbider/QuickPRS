@@ -1557,8 +1557,10 @@ def cmd_merge(target_path, source_path, include_systems=True,
     """Merge systems and channels from source PRS into target PRS.
 
     Copies P25 trunked systems (with their trunk sets, group sets, IDEN sets)
-    and conventional systems (with their conv sets) from source into target.
-    Skips systems that already exist in target (by short name).
+    and conventional and P25 conventional systems (with their channel
+    sets) from source into target, as the source has them.  Skips systems
+    that already exist in target (by short name) and systems naming a set
+    the target holds with other contents.
 
     Args:
         target_path: target PRS file path
@@ -1600,6 +1602,8 @@ def cmd_merge(target_path, source_path, include_systems=True,
               f"{stats['conv_skipped']} skipped")
     if total_added == 0 and total_skipped == 0:
         print("  No systems found in source to merge.")
+    for line in stats['conflicts']:
+        print(f"  Not merged: {line}")
 
     if errors:
         print(f"  Validation: {len(errors)} errors", file=sys.stderr)

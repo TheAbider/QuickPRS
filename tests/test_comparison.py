@@ -171,10 +171,9 @@ class TestComparisonEdgeCases:
         prs_a = cached_parse_prs(PAWS)
         prs_b = deepcopy(prs_a)
         # Add a talkgroup to an existing set
-        new_gset = make_group_set("PSERN PD", [
-            (9999, "EXTRA", "EXTRA TALKGROUP"),
-        ])
-        add_group_set(prs_b, new_gset)
+        from quickprs.injector import add_talkgroups, make_p25_group
+        add_talkgroups(prs_b, "PSERN PD",
+                       [make_p25_group(9999, "EXTRA", "EXTRA TALKGROUP")])
         diffs = compare_prs(prs_a, prs_b)
         group_diffs = [d for d in diffs if d[1] == "Group Set"
                        and d[2] == "PSERN PD"]
@@ -186,8 +185,9 @@ class TestComparisonEdgeCases:
         from copy import deepcopy
         prs_a = cached_parse_prs(PAWS)
         prs_b = deepcopy(prs_a)
-        new_tset = make_trunk_set("PSERN", [(999.0125, 999.0125)])
-        add_trunk_set(prs_b, new_tset)
+        from quickprs.injector import add_trunk_channels, make_trunk_channel
+        add_trunk_channels(prs_b, "PSERN",
+                           [make_trunk_channel(806.0125, 851.0125)])
         diffs = compare_prs(prs_a, prs_b)
         trunk_diffs = [d for d in diffs if d[1] == "Trunk Set"
                        and d[2] == "PSERN"]

@@ -1495,3 +1495,42 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ─── Set names are unique per set type ───────────────────────────────
+
+
+def _one_of_each(name):
+    """A small set of every type, all called ``name``."""
+    import quickprs.injector as inj
+    return {
+        "conv": inj.make_conv_set(name, [
+            {"short_name": "A", "tx_freq": 151.625}]),
+        "trunk": inj.make_trunk_set(name, [(806.0125, 851.0125)]),
+        "group": inj.make_group_set(name, [(1, "TG", "TG")]),
+        "iden": inj.make_iden_set(name, [{"base_freq_hz": 851_012_500}]),
+        "p25conv": inj.make_p25_conv_set(name, [
+            {"short_name": "P", "tx_freq": 154.43}]),
+    }
+
+
+@pytest.mark.parametrize("kind", ["conv", "trunk", "group", "iden",
+                                  "p25conv"])
+def test_adding_a_set_name_twice_is_refused(kind):
+    """Systems find their sets by name; a second set under the same name
+    used to be added silently (validation then warned that RPM may confuse
+    the two)."""
+    import quickprs.injector as inj
+    from quickprs.builder import create_blank_prs
+    first = {"conv": inj._safe_add_conv_set, "trunk": inj._safe_add_trunk_set,
+             "group": inj._safe_add_group_set, "iden": inj._safe_add_iden_set,
+             "p25conv": inj.add_p25_conv_set}[kind]
+    again = {"conv": inj.add_conv_set, "trunk": inj.add_trunk_set,
+             "group": inj.add_group_set, "iden": inj.add_iden_set,
+             "p25conv": inj.add_p25_conv_set}[kind]
+    prs = create_blank_prs()
+    first(prs, _one_of_each("SAME")[kind])
+    before = prs.to_bytes()
+    with pytest.raises(ValueError, match="already exists"):
+        again(prs, _one_of_each("SAME")[kind])
+    assert prs.to_bytes() == before

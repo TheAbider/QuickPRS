@@ -187,6 +187,39 @@ def _system_obj_names(obj):
     return short, long_name
 
 
+def _system_obj_refs(obj):
+    """The sets a system object of an archive.Document names, as
+    (archive list name, set name) pairs: trunk, talkgroup and IDEN sets
+    for a P25 trunked system, the channel set for the others."""
+    data = obj.parts[0]
+    _, pos = archive.read_cstring(data, 0)
+    pos += 1 + 2 + 42                       # type byte, FFFF, prefix
+    _, pos = archive.read_cstring(data, pos)  # long name
+    if obj.cls == "CP25TrkSystem":
+        pos += 15
+        trunk, pos = archive.read_cstring(data, pos)
+        group, _ = archive.read_cstring(data, pos)
+        iden, _ = archive.read_cstring(obj.parts[2], 4)
+        return [("trunk sets", trunk), ("group sets", group),
+                ("IDEN sets", iden)]
+    if obj.cls == "CConvSystem":
+        return [("conv sets", archive.read_cstring(data, pos + 12)[0])]
+    return [("P25 conv sets", archive.read_cstring(data, pos + 5 + 4)[0])]
+
+
+def _system_obj_wan_name(obj):
+    """The WAN name a P25 trunked system object names."""
+    data = obj.parts[0]
+    _, pos = archive.read_cstring(data, 0)
+    pos += 1 + 2 + 42
+    _, pos = archive.read_cstring(data, pos)  # long name
+    pos += 15
+    _, pos = archive.read_cstring(data, pos)  # trunk set
+    _, pos = archive.read_cstring(data, pos)  # group set
+    pos += 12 + 4 + 12 + 6 + 2 + 4            # ... home unit ID, system ID
+    return archive.read_cstring(data, pos)[0]
+
+
 def system_set_references(prs):
     """Every set name the personality's systems refer to.
 
@@ -200,24 +233,8 @@ def system_set_references(prs):
         return set()
     refs = set()
     for obj in doc.list("systems").items:
-        if obj is None:
-            continue
-        data = obj.parts[0]
-        _, pos = archive.read_cstring(data, 0)
-        pos += 1 + 2 + 42                       # type byte, FFFF, prefix
-        _, pos = archive.read_cstring(data, pos)  # long name
-        if obj.cls == "CP25TrkSystem":
-            pos += 15
-            trunk, pos = archive.read_cstring(data, pos)
-            group, pos = archive.read_cstring(data, pos)
-            iden, _ = archive.read_cstring(obj.parts[2], 4)
-            refs.update((trunk, group, iden))
-        elif obj.cls == "CConvSystem":
-            conv, _ = archive.read_cstring(data, pos + 12)
-            refs.add(conv)
-        elif obj.cls == "CP25ConvSystem":
-            conv, _ = archive.read_cstring(data, pos + 5 + 4)
-            refs.add(conv)
+        if obj is not None:
+            refs.update(name for _, name in _system_obj_refs(obj))
     refs.discard("")
     return refs
 
@@ -229,6 +246,13 @@ def _append_system(prs, obj):
 
 
 # ─── Trunk Set Operations ────────────────────────────────────────────
+
+def _refuse_duplicate(existing_sets, new_set, label):
+    """Systems refer to sets by name, so two sets of one type may not
+    share a name (validation warns that RPM may confuse them)."""
+    if any(s.name == new_set.name for s in existing_sets):
+        raise ValueError(f"{label} '{new_set.name}' already exists")
+
 
 def add_trunk_set(prs, trunk_set):
     """Add a new TrunkSet to the personality.
@@ -251,6 +275,7 @@ def add_trunk_set(prs, trunk_set):
 
     existing_sets = _parse_section_data(ch_sec, parse_trunk_channel_section,
                                          first_count)
+    _refuse_duplicate(existing_sets, trunk_set, "Trunk set")
     existing_sets.append(trunk_set)
 
     _replace_trunk_sections(prs, existing_sets, byte1, byte2,
@@ -358,6 +383,7 @@ def add_group_set(prs, group_set):
     first_count = _get_first_count(prs, "CP25GroupSet")
 
     existing_sets = _parse_section_data(grp_sec, parse_group_section, first_count)
+    _refuse_duplicate(existing_sets, group_set, "Group set")
     existing_sets.append(group_set)
 
     _replace_group_sections(prs, existing_sets, byte1, byte2,
@@ -452,6 +478,7 @@ def add_iden_set(prs, iden_set):
     first_count = _get_first_count(prs, "CIdenDataSet")
 
     existing_sets = _parse_section_data(elem_sec, parse_iden_section, first_count)
+    _refuse_duplicate(existing_sets, iden_set, "IDEN set")
     existing_sets.append(iden_set)
     # The document keeps everything after the IDEN sets (platformConfig XML,
     # passwords, GUID) on its own, so no trailing data needs carrying here.
@@ -486,8 +513,7 @@ def get_p25_conv_sets(prs):
 def add_p25_conv_set(prs, p25_conv_set):
     """Add a P25 conventional set, creating the first one if needed."""
     existing = get_p25_conv_sets(prs)
-    if any(s.name == p25_conv_set.name for s in existing):
-        raise ValueError(f"P25 conv set '{p25_conv_set.name}' already exists")
+    _refuse_duplicate(existing, p25_conv_set, "P25 conv set")
     _write_set_list(prs, "P25 conv sets", existing + [p25_conv_set])
 
 
@@ -807,6 +833,7 @@ def add_conv_set(prs, conv_set):
 
     existing_sets = _parse_section_data(ch_sec, parse_conv_channel_section,
                                          first_count)
+    _refuse_duplicate(existing_sets, conv_set, "Conv set")
     existing_sets.append(conv_set)
 
     _replace_conv_sections(prs, existing_sets, byte1, byte2,
@@ -2072,236 +2099,110 @@ def auto_iden_from_frequencies(frequencies_mhz, set_name=None):
 def merge_prs(target, source, include_systems=True, include_channels=True):
     """Merge data from source PRS into target PRS.
 
-    Copies P25 trunked systems (with their trunk sets, group sets, IDEN sets)
-    and conventional systems (with their conv sets) from source to target.
-    Skips systems that already exist in target (by short name).
+    Copies P25 trunked systems (with their trunk, talkgroup and IDEN sets
+    and their WAN entry) and conventional and P25 conventional systems
+    (with their channel sets) from source to target, exactly as the
+    source has them.  Skips systems whose short name the target already
+    has, and systems naming a set that the target holds with other
+    contents under the same name (systems find their sets by name, so the
+    merged system would get the target's set).
 
     Args:
         target: PRSFile object (modified in-place)
         source: PRSFile object (read-only)
         include_systems: if True, merge P25 trunked systems
-        include_channels: if True, merge conventional systems
+        include_channels: if True, merge conventional and P25
+            conventional systems
 
     Returns:
         dict with merge statistics:
             p25_added: number of P25 systems added
-            p25_skipped: number of P25 systems skipped (duplicates)
+            p25_skipped: number of P25 systems skipped
             conv_added: number of conventional systems added
-            conv_skipped: number of conventional systems skipped (duplicates)
+            conv_skipped: number of conventional systems skipped
+            conflicts: one line per system skipped over a set name clash
     """
     stats = {
         'p25_added': 0,
         'p25_skipped': 0,
         'conv_added': 0,
         'conv_skipped': 0,
+        'conflicts': [],
     }
+    t_doc = archive.document_from_prs(target)
+    s_doc = archive.document_from_prs(source)
+    t_systems = t_doc.list("systems").items
+    t_names = {_system_obj_names(o)[0] for o in t_systems if o is not None}
 
-    # Collect existing system short names in target
-    target_system_names = _collect_system_names(target)
+    for obj in s_doc.list("systems").items:
+        if obj is None:
+            continue
+        p25 = obj.cls == "CP25TrkSystem"
+        if not (include_systems if p25 else include_channels):
+            continue
+        kind = 'p25' if p25 else 'conv'
+        name = _system_obj_names(obj)[0]
+        if name in t_names:
+            logger.debug("Skipping system '%s' (already in target)", name)
+            stats[f'{kind}_skipped'] += 1
+            continue
 
-    if include_systems:
-        _merge_p25_systems(target, source, target_system_names, stats)
+        copies, clashes = [], []
+        for list_name, set_name in _system_obj_refs(obj):
+            if not set_name:
+                continue
+            src = _find_set_obj(s_doc, list_name, set_name)
+            have = _find_set_obj(t_doc, list_name, set_name)
+            if have is None:
+                if src is not None:
+                    copies.append((list_name, src))
+            elif src is not None and have != src:
+                clashes.append(set_name)
+        if clashes:
+            stats['conflicts'].append(
+                f"{name}: the target has other sets named "
+                f"{', '.join(repr(c) for c in clashes)}")
+            stats[f'{kind}_skipped'] += 1
+            continue
 
-    if include_channels:
-        _merge_conv_systems(target, source, target_system_names, stats)
+        for list_name, src in copies:
+            t_doc.list(list_name).items.append(src)
+        if p25:
+            _merge_wan_entry(t_doc, s_doc, _system_obj_wan_name(obj))
+        t_systems.append(obj)
+        t_names.add(name)
+        stats[f'{kind}_added'] += 1
 
+    archive.write_document(target, t_doc)
     return stats
 
 
-def _collect_system_names(prs):
-    """Collect all system short names from a PRS file.
-
-    Checks both system header sections (CP25TrkSystem, CConvSystem, etc.)
-    and system config data sections (unnamed sections with the universal
-    prefix). This catches systems where multiple configs share one header.
-    The config data sections contain the long name; we extract and store
-    both the long name and any conv set reference name, since the source
-    system's short name may match any of these.
-    """
-    names = set()
-    for sec in prs.sections:
-        if sec.class_name in ('CP25TrkSystem', 'CConvSystem',
-                              'CP25ConvSystem'):
-            name = parse_system_short_name(sec.raw)
-            if name:
-                names.add(name)
-        elif not sec.class_name and is_system_config_data(sec.raw):
-            long_name = parse_system_long_name(sec.raw)
-            if long_name:
-                names.add(long_name)
-            # For P25 trunked systems, also extract set references
-            trunk_ref, group_ref = parse_system_set_refs(sec.raw)
-            if trunk_ref:
-                names.add(trunk_ref)
-    return names
+def _find_set_obj(doc, list_name, set_name):
+    for o in doc.list(list_name).items:
+        if o is not None and _set_obj_name(o) == set_name:
+            return o
+    return None
 
 
-def _get_source_system_configs(prs, class_name):
-    """Extract system header + config data section groups from a PRS.
+def _merge_wan_entry(t_doc, s_doc, wan_name):
+    """Copy the source's WAN entry for wan_name unless the target has one."""
+    def entries(doc):
+        opts = doc.option("CP25tWanOpts")
+        return opts.parts[0].items if opts is not None else None
 
-    For each system header of the given class_name, returns a list of
-    (header_section, [data_sections]) tuples.
-    """
-    systems = []
-    i = 0
-    while i < len(prs.sections):
-        sec = prs.sections[i]
-        if sec.class_name != class_name:
-            i += 1
-            continue
+    src, dst = entries(s_doc), entries(t_doc)
+    if src is None or dst is None:
+        return
 
-        header = sec
-        data_sections = []
-        j = i + 1
-        while j < len(prs.sections):
-            next_sec = prs.sections[j]
-            if next_sec.class_name:
-                break  # hit another class header
-            data_sections.append(next_sec)
-            j += 1
+    def wan(o):
+        return archive.read_cstring(o.parts[0], 0)[0].strip()
 
-        systems.append((header, data_sections))
-        i = j
-
-    return systems
-
-
-def _merge_p25_systems(target, source, target_names, stats):
-    """Merge P25 trunked systems from source into target."""
-    from .record_types import P25TrkSystemConfig
-
-    # Parse source data sets
-    src_trunk_sets = _parse_source_sets(
-        source, "CTrunkChannel", "CTrunkSet", parse_trunk_channel_section)
-    src_group_sets = _parse_source_sets(
-        source, "CP25Group", "CP25GroupSet", parse_group_section)
-    src_iden_sets = _parse_source_sets(
-        source, "CDefaultIdenElem", "CIdenDataSet", parse_iden_section)
-
-    systems = _get_source_system_configs(source, "CP25TrkSystem")
-
-    for header, data_secs in systems:
-        short_name = parse_system_short_name(header.raw)
-        if not short_name:
-            continue
-
-        if short_name in target_names:
-            logger.debug("Skipping P25 system '%s' (already in target)",
-                         short_name)
-            stats['p25_skipped'] += 1
-            continue
-
-        # For each data section (there may be multiple configs per header),
-        # extract references and inject
-        for data_sec in data_secs:
-            if not is_system_config_data(data_sec.raw):
-                continue
-
-            long_name = parse_system_long_name(data_sec.raw)
-            trunk_ref, group_ref = parse_system_set_refs(data_sec.raw)
-
-            # Find matching trunk set in source
-            trunk_set = None
-            if trunk_ref:
-                for ts in src_trunk_sets:
-                    if ts.name == trunk_ref:
-                        trunk_set = ts
-                        break
-
-            # Find matching group set in source
-            group_set = None
-            if group_ref:
-                for gs in src_group_sets:
-                    if gs.name == group_ref:
-                        group_set = gs
-                        break
-
-            # Find matching IDEN set — use the short name prefix
-            iden_set = None
-            for iset in src_iden_sets:
-                # IDEN sets are often named with a prefix of the system name
-                if iset.name.strip():
-                    iden_set = iset
-                    # Prefer an IDEN set whose name relates to this system
-                    if short_name[:5].upper() in iset.name.upper():
-                        break
-
-            # Build config from the raw data section's fields
-            config = P25TrkSystemConfig(
-                system_name=short_name,
-                long_name=long_name or short_name,
-                trunk_set_name=trunk_ref or "",
-                group_set_name=group_ref or "",
-                wan_name=short_name,
-                system_id=0,  # will be read from WAN if available
-                wacn=0,
-            )
-
-            # Try to get system_id and wacn from source WAN entries
-            _populate_wan_from_source(source, config, short_name)
-
-            # Build IDEN set name
-            if iden_set:
-                config.iden_set_name = iden_set.name
-
-            add_p25_trunked_system(
-                target, config,
-                trunk_set=trunk_set,
-                group_set=group_set,
-                iden_set=iden_set,
-            )
-
-        target_names.add(short_name)
-        stats['p25_added'] += 1
-
-
-def _merge_conv_systems(target, source, target_names, stats):
-    """Merge conventional systems from source into target."""
-    from .record_types import ConvSystemConfig
-
-    src_conv_sets = _parse_source_sets(
-        source, "CConvChannel", "CConvSet", parse_conv_channel_section)
-
-    systems = _get_source_system_configs(source, "CConvSystem")
-
-    for header, data_secs in systems:
-        short_name = parse_system_short_name(header.raw)
-        if not short_name:
-            continue
-
-        if short_name in target_names:
-            logger.debug("Skipping conv system '%s' (already in target)",
-                         short_name)
-            stats['conv_skipped'] += 1
-            continue
-
-        for data_sec in data_secs:
-            if not is_system_config_data(data_sec.raw):
-                continue
-
-            long_name = parse_system_long_name(data_sec.raw)
-
-            # Extract conv set reference from data section
-            # Layout: PREFIX(44) + LPS(long_name) + 12 zeros + LPS(conv_set)
-            conv_ref = _parse_conv_set_ref(data_sec.raw)
-
-            conv_set = None
-            if conv_ref:
-                for cs in src_conv_sets:
-                    if cs.name == conv_ref:
-                        conv_set = cs
-                        break
-
-            config = ConvSystemConfig(
-                system_name=short_name,
-                long_name=long_name or short_name,
-                conv_set_name=conv_ref or "",
-            )
-
-            add_conv_system(target, config, conv_set=conv_set)
-
-        target_names.add(short_name)
-        stats['conv_added'] += 1
+    if any(o is not None and wan(o) == wan_name.strip() for o in dst):
+        return
+    for o in src:
+        if o is not None and wan(o) == wan_name.strip():
+            dst.append(o)
+            return
 
 
 def _parse_source_sets(prs, data_cls, set_cls, parser_func):
