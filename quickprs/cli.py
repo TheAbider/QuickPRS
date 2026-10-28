@@ -774,6 +774,68 @@ def cmd_freq_map(filepath, band=None):
     return 0
 
 
+def cmd_import_csv(filepath, csv_files, output=None):
+    """Import CSV files (the export-csv format, or RPM-style columns) into
+    a PRS file.  Each file's type is detected from its header:
+    GROUP_SET (talkgroups), TRK_SET (trunk frequencies), CONV_SET (analog
+    conventional) or P25_CONV_SET (P25 conventional, with NACs).
+
+    Returns:
+        0 on success, 1 on error.
+    """
+    from .csv_import import import_csv
+    from .injector import (
+        _safe_add_group_set, _safe_add_trunk_set, _safe_add_conv_set,
+        add_p25_conv_set,
+    )
+    from .prs_writer import write_prs
+
+    adders = {
+        "groups": (_safe_add_group_set, "talkgroup set", "groups"),
+        "trunk": (_safe_add_trunk_set, "trunk set", "channels"),
+        "conv": (_safe_add_conv_set, "conv set", "channels"),
+        "p25conv": (add_p25_conv_set, "P25 conv set", "channels"),
+    }
+    prs = parse_prs(filepath)
+    added = []
+    for csv_path in csv_files:
+        try:
+            kind, sets = import_csv(csv_path)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if kind == "unknown" or not sets:
+            print(f"Error: {csv_path}: no talkgroup, trunk, conventional or "
+                  f"P25 conventional columns found", file=sys.stderr)
+            return 1
+        add, label, attr = adders[kind]
+        for obj in sets:
+            try:
+                add(prs, obj)
+            except ValueError as e:
+                print(f"Error: {csv_path}: {label} '{obj.name}': {e}",
+                      file=sys.stderr)
+                return 1
+            added.append(f"{label} '{obj.name}' "
+                         f"({len(getattr(obj, attr))} {attr})")
+
+    issues = validate_prs(prs)
+    errors = [m for sev, m in issues if sev == ERROR]
+    if errors:
+        print(f"Not written: {len(errors)} validation error(s)",
+              file=sys.stderr)
+        for msg in errors:
+            print(f"  [ERROR] {msg}", file=sys.stderr)
+        return 1
+
+    out_path = output or filepath
+    write_prs(prs, out_path, backup=True)
+    for line in added:
+        print(f"Imported {line}")
+    print(f"Saved {out_path}")
+    return 0
+
+
 def cmd_export_csv(filepath, output_dir):
     """Export personality data to CSV files."""
     prs = parse_prs(filepath)
@@ -792,6 +854,12 @@ def cmd_export_csv(filepath, output_dir):
     sets = _parse_conv_sets(prs)
     if sets:
         exported.append(export_conv_sets(out / "CONV_SET.csv", sets))
+
+    from .csv_export import export_p25_conv_sets
+    from .injector import get_p25_conv_sets
+    sets = get_p25_conv_sets(prs)
+    if sets:
+        exported.append(export_p25_conv_sets(out / "P25_CONV_SET.csv", sets))
 
     sets = _parse_iden_sets(prs)
     if sets:
@@ -1264,7 +1332,7 @@ def cmd_inject_p25(filepath, name, sysid, long_name=None, wacn=0,
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Injected P25 system '{name}' (SysID {sysid}) into {out_path}")
     if errors:
@@ -1342,7 +1410,7 @@ def cmd_inject_conv(filepath, name, channels_csv=None, template=None,
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     source = f"template '{template}'" if template else channels_csv
     print(f"Injected conv system '{name}' ({len(channels_data)} channels "
@@ -1422,7 +1490,7 @@ def cmd_import_scanner(filepath, csv_file, scanner_fmt='auto',
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Imported {len(channels)} channels from {csv_file} "
           f"(format: {fmt}) as conv system '{name}' into {out_path}")
@@ -1470,7 +1538,7 @@ def cmd_inject_talkgroups(filepath, set_name, tgs_csv, output=None):
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Added {len(tgs)} talkgroups to set '{set_name}' in {out_path}")
     if errors:
@@ -1714,7 +1782,7 @@ def cmd_renumber(filepath, set_name=None, start=1, set_type="conv",
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
     target = f"set '{set_name}'" if set_name else "all sets"
     print(f"Renumbered {count} channels in {target} "
           f"(starting at {start}) in {out_path}")
@@ -1744,7 +1812,7 @@ def cmd_auto_name(filepath, set_name, style="compact", output=None):
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
     print(f"Auto-named {count} talkgroups in set '{set_name}' "
           f"(style: {style}) in {out_path}")
     return 0
@@ -2209,7 +2277,7 @@ def cmd_remove(filepath, remove_type, name, output=None):
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Removed {label} from {out_path}")
     if errors:
@@ -2287,7 +2355,7 @@ def cmd_edit(filepath, name=None, author=None,
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Edited {out_path}: {', '.join(changes)}")
     if errors:
@@ -2380,7 +2448,7 @@ def cmd_set_option(filepath, option_path=None, value=None, list_opts=False,
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Set {section}.{attr} = {value} in {out_path}")
     return 0
@@ -2533,7 +2601,7 @@ def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     # Print summary
     n_tgs = len(data['talkgroups'])
@@ -2682,7 +2750,7 @@ def cmd_import_paste(filepath, name, sysid, wacn=0, long_name=None,
     errors = [(s, m) for s, m in issues if s == ERROR]
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Injected P25 system '{name}' (SysID {sysid}) into {out_path}")
     print(f"  Talkgroups: {tg_count}  Frequencies: {freq_count}")
@@ -2804,7 +2872,7 @@ def cmd_repair(filepath, output=None, salvage=False):
         print("\nStructural validation: PASS")
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
     print(f"\nRepaired file written to: {out_path}")
     return 0
 
@@ -3037,7 +3105,7 @@ def cmd_bulk_edit_talkgroups(filepath, set_name, enable_scan=None,
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Bulk-edited {count} talkgroups in set '{set_name}' "
           f"-> {out_path}")
@@ -3079,7 +3147,7 @@ def cmd_bulk_edit_channels(filepath, set_name, set_tone=None,
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Bulk-edited {count} channels in set '{set_name}' "
           f"-> {out_path}")
@@ -3127,7 +3195,7 @@ def cmd_encrypt(filepath, set_name, tg_id=None, encrypt_all=False,
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     action = "Encrypted" if encrypted else "Decrypted"
     target = f"TG {tg_id}" if tg_id else f"{count} TGs"
@@ -3183,7 +3251,7 @@ def cmd_set_nac(filepath, set_name, channel=0, nac="293", nac_rx=None,
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Set NAC on channel {channel} in '{set_name}' "
           f"(TX:{nac_tx_val:03X} RX:{nac_rx_val:03X}) -> {out_path}")
@@ -3228,7 +3296,7 @@ def cmd_rename(filepath, set_name, pattern, replace,
         return 0
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     print(f"Renamed {count} items in set '{set_name}' -> {out_path}")
 
@@ -3270,7 +3338,7 @@ def cmd_sort(filepath, set_name, key="frequency", set_type="conv",
         return 1
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     order = "descending" if reverse else "ascending"
     print(f"Sorted set '{set_name}' by {sort_by} ({order}) -> {out_path}")
@@ -3445,7 +3513,7 @@ def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
                                  selected_tags)
 
     out_path = output or filepath
-    write_prs(prs, out_path, backup=(out_path == filepath))
+    write_prs(prs, out_path, backup=True)
 
     # Print summary
     print(f"Auto-setup complete: '{summary['full_name']}' (SID {sid})")
@@ -3622,7 +3690,7 @@ def cmd_systems(subcmd, query=None, filepath=None, system_name=None,
         errors = [(s, m) for s, m in issues if s == ERROR]
 
         out_path = output or filepath
-        write_prs(prs, out_path, backup=(out_path == filepath))
+        write_prs(prs, out_path, backup=True)
 
         print(f"Added P25 system '{name}' (SysID {sys_obj.system_id}, "
               f"WACN {sys_obj.wacn}) to {out_path}")
@@ -4243,6 +4311,20 @@ def run_cli(args=None):
                            help="Output file (default: overwrite input)")
 
     # export-csv
+    p_icsv = sub.add_parser(
+        "import-csv",
+        help="Import CSV files (talkgroups, trunk, conv, P25 conv)",
+        formatter_class=fmt,
+        epilog="The type of each file is read from its header, so the\n"
+               "files written by export-csv import directly.\n"
+               "Example:\n"
+               "  quickprs import-csv radio.PRS GROUP_SET.csv "
+               "P25_CONV_SET.csv")
+    p_icsv.add_argument("file", help="PRS file path")
+    p_icsv.add_argument("csv_files", nargs="+", help="CSV file(s)")
+    p_icsv.add_argument("-o", "--output", default=None,
+                        help="Output file (default: modify in place)")
+
     p_csv = sub.add_parser("export-csv", help="Export to CSV files",
         formatter_class=fmt,
         epilog="Example:\n"
@@ -5454,6 +5536,9 @@ def run_cli(args=None):
                 list_opts=parsed.list_opts,
                 output=parsed.output,
             )
+        elif parsed.command == "import-csv":
+            return cmd_import_csv(parsed.file, parsed.csv_files,
+                                  output=parsed.output)
         elif parsed.command == "export-csv":
             return cmd_export_csv(parsed.file, parsed.output_dir)
         elif parsed.command == "export-json":

@@ -68,6 +68,28 @@ def export_conv_sets(path, sets):
     return f"CONV_SET.csv ({total} channels)"
 
 
+def export_p25_conv_sets(path, sets):
+    """Write P25_CONV_SET.csv from a list of P25ConvSet objects.
+
+    NACs are written as 3-digit hex (the way RPM and radios show them).
+    """
+    with open(path, 'w', newline='', encoding='utf-8') as f:
+        w = csv.writer(f)
+        w.writerow(["Set", "ShortName", "TxFreq", "RxFreq", "TxNAC",
+                    "RxNAC", "TX", "RX", "Scan", "LongName"])
+        for pset in sets:
+            for ch in pset.channels:
+                w.writerow([pset.name, ch.short_name,
+                            f"{ch.tx_freq:.5f}", f"{ch.rx_freq:.5f}",
+                            f"{ch.nac_tx:03X}", f"{ch.nac_rx:03X}",
+                            "Y" if ch.tx else "N",
+                            "Y" if ch.rx else "N",
+                            "Y" if ch.scan else "N",
+                            ch.long_name])
+    total = sum(len(s.channels) for s in sets)
+    return f"P25_CONV_SET.csv ({total} channels)"
+
+
 def export_iden_sets(path, sets):
     """Write IDEN_SET.csv from a list of IdenDataSet objects."""
     with open(path, 'w', newline='', encoding='utf-8') as f:

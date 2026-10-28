@@ -103,9 +103,17 @@ def _trunk_set_obj(tset):
                              tset.metadata_to_bytes() + tail])
 
 
-def _conv_set_obj(cset):
+def _conv_set_obj(cset, old=None):
     channels = [Obj("CConvChannel", [ch.to_bytes()]) for ch in cset.channels]
-    meta = cset.metadata_to_bytes() + bytes(getattr(cset, "padding", b""))
+    meta = write_lps(cset.name) + cset.metadata
+    if old is not None:
+        # The walker knows where the set really ends; bytes after the
+        # 60-byte block (issue #1) are kept from there, not guessed.
+        old_meta = old.parts[1]
+        _, at = archive.read_cstring(old_meta, 0)
+        meta += old_meta[at + ConvSet.METADATA_SIZE:]
+    else:
+        meta += bytes(getattr(cset, "padding", b""))
     return Obj("CConvSet", [ObjList("items", channels), meta])
 
 
@@ -146,11 +154,27 @@ _SET_OBJ_BUILDERS = {
 }
 
 
+def _set_obj_name(obj):
+    return archive.read_cstring(obj.parts[1], 0)[0]
+
+
 def _write_set_list(prs, list_name, sets):
     """Replace one whole set list (may be empty) and rewrite the file."""
     doc = archive.document_from_prs(prs)
+    lst = doc.list(list_name)
     build = _SET_OBJ_BUILDERS[list_name]
-    doc.list(list_name).items = [build(s) for s in sets]
+    if list_name == "conv sets":
+        # Match the file's own set objects by name (or by position when a
+        # rename kept the list the same length) to keep their extra bytes.
+        old_items = [o for o in lst.items if o is not None]
+        by_name = {_set_obj_name(o): o for o in old_items}
+        same_len = len(old_items) == len(sets)
+        lst.items = [
+            build(s, by_name.get(s.name,
+                                 old_items[i] if same_len else None))
+            for i, s in enumerate(sets)]
+    else:
+        lst.items = [build(s) for s in sets]
     archive.write_document(prs, doc)
 
 
@@ -411,6 +435,25 @@ def _replace_p25_conv_sections(prs, sets, *_args, **_kwargs):
     if not sets:
         raise ValueError("No P25 conv sets to write")
     _write_set_list(prs, "P25 conv sets", sets)
+
+
+def get_p25_conv_sets(prs):
+    """The personality's P25 conventional sets ([] when there are none)."""
+    from .record_types import parse_p25_conv_channel_section
+    ch_sec = prs.get_section_by_class("CP25ConvChannel")
+    set_sec = prs.get_section_by_class("CP25ConvSet")
+    if not ch_sec or not set_sec:
+        return []
+    return parse_sets_from_sections(set_sec.raw, ch_sec.raw,
+                                    parse_p25_conv_channel_section)
+
+
+def add_p25_conv_set(prs, p25_conv_set):
+    """Add a P25 conventional set, creating the first one if needed."""
+    existing = get_p25_conv_sets(prs)
+    if any(s.name == p25_conv_set.name for s in existing):
+        raise ValueError(f"P25 conv set '{p25_conv_set.name}' already exists")
+    _write_set_list(prs, "P25 conv sets", existing + [p25_conv_set])
 
 
 def _build_iden_raw(sets, byte1, byte2, trailing_data=None):
@@ -1725,6 +1768,55 @@ def make_conv_channel(short_name, tx_freq, rx_freq=None,
         tx_tone=tx_tone, rx_tone=rx_tone, long_name=long_name,
         tx=tx, scan=scan,
     )
+
+
+# Flag and trailer bytes of a P25 conventional channel as RPM 14 creates
+# it (taken from an RPM-saved personality): RX, call and alert tones, scan
+# list member, scan, backlight and TX on; tone mode and narrowband set.
+_RPM_P25_CONV_FLAGS = bytes.fromhex(
+    "00010101010001000000010100010100000000010001")
+_RPM_P25_CONV_TRAILER = bytes.fromhex(
+    "0000000000010001000000000000000000000000")
+
+
+def make_p25_conv_channel(short_name, tx_freq, rx_freq=None, nac_tx=0x293,
+                          nac_rx=None, long_name="", tx=True, rx=True,
+                          scan=True):
+    """Create a P25 conventional channel with RPM's default flags.
+
+    NACs are 12-bit (0x000-0xFFF); 0x293 is the P25 default.
+    """
+    from .record_types import P25ConvChannel
+    if rx_freq is None:
+        rx_freq = tx_freq
+    if nac_rx is None:
+        nac_rx = nac_tx
+    for label, nac in (("TX", nac_tx), ("RX", nac_rx)):
+        if not 0 <= nac <= 0xFFF:
+            raise ValueError(f"{label} NAC {nac:#x} out of range (0-FFF)")
+    ch = P25ConvChannel(short_name=short_name[:8], tx_freq=tx_freq,
+                        rx_freq=rx_freq, nac_tx=nac_tx, nac_rx=nac_rx,
+                        long_name=(long_name or short_name)[:16],
+                        trailer=_RPM_P25_CONV_TRAILER)
+    ch.flags = _RPM_P25_CONV_FLAGS
+    ch.tx = ch.tx_enable = tx
+    ch.rx = rx
+    ch.scan = scan
+    return ch
+
+
+def make_p25_conv_set(name, channels_data, group_set_ref=""):
+    """Create a P25ConvSet from dicts with short_name, tx_freq, rx_freq,
+    nac_tx, nac_rx, long_name, tx, rx and scan keys."""
+    from .record_types import P25ConvSet
+    channels = [make_p25_conv_channel(
+        short_name=d['short_name'], tx_freq=d['tx_freq'],
+        rx_freq=d.get('rx_freq'), nac_tx=d.get('nac_tx', 0x293),
+        nac_rx=d.get('nac_rx'), long_name=d.get('long_name', ''),
+        tx=d.get('tx', True), rx=d.get('rx', True), scan=d.get('scan', True))
+        for d in channels_data]
+    return P25ConvSet(name=name[:8], channels=channels,
+                      group_set_ref=group_set_ref[:8])
 
 
 def make_conv_set(name, channels_data):

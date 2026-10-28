@@ -1282,6 +1282,16 @@ class QuickPRSApp:
                 except Exception as e:
                     log_error("export_csv", f"{filename}: {e}")
 
+        try:
+            from ..csv_export import export_p25_conv_sets
+            from ..injector import get_p25_conv_sets
+            p25_sets = get_p25_conv_sets(self.prs)
+            if p25_sets:
+                exported.append(export_p25_conv_sets(
+                    out_dir / "P25_CONV_SET.csv", p25_sets))
+        except Exception as e:
+            log_error("export_csv", f"P25_CONV_SET.csv: {e}")
+
         # Options and systems from PRS directly
         try:
             result = export_options(out_dir / "OPTIONS.csv", self.prs)
@@ -1546,7 +1556,11 @@ class QuickPRSApp:
             return
 
         from ..csv_import import import_csv as do_import
-        from ..injector import add_group_set, add_trunk_set, add_conv_set
+        from ..injector import (
+            _safe_add_group_set, _safe_add_trunk_set, _safe_add_conv_set,
+            add_p25_conv_set,
+        )
+        from ..prs_parser import parse_prs_bytes
 
         try:
             data_type, objects = do_import(path)
@@ -1561,7 +1575,8 @@ class QuickPRSApp:
                 "Expected columns:\n"
                 "  Groups: GroupID, ShortName, LongName, TX, Scan\n"
                 "  Trunk: TxFreq, RxFreq\n"
-                "  Conv: ShortName, TxFreq, RxFreq, TxTone, RxTone")
+                "  Conv: ShortName, TxFreq, RxFreq, TxTone, RxTone\n"
+                "  P25 conv: ShortName, TxFreq, RxFreq, TxNAC, RxNAC")
             return
 
         # Show what was found and confirm
@@ -1576,6 +1591,9 @@ class QuickPRSApp:
             elif data_type == "conv":
                 summaries.append(f"Conv Set '{obj.name}': "
                                   f"{len(obj.channels)} channels")
+            elif data_type == "p25conv":
+                summaries.append(f"P25 Conv Set '{obj.name}': "
+                                  f"{len(obj.channels)} channels")
 
         if not messagebox.askyesno(
                 "Confirm Import",
@@ -1585,15 +1603,18 @@ class QuickPRSApp:
             return
 
         self.save_undo_snapshot(f"Import CSV ({data_type})")
+        before = self.prs.to_bytes()
 
         try:
             for obj in objects:
                 if data_type == "groups":
-                    add_group_set(self.prs, obj)
+                    _safe_add_group_set(self.prs, obj)
                 elif data_type == "trunk":
-                    add_trunk_set(self.prs, obj)
+                    _safe_add_trunk_set(self.prs, obj)
                 elif data_type == "conv":
-                    add_conv_set(self.prs, obj)
+                    _safe_add_conv_set(self.prs, obj)
+                elif data_type == "p25conv":
+                    add_p25_conv_set(self.prs, obj)
 
             self.mark_modified()
             self.personality_view.refresh()
@@ -1602,6 +1623,8 @@ class QuickPRSApp:
             log_action("csv_import", file=path, type=data_type,
                        sets=len(objects))
         except Exception as e:
+            # Leave the personality as it was rather than half-imported
+            self.prs.sections = parse_prs_bytes(before, verify=False).sections
             log_error("csv_import", str(e), file=path)
             messagebox.showerror("Error", f"Import failed:\n{e}")
 

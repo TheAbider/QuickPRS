@@ -353,8 +353,12 @@ class ConvSet:
     separator: bytes = b'\x95\x81'      # inter-channel separator (file-specific)
     set_marker: bytes = b'\x93\x81'     # inter-set marker (file-specific)
     trailing_uint16: int = 0            # trailing 2 bytes at end of section (last set only)
+    # Bytes some RPM files carry between the 60-byte block and the next
+    # set (GitHub issue #1); kept so they are written back unchanged.
+    padding: bytes = b''
 
     METADATA_SIZE = 60
+    MAX_PADDING = 64
 
     @property
     def metadata(self):
@@ -391,8 +395,8 @@ class ConvSet:
         return b''.join(parts)
 
     def metadata_to_bytes(self):
-        """Serialize set name + metadata."""
-        return write_lps(self.name) + self.metadata
+        """Serialize set name + metadata (+ any padding the file had)."""
+        return write_lps(self.name) + self.metadata + self.padding
 
 
 # ─── CP25ConvChannel ─────────────────────────────────────────────────
@@ -1085,6 +1089,21 @@ def parse_conv_channel_section(data, offset, end, first_count):
         cset = ConvSet(name=set_name, channels=channels)
         cset.metadata = meta
         sets.append(cset)
+
+        # Some files hold a few more bytes before the next set's marker
+        # (GitHub issue #1).  Look ahead for a marker whose channel tag is
+        # the one this set's channels use.
+        if not (pos < end - 6 and _is_record_marker(data, pos)):
+            for k in range(1, ConvSet.MAX_PADDING + 1):
+                at = pos + k
+                if at >= end - 6:
+                    break
+                if (_is_record_marker(data, at) and
+                        (observed_sep is None or
+                         bytes(data[at + 4:at + 6]) == observed_sep)):
+                    cset.padding = bytes(data[pos:at])
+                    pos = at
+                    break
 
         # Inter-set gap: set_marker(2) + uint16(count) + separator(2)
         # Detect by checking both marker and separator have valid byte2
