@@ -2,6 +2,22 @@
 
 All notable changes to QuickPRS will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Templates: FRS, GMRS 8-14, MURS 1-3 and the public safety simplex channels were 25 kHz channels where the FCC allows 12.5 kHz or less (47 CFR 95.573, 95.1773, 95.2773, 90.209(b)(5)); they are narrowband now. Marine channel 70 carries DSC only (no voice) and is no longer in the marine template
+- CHIRP export lost the TX tone of a channel whose TX and RX tones differ, turned an RX-only tone into TX and RX, ignored the RX side of DCS, always wrote FM and dropped scan-off and TX-off. It now uses CHIRP's Cross mode, NFM, Skip and Duplex off, and CHIRP import reads them all back
+- The Uniden export gave the scanner the tone the radio transmits; it now gives the one the radio expects on the receive frequency
+- RadioReference conventional channels: DPL codes and P25 NACs were read as CTCSS tones, and every channel went into an analog set as wide FM. FMN channels are now narrowband, P25 channels go to a P25 conventional set with their NAC, and DMR, NXDN, AM and other modes are left out and counted
+- `compare` said "Files are identical" (exit code 0) when a channel's frequency, tone, name or flags, a talkgroup, a trunk TX frequency, an IDEN element, a P25 conventional channel, a system setting or a radio option had changed. It now names the changed items and their fields, and reports anything else that differs
+- JSON import duplicated the default conventional set, lost P25 conventional sets and systems, the radio options, system IDs and every field without a readable key, and moved IDEN elements to other slots. An unedited export now imports to the same bytes (all 36 RPM-saved test files do)
+- `merge` named every system after the first one of its class, rebuilt P25 systems from defaults (system ID 0, no home unit ID, a guessed IDEN set), left P25 conventional systems out and could add a second set under a name already in use. It now copies systems and the sets they use exactly and reports name clashes
+- Adding a set under a name already used by a set of the same type is refused: systems find their sets by name
+- `wizard --modify FILE` ignored FILE and built a new personality; it now adds to FILE. The wizard replaced an existing output file without asking or keeping a backup
+
+### Changed
+- JSON exports carry every field of each set, channel and talkgroup (bytes as hex) and an `archive` block with the rest of the file; IDEN elements carry their slot (`index`)
+
 ## [1.1.0] - 2026-10-28
 
 ### Fixed
