@@ -38,15 +38,16 @@ def test_first_option_adds_xml_in_place(blank):
     assert 'gpsMode="OFF"' in extract_platform_xml(blank)
 
 
-@pytest.mark.parametrize("section,attr,value", [
-    ("gps", "gpsModee", "ON"),          # misspelt attribute
-    ("gps", "gpsMode", "BANANA"),       # not ON/OFF
-    ("misc", "batteryType", "STANDARD"),  # not in the enum
-    ("audioConfig/microphone[micType=INTERNAL]", "gain", "99"),  # > 12
-    ("nosuchsection", "x", "1"),
+@pytest.mark.parametrize("section,attr,value,why", [
+    ("gps", "gpsModee", "ON", "no attribute 'gpsModee'"),
+    ("gps", "gpsMode", "BANANA", "must be ON or OFF"),
+    ("misc", "batteryType", "STANDARD", "must be one of"),
+    ("audioConfig/microphone[micType=INTERNAL]", "gain", "99",
+     "must be <= 12"),
+    ("nosuchsection", "x", "1", "'nosuchsection' not found"),
 ])
-def test_bad_options_rejected(blank, section, attr, value):
-    with pytest.raises(ValueError):
+def test_bad_options_rejected(blank, section, attr, value, why):
+    with pytest.raises(ValueError, match=re.escape(why)):
         set_platform_option(blank, section, attr, value)
 
 

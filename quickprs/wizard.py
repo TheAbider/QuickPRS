@@ -38,6 +38,15 @@ def _input(prompt, default=None):
     return value if value else (default if default is not None else "")
 
 
+def _input_choice(prompt, choices):
+    """Ask until the answer is blank (skip) or one of ``choices``."""
+    while True:
+        value = _input(prompt, "").upper()
+        if not value or value in choices:
+            return value
+        print(f"  Choose one of: {', '.join(choices)}")
+
+
 def _input_yn(prompt, default=False):
     """Yes/no prompt.
 
@@ -283,17 +292,22 @@ def run_wizard(modify_file=None):
     print("--- Step 4: Radio Options ---")
     options = {}
 
-    gps = _input("Set GPS mode? [ON/off]", "")
+    from .option_maps import XML_FIELD_INDEX
+
+    gps = _input_choice("Set GPS mode? [ON/off]", ("ON", "OFF"))
     if gps:
-        options['gps.gpsMode'] = gps.upper()
+        options['gps.gpsMode'] = gps
 
     password = _input("Set radio password (blank to skip)", "")
     if password:
         options['misc.password'] = password
 
-    timezone = _input("Set timezone (e.g., PST, EST, UTC, blank to skip)", "")
+    # The radio's time zone is TimeDateCfg zone, one of RPM's abbreviations
+    zones = XML_FIELD_INDEX[("TimeDateCfg", "zone")].enum_values
+    timezone = _input_choice(
+        "Set time zone (e.g., PST, EST, GMT, blank to skip)", zones)
     if timezone:
-        options['display.timeZone'] = timezone.upper()
+        options['timedate.zone'] = timezone
     print()
 
     # --- Build ---

@@ -1206,3 +1206,94 @@ template = murs
         }
         channels = _parse_inline_channels(section)
         assert len(channels) == 1  # template key skipped
+
+
+class TestOptionsOnNewPersonality:
+    """[options] applies to a personality built from scratch (it used to
+    be skipped because a new personality has no options XML yet)."""
+
+    def test_options_are_applied(self, tmp_path):
+        import xml.etree.ElementTree as ET
+        from quickprs.option_maps import (
+            extract_platform_xml, _DEFAULT_PLATFORM_XML,
+        )
+        ini = tmp_path / "opts.ini"
+        ini.write_text("[personality]\nname = OPTS.PRS\n\n"
+                       "[channels.MURS]\ntemplate = murs\n\n"
+                       "[options]\ngps.gpsMode = OFF\n"
+                       "misc.password = 1234\n", encoding="utf-8")
+        xml = extract_platform_xml(build_from_config(str(ini)))
+        assert xml is not None
+        root = ET.fromstring(xml)
+        assert root.find("gpsConfig").get("gpsMode") == "OFF"
+        assert root.find("miscConfig").get("password") == "1234"
+        # set on RPM's elements, with nothing added beside them
+        assert ([c.tag for c in root] ==
+                [c.tag for c in ET.fromstring(_DEFAULT_PLATFORM_XML)])
+
+    def test_bad_option_is_an_error(self, tmp_path):
+        ini = tmp_path / "bad.ini"
+        ini.write_text("[personality]\nname = BAD.PRS\n\n"
+                       "[channels.MURS]\ntemplate = murs\n\n"
+                       "[options]\ngps.gpsMode = BANANA\n",
+                       encoding="utf-8")
+        with pytest.raises(ConfigError, match="gpsMode"):
+            build_from_config(str(ini))
+
+
+class TestOptionsRoundTrip:
+    """export-config writes repeated option elements (programmable
+    buttons, microphones, short menu) as lists; build must put them back
+    as elements, not as an attribute holding the list text."""
+
+    BUTTONS = ("[{'buttonName': 'TOP_SIDE', 'function': 'TALKAROUND_DIRECT',"
+               " 'delay': '0.0', 'extraData': ''},"
+               " {'buttonName': 'MID_SIDE', 'function': 'ZONE_UP',"
+               " 'delay': '0.0', 'extraData': ''},"
+               " {'buttonName': 'BOT_SIDE', 'function': 'ZONE_DOWN',"
+               " 'delay': '0.0', 'extraData': ''},"
+               " {'buttonName': 'EMERGENCY', 'function': 'EMERGENCY_CALL',"
+               " 'delay': '', 'extraData': ''}]")
+
+    def _build(self, tmp_path, lines):
+        ini = tmp_path / "rt.ini"
+        ini.write_text("[personality]\nname = RT.PRS\n\n"
+                       "[channels.MURS]\ntemplate = murs\n\n"
+                       "[options]\n" + lines, encoding="utf-8")
+        return build_from_config(str(ini))
+
+    def test_list_updates_elements(self, tmp_path):
+        import re
+        from quickprs.option_maps import extract_platform_xml
+        prs = self._build(tmp_path,
+                          f"progButtons.progButton = {self.BUTTONS}\n")
+        xml = extract_platform_xml(prs)
+        assert "[{" not in xml
+        buttons = re.findall(r"<progButton [^>]*>", xml)
+        assert len(buttons) == 4
+        assert 'buttonName="TOP_SIDE" function="TALKAROUND_DIRECT"' \
+            in buttons[0]
+
+    def test_list_with_wrong_count_is_an_error(self, tmp_path):
+        two = "[{'buttonName': 'TOP_SIDE'}, {'buttonName': 'MID_SIDE'}]"
+        with pytest.raises(ConfigError, match="4 <progButton>"):
+            self._build(tmp_path, f"progButtons.progButton = {two}\n")
+
+    def test_list_value_is_checked(self, tmp_path):
+        mics = ("[{'micType': 'INTERNAL', 'alc': 'OFF', 'gain': '99'},"
+                " {'micType': 'EXTERNAL', 'alc': 'OFF', 'gain': '0'}]")
+        with pytest.raises(ConfigError, match="gain must be <= 12"):
+            self._build(tmp_path, f"audioConfig.microphone = {mics}\n")
+
+    @pytest.mark.skipif(not (TESTDATA / "PAWSOVERMAWS.PRS").exists(),
+                        reason="Test PRS data not available")
+    def test_rpm_options_survive_export_and_build(self, tmp_path):
+        from quickprs.prs_parser import parse_prs
+        from quickprs.config_builder import export_config
+        from quickprs.option_maps import extract_platform_config
+        source = parse_prs(str(TESTDATA / "PAWSOVERMAWS.PRS"))
+        ini = tmp_path / "paws.ini"
+        export_config(source, str(ini))
+        built = build_from_config(str(ini))
+        assert (extract_platform_config(built) ==
+                extract_platform_config(source))

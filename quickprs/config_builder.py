@@ -405,36 +405,15 @@ def _apply_options(cfg, prs):
                 f"[options]: key '{key}' must be dot-separated "
                 f"(e.g., gps.gpsMode)")
 
-    from .option_maps import (
-        extract_platform_config, config_to_xml, write_platform_config,
-        _inject_platform_xml, _create_default_platform_xml,
-    )
-
-    # Get current platform config.  A new personality has none yet: start
-    # it from RPM's new-radio options, then apply the [options] lines.
-    config = extract_platform_config(prs)
-    if config is None:
-        if not _inject_platform_xml(prs, _create_default_platform_xml()):
-            raise ConfigError(
-                "[options]: this personality cannot take radio options")
-        config = extract_platform_config(prs)
-
-    # Apply each option
-    for key, value in options:
-        parts = key.split('.')
-
-        # Navigate into the config dict
-        target = config
-        for part in parts[:-1]:
-            if part not in target:
-                target[part] = {}
-            target = target[part]
-
-        target[parts[-1]] = value
-
-    # Write back
-    xml_str = config_to_xml(config)
-    write_platform_config(prs, xml_str)
+    # Checked like `quickprs set-option`, against the options RPM writes
+    # for a new radio when the personality has none yet.  Unknown
+    # attributes and disallowed values are errors: written into the XML
+    # they would add elements the radio does not have.
+    from .option_maps import apply_platform_options
+    try:
+        apply_platform_options(prs, options)
+    except ValueError as e:
+        raise ConfigError(f"[options] {e}") from e
 
 
 # ─── Export: PRS → INI config ──────────────────────────────────────

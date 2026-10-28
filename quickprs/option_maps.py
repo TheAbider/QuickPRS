@@ -350,6 +350,83 @@ def _check_option_value(field, value):
             raise ValueError(f"{field.attribute} must be <= {field.max_val}")
 
 
+def _platform_root(prs):
+    """The personality's platformConfig as an element tree, adding RPM's
+    new-radio options first when it has none."""
+    xml_str = extract_platform_xml(prs)
+    if xml_str is None:
+        if not _inject_platform_xml(prs, _create_default_platform_xml()):
+            raise ValueError(
+                "No platformConfig XML found and unable to create one")
+        xml_str = extract_platform_xml(prs)
+    return ET.fromstring(xml_str)
+
+
+def _write_platform_root(prs, root):
+    if not write_platform_config(prs, ET.tostring(root, encoding='unicode')):
+        raise ValueError("Failed to write updated XML back to PRS file")
+
+
+def _set_option_in_tree(root, section_name, attr_name, value, create=False):
+    target = _find_option_element(root, section_name)
+    if target is None:
+        valid = sorted({child.tag for child in root})
+        raise ValueError(
+            f"Section '{section_name}' not found in platformConfig. "
+            f"Available: {', '.join(valid)}")
+
+    field = _field_def(section_name, attr_name)
+    if target.get(attr_name) is None and field is None and not create:
+        known = sorted(target.attrib)
+        raise ValueError(
+            f"<{target.tag}> has no attribute '{attr_name}'. "
+            f"Attributes: {', '.join(known) or '(none)'}")
+    _check_option_value(field, value)
+    target.set(attr_name, str(value))
+
+
+def _child_field(parent_path, child, attr_name):
+    """Field definition for an attribute of a repeated element such as
+    <microphone> (indexed by micType) or <progButton> (by tag alone)."""
+    for key, val in child.attrib.items():
+        field = _field_def(f"{parent_path}/{child.tag}[{key}={val}]",
+                           attr_name)
+        if field is not None:
+            return field
+    return XML_FIELD_INDEX.get((child.tag, attr_name))
+
+
+def _set_children_in_tree(root, parent_path, tag, entries):
+    """Update the <tag> elements under ``parent_path`` from ``entries``,
+    one attribute dict per element in order (the form export-config
+    writes).  The radio has a fixed set of these, so the count must match
+    and only attributes the elements have can be set."""
+    parent = _find_option_element(root, parent_path)
+    if parent is None:
+        raise ValueError(f"Section '{parent_path}' not found in "
+                         f"platformConfig")
+    children = [c for c in parent if c.tag == tag]
+    if not children:
+        raise ValueError(f"<{parent.tag}> has no <{tag}> elements")
+    if (not isinstance(entries, list) or
+            not all(isinstance(e, dict) for e in entries)):
+        raise ValueError(f"<{tag}> entries must be a list of attribute "
+                         f"sets")
+    if len(entries) != len(children):
+        raise ValueError(f"<{parent.tag}> has {len(children)} <{tag}> "
+                         f"elements, got {len(entries)}")
+    full_path = "/".join(SECTION_MAP.get(p, p) if i == 0 else p
+                         for i, p in enumerate(parent_path.split("/")))
+    for child, attrs in zip(children, entries):
+        for attr_name, value in attrs.items():
+            field = _child_field(full_path, child, attr_name)
+            if child.get(attr_name) is None and field is None:
+                raise ValueError(f"<{tag}> has no attribute '{attr_name}'")
+            _check_option_value(field, value)
+        for attr_name, value in attrs.items():
+            child.set(attr_name, str(value))
+
+
 def set_platform_option(prs, section_name, attr_name, value,
                         create=False):
     """Modify a platformConfig XML attribute in the PRS file.
@@ -370,38 +447,45 @@ def set_platform_option(prs, section_name, attr_name, value,
         ValueError: no platformConfig and none could be added, unknown
             element or attribute, or a value the field does not allow.
     """
-    xml_str = extract_platform_xml(prs)
-    if xml_str is None:
-        # Start from the options RPM writes for a new radio
-        if not _inject_platform_xml(prs, _create_default_platform_xml()):
-            raise ValueError(
-                "No platformConfig XML found and unable to create one")
-        xml_str = extract_platform_xml(prs)
-
-    root = ET.fromstring(xml_str)
-    target = _find_option_element(root, section_name)
-    if target is None:
-        valid = sorted({child.tag for child in root})
-        raise ValueError(
-            f"Section '{section_name}' not found in platformConfig. "
-            f"Available: {', '.join(valid)}")
-
-    field = _field_def(section_name, attr_name)
-    if target.get(attr_name) is None and field is None and not create:
-        known = sorted(target.attrib)
-        raise ValueError(
-            f"<{target.tag}> has no attribute '{attr_name}'. "
-            f"Attributes: {', '.join(known) or '(none)'}")
-    _check_option_value(field, value)
-
-    target.set(attr_name, str(value))
-
-    # Rebuild XML and write back
-    new_xml_str = ET.tostring(root, encoding='unicode')
-    if not write_platform_config(prs, new_xml_str):
-        raise ValueError("Failed to write updated XML back to PRS file")
-
+    root = _platform_root(prs)
+    _set_option_in_tree(root, section_name, attr_name, value, create)
+    _write_platform_root(prs, root)
     return True
+
+
+def apply_platform_options(prs, options):
+    """Apply ``(key, value)`` option lines, all or none.
+
+    Keys are dotted paths ending in an attribute: ``gps.gpsMode``,
+    ``gpsConfig.gpsMode`` or ``accessoryConfig.accessoryButtons.x``.  A
+    value that is a list of attribute dicts updates repeated elements
+    (``progButtons.progButton = [{...}, ...]``), as export-config writes
+    them.  Every line is checked like set_platform_option before anything
+    is written.
+
+    Raises:
+        ValueError: naming the first line that cannot be applied.
+    """
+    import ast
+    root = _platform_root(prs)
+    for key, value in options:
+        section, _, attr_name = key.rpartition('.')
+        if not section or not attr_name:
+            raise ValueError(f"{key}: expected section.attribute")
+        path = section.replace('.', '/')
+        text = str(value).strip()
+        try:
+            if text.startswith('['):
+                try:
+                    entries = ast.literal_eval(text)
+                except (ValueError, SyntaxError) as e:
+                    raise ValueError(f"not a list of elements ({e})")
+                _set_children_in_tree(root, path, attr_name, entries)
+            else:
+                _set_option_in_tree(root, path, attr_name, value)
+        except ValueError as e:
+            raise ValueError(f"{key}: {e}") from e
+    _write_platform_root(prs, root)
 
 
 def list_platform_options(prs):
