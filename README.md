@@ -6,7 +6,7 @@ Generate and edit Harris XG-100P personality (.PRS) files without Harris RPM sof
 
 > **STATUS: In Development.** This tool is under active development. While the binary format has been extensively reverse-engineered and tested against known-good RPM files, it has NOT been exhaustively tested on all XG-100P hardware revisions and firmware versions. Test on non-critical equipment first.
 
-> **IMPORTANT: This tool does NOT load mission plans onto radios.** QuickPRS generates and edits .PRS personality files. To actually load a personality onto an XG-100P radio, you still need Harris RPM software (for now). The `quickprs radio` commands are groundwork for reading radios directly over Bluetooth: they find the radio and record RPM's sessions with it, and never send bytes of their own (see [docs/bluetooth.md](docs/bluetooth.md)).
+> **IMPORTANT: This tool does NOT load mission plans onto radios.** QuickPRS generates and edits .PRS personality files. To actually load a personality onto an XG-100P radio, you still need Harris RPM software (for now). The `quickprs radio` commands are groundwork for reading radios directly over Bluetooth: they find the radio, record RPM's sessions with it and replay a recorded read to test reading without RPM, and never send bytes of their own (see [docs/bluetooth.md](docs/bluetooth.md)).
 
 ## RadioReference Integration
 
@@ -70,7 +70,7 @@ The GUI includes a dedicated RadioReference import wizard (File > Import Wizard)
 - Full GUI with tree view, inline editing, drag-and-drop, and RadioReference import wizard
 - Built-in channel templates (MURS, GMRS, FRS, Marine, NOAA, Interop, Public Safety)
 - Built-in list of 28 US P25 systems as a starting point (IDs unverified except where marked: confirm them before programming)
-- Bluetooth groundwork: find a paired radio and record RPM's sessions with it (`quickprs radio`)
+- Bluetooth groundwork: find a paired radio, record RPM's sessions with it and replay a read (`quickprs radio`)
 - JSON export/import for human-editable radio configs
 - Export to CHIRP CSV, Uniden CSV, SDRTrunk, DSD+, Markdown, INI
 - Merge, clone, and compare PRS files

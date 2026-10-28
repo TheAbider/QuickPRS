@@ -9,7 +9,9 @@ change::
     {"t": 0.0456, "dir": "radio>pc", "hex": "5a 01 ..."}
     {"t": 0.0460, "event": "pc dtr=1 rts=0"}
 
-``t`` is seconds since the session started.  Directions are named from the
+``t`` is seconds since the session started.  A capture is never
+written over: when the file exists, the writer takes the next free name
+(``read-2.jsonl``, ``read-3.jsonl`` ...) and says so in ``path``.  Directions are named from the
 radio's side of the conversation: ``pc>radio`` is what RPM (or the PC)
 sent, ``radio>pc`` what the radio answered.
 """
@@ -17,6 +19,7 @@ sent, ``radio>pc`` what the radio answered.
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
+from pathlib import Path
 import threading
 import time
 
@@ -48,8 +51,21 @@ class Capture:
                    if direction is None or c.direction == direction)
 
 
+def _create(path):
+    """A new file at ``path``, or at the next free numbered name when that
+    is taken, and the path used."""
+    first = Path(path)
+    p, n = first, 1
+    while True:
+        try:
+            return open(p, "x", encoding="utf-8", newline="\n"), p
+        except FileExistsError:
+            n += 1
+            p = first.with_name(f"{first.stem}-{n}{first.suffix}")
+
+
 class CaptureWriter:
-    """Append chunks to a capture file as they happen.
+    """Append chunks to a new capture file as they happen.
 
     Each line is flushed at once, so a crash or Ctrl+C keeps everything
     read so far, and a lock keeps lines whole when two threads (the two
@@ -57,7 +73,7 @@ class CaptureWriter:
     """
 
     def __init__(self, path, note=""):
-        self._f = open(path, "w", encoding="utf-8", newline="\n")
+        self._f, self.path = _create(path)
         self._t0 = time.monotonic()
         self._lock = threading.Lock()
         header = {"capture": "quickprs", "version": 1,
@@ -85,8 +101,10 @@ class CaptureWriter:
             self._write({"t": self._now() if t is None else t,
                          "dir": direction, "hex": data.hex(" ")})
 
-    def event(self, text):
-        self._write({"t": self._now(), "event": str(text)})
+    def event(self, text, t=None):
+        """Log an event, such as a modem-line change; ``t`` as for add."""
+        self._write({"t": self._now() if t is None else t,
+                     "event": str(text)})
 
     def close(self):
         self._f.close()

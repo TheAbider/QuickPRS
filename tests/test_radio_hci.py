@@ -212,6 +212,20 @@ def test_sniff_command_from_a_file(tmp_path, capsys):
     assert "radio to RPM: 300 bytes" in capsys.readouterr().out
 
 
+def test_sniff_never_writes_over_a_capture(tmp_path, capsys):
+    from quickprs.radio.commands import cmd_radio_sniff
+    trace = tmp_path / "trace.pcap"
+    trace.write_bytes(pcap(session()[1]))
+    log = tmp_path / "read.jsonl"
+    log.write_text("an earlier capture\n")
+    assert cmd_radio_sniff(pcap=str(trace), log=str(log),
+                           address=RADIO) == 0
+    assert log.read_text() == "an earlier capture\n"
+    assert read_capture(tmp_path / "read-2.jsonl").stream("pc>radio") == (
+        b"hello")
+    assert "read-2.jsonl" in capsys.readouterr().out
+
+
 def test_sniff_command_live(tmp_path):
     """The sniffer serves the trace on TCP and closes when it stops."""
     from quickprs.radio.commands import cmd_radio_sniff
@@ -305,3 +319,58 @@ def test_trace_report_says_why_nothing_was_found(records, linktype, words):
     list(hci.serial_chunks(hci.read_packets(io.BytesIO(
         pcap(records, linktype=linktype))), stats=stats))
     assert words in "\n".join(hci.describe(stats))
+
+
+# ── modem lines ───────────────────────────────────────────────────────
+
+def msc(signals, command=True, dlci=2):
+    """An RFCOMM modem status message for the control channel."""
+    return bytes([hci.MSC_COMMAND if command else 0xE1, (2 << 1) | 1,
+                  (dlci << 2) | 0b11, signals])
+
+
+def control(cid, payload, cr):
+    return l2cap(cid, rfcomm(0, hci.RFCOMM_UIH, payload, cr=cr))
+
+
+def test_modem_lines_from_the_control_channel(tmp_path):
+    """Each side's modem status command becomes a line event; the answers
+    that echo them are left out."""
+    _, records = session()
+    records = records[:5] + [
+        # the PC: DTR on, RTS off
+        (100.45, SENT, acl(H, control(0x0041, msc(0x05), cr=1))),
+        (100.46, RECV, acl(H, control(0x0040, msc(0x05, command=False),
+                                      cr=0))),
+        # the radio: CTS and RI on
+        (100.47, RECV, acl(H, control(0x0040, msc(0x49), cr=0))),
+    ] + records[5:]
+    out = chunks(records, address=RADIO)
+    assert [(d, x) for d, x in out if isinstance(x, str)] == [
+        ("pc>radio", "pc dtr=1 rts=0"),
+        ("radio>pc", "radio dsr=0 cts=1 ri=1 dcd=0"),
+    ]
+    assert b"".join(x for d, x in out if d == "pc>radio"
+                    and isinstance(x, bytes)) == b"hello"
+
+    from quickprs.radio.commands import cmd_radio_sniff
+    trace = tmp_path / "trace.pcap"
+    trace.write_bytes(pcap(records))
+    log = tmp_path / "read.jsonl"
+    assert cmd_radio_sniff(pcap=str(trace), log=str(log),
+                           address=RADIO) == 0
+    assert read_capture(log).events == [
+        (0.45, "pc dtr=1 rts=0"), (0.47, "radio dsr=0 cts=1 ri=1 dcd=0")]
+
+
+def test_modem_lines_mid_session():
+    """Without the connection setup, the control channel counts once a
+    data frame has shown which channel RFCOMM is on."""
+    records = [
+        (1.0, SENT, acl(H, control(0x0041, msc(0x0D), cr=1))),
+        (1.1, SENT, acl(H, l2cap(0x0041, rfcomm(
+            2, hci.RFCOMM_UIH, b"hi", pf=True, credits=1)))),
+        (1.2, SENT, acl(H, control(0x0041, msc(0x01), cr=1))),
+    ]
+    assert chunks(records) == [("pc>radio", b"hi"),
+                               ("pc>radio", "pc dtr=0 rts=0")]

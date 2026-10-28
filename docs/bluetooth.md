@@ -6,7 +6,12 @@ what RPM and the radio say to each other, so the programming protocol can be
 learned from real sessions instead of guessed.
 
 **None of these commands sends a byte of its own to the radio.** The relay
-forwards only what RPM sends.
+forwards only what RPM sends, and `replay` sends only the requests RPM sent
+in a captured read.
+
+A capture is never written over: when the file named with `--log` exists,
+the command takes the next free name (`read-2.jsonl`, `read-3.jsonl` ...)
+and says which.
 
 ## Bluetooth Classic, not BLE
 
@@ -92,8 +97,10 @@ After Ctrl+C the report should list RFCOMM frames (the channel opening and
 closing) even though nothing was sent.
 
 A full trace holds more than the serial data (Bluetooth link keys among
-it); QuickPRS writes only the serial bytes, and only from the radio's link
-once the trace has shown which link that is. `--pcap trace.pcapng` reads a
+it); QuickPRS writes only the serial bytes and each side's modem lines (the
+PC's DTR and RTS, the radio's DSR, CTS, RI and DCD, from RFCOMM's modem
+status commands), and only from the radio's link once the trace has shown
+which link that is. `--pcap trace.pcapng` reads a
 trace saved from Wireshark instead. Traces with or without a direction
 header (pcap link types 201 and 187) both work.
 
@@ -146,13 +153,40 @@ A capture is a JSON Lines file: a header line, then one line per chunk read
 (`t` seconds since the start, `dir` `pc>radio` or `radio>pc`, `hex` bytes)
 and modem-line events.
 
+## Replay a read
+
+```bash
+quickprs radio replay read.jsonl --requests 3
+quickprs radio replay read.jsonl
+```
+
+`replay` sends the requests RPM sent in a captured read to the radio again,
+in order, and compares each answer with the one RPM got. It is the first
+test of whether QuickPRS can read the radio by itself: when every answer is
+the same, RPM's requests can become QuickPRS's own read command. At the
+first answer that differs it stops and says where (`--keep-going` sends the
+rest anyway): something in the session changes each time, a counter, a time
+or a challenge, and those bytes need decoding first. It also stops when the
+radio does not answer. `--requests N` sends only the first N requests.
+
+Only reads are replayed. The capture must show the radio sending a
+personality and RPM sending none, and RPM must have sent less than the
+radio. A write, an activate or a remove changes the radio, so a capture of
+one is refused before the port is opened.
+
+Where RPM got no answer to a request, `replay` keeps RPM's pause before the
+next one (up to 5 seconds), and it sets DTR and RTS as RPM did when the
+capture recorded them. The replay is saved as a capture too
+(`replay.jsonl` by default), so `analyze` and `--extract` work on it.
+
 ## Next steps
 
 ```mermaid
 flowchart LR
-    A["capture RPM<br/>extracting"] --> B["decode the<br/>framing and commands"]
-    B --> C["read a radio<br/>with QuickPRS"]
-    C --> D["capture RPM<br/>writing"] --> E["write a radio<br/>with QuickPRS"]
+    A["capture RPM<br/>extracting"] --> B["replay the read"]
+    B -->|"same answers"| C["read a radio<br/>with QuickPRS"]
+    B -->|"answers differ"| D["decode the<br/>framing and commands"] --> C
+    C --> E["capture RPM<br/>writing"] --> F["write a radio<br/>with QuickPRS"]
 ```
 
 Writing comes last and only after reading works and the write session is

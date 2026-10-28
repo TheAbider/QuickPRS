@@ -4411,13 +4411,16 @@ def build_parser():
     # radio (Bluetooth / serial link to the radio itself)
     p_radio = sub.add_parser(
         "radio",
-        help="Find a paired radio, listen to it, or log RPM talking to it",
+        help="Find a paired radio, listen to it, log RPM talking to it "
+             "or replay a read",
         formatter_class=fmt,
         epilog="The XG-100P's Bluetooth is Classic (serial port profile), "
                "which RPM\n"
                "programs over just like the USB cable. These commands "
                "never send\n"
-               "their own bytes to the radio.\n"
+               "their own bytes to the radio; replay sends only RPM's "
+               "requests from a\n"
+               "captured read.\n"
                "Examples:\n"
                "  quickprs radio scan\n"
                "  quickprs radio probe --port COM6 --seconds 15 "
@@ -4426,6 +4429,7 @@ def build_parser():
                "  quickprs radio relay --pc-port COM21 --radio-port COM6 "
                "--log read.jsonl\n"
                "  quickprs radio analyze read.jsonl --transcript 60\n"
+               "  quickprs radio replay read.jsonl --requests 3\n"
                "  quickprs radio analyze read.jsonl --extract radio.PRS")
     radio_sub = p_radio.add_subparsers(dest="radio_cmd")
     p_rscan = radio_sub.add_parser(
@@ -4484,6 +4488,24 @@ def build_parser():
     p_ranalyze.add_argument("--extract", default=None,
                             help="Write a personality archive found in the "
                                  "radio's replies to this .PRS path")
+    p_rreplay = radio_sub.add_parser(
+        "replay",
+        help="Send RPM's requests from a captured read to the radio again "
+             "and compare the answers")
+    p_rreplay.add_argument("capture",
+                           help="Capture (.jsonl) of RPM reading the radio")
+    p_rreplay.add_argument("--port", default=None,
+                           help="COM port (default: the one paired radio)")
+    p_rreplay.add_argument("--log", default="replay.jsonl",
+                           help="Capture file for the replay (default "
+                                "replay.jsonl, or the next free name)")
+    p_rreplay.add_argument("--requests", type=int, default=None,
+                           metavar="N", help="Send only the first N requests")
+    p_rreplay.add_argument("--timeout", type=float, default=3.0,
+                           help="Seconds to wait for an answer (default 3)")
+    p_rreplay.add_argument("--keep-going", action="store_true",
+                           help="Carry on past answers that are not the "
+                                "ones RPM got")
 
     p_icsv = sub.add_parser(
         "import-csv",
@@ -5776,6 +5798,11 @@ def run_cli(args=None):
                 return radio_commands.cmd_radio_analyze(
                     parsed.capture, extract=parsed.extract,
                     transcript=parsed.transcript)
+            if parsed.radio_cmd == "replay":
+                return radio_commands.cmd_radio_replay(
+                    parsed.capture, port=parsed.port, log=parsed.log,
+                    requests=parsed.requests, timeout=parsed.timeout,
+                    keep_going=parsed.keep_going)
             subcommand_parsers["radio"].print_help()
             return 1
         elif parsed.command == "import-csv":

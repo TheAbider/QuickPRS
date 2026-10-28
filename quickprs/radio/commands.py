@@ -100,8 +100,8 @@ def cmd_radio_probe(port=None, seconds=10.0, log=None, dtr=False,
         if writer is not None:
             writer.close()
     print(f"Received {offset[0]} bytes: {classify(data)}.")
-    if log:
-        print(f"Capture saved to {log}")
+    if writer is not None:
+        print(f"Capture saved to {writer.path}")
     return 0
 
 
@@ -128,11 +128,11 @@ def cmd_radio_relay(pc_port, radio_port=None, log="session.jsonl",
     def tally(direction, data):
         counts[direction] += len(data)
 
-    print(f"Relaying {pc_port} (RPM side) <-> {radio_port} (radio), "
-          f"logging to {log}. Point RPM at the other end of the virtual "
-          f"pair, run the operation, then press Ctrl+C here.")
     with CaptureWriter(log, note=note or
                        f"relay {pc_port} <-> {radio_port}") as writer:
+        print(f"Relaying {pc_port} (RPM side) <-> {radio_port} (radio), "
+              f"logging to {writer.path}. Point RPM at the other end of the "
+              f"virtual pair, run the operation, then press Ctrl+C here.")
         try:
             errors = run_relay(pc, radio, writer=writer, on_chunk=tally)
         finally:
@@ -142,7 +142,7 @@ def cmd_radio_relay(pc_port, radio_port=None, log="session.jsonl",
           f"RPM: {counts['radio>pc']:,} bytes.")
     for direction, e in errors:
         print(f"  {direction} ended: {e}", file=sys.stderr)
-    print(f"Analyze with: quickprs radio analyze {log}")
+    print(f"Analyze with: quickprs radio analyze {writer.path}")
     return 0
 
 
@@ -192,10 +192,14 @@ def cmd_radio_sniff(host="127.0.0.1", port=24352, log="session.jsonl",
 
     stats = TraceStats()
     with CaptureWriter(log, note=note) as writer:
+        print(f"Writing the serial data to {writer.path}")
         try:
             for t, direction, data in serial_chunks(read_packets(stream),
                                                     address=address,
                                                     stats=stats):
+                if isinstance(data, str):      # a modem line change
+                    writer.event(data, t=t)
+                    continue
                 writer.add(direction, data, t=t)
                 counts[direction] += len(data)
         except KeyboardInterrupt:
@@ -208,8 +212,61 @@ def cmd_radio_sniff(host="127.0.0.1", port=24352, log="session.jsonl",
         print(line)
     print(f"RPM to radio: {counts['pc>radio']:,} bytes; radio to RPM: "
           f"{counts['radio>pc']:,} bytes.")
-    print(f"Analyze with: quickprs radio analyze {log}")
+    print(f"Analyze with: quickprs radio analyze {writer.path}")
     return 0
+
+
+def cmd_radio_replay(capture_path, port=None, log="replay.jsonl",
+                     requests=None, timeout=3.0, keep_going=False,
+                     quiet=0.3):
+    """Send RPM's requests from a captured read to the radio again and
+    compare the answers with the ones RPM got."""
+    from .replay import capture_lines, replay, steps, why_refused
+    if requests is not None and requests < 1:
+        print("Error: --requests must be at least 1", file=sys.stderr)
+        return 1
+    try:
+        cap = read_capture(capture_path)
+    except (OSError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    reason = why_refused(cap)
+    if reason:
+        print(f"Not replaying {capture_path}: {reason}.", file=sys.stderr)
+        return 1
+    plan = steps(cap)
+    if requests is not None:
+        plan = plan[:requests]
+    port = _pick_port(port)
+    if port is None:
+        return 1
+    lines = capture_lines(cap)
+    dtr, rts = lines or (False, False)
+    try:
+        link = open_serial(port, dtr=dtr, rts=rts)
+    except LinkError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    with CaptureWriter(log, note=f"replay of {capture_path} on "
+                                 f"{port}") as writer:
+        print(f"Sending RPM's {len(plan)} requests "
+              f"({sum(len(s.request) for s in plan):,} bytes) to {port} "
+              f"and comparing each answer with the one RPM got; logging "
+              f"to {writer.path}.")
+        try:
+            result = replay(link, plan, writer=writer, timeout=timeout,
+                            quiet=quiet, keep_going=keep_going)
+        finally:
+            link.close()
+    for d in result.differences:
+        print(f"  request {d.step + 1}: {d.describe()}")
+    print(f"Sent {result.sent} of {len(plan)} requests; {result.same} "
+          f"answers were the ones RPM got.")
+    if result.stopped:
+        print(f"Stopped: {result.stopped}.")
+    print(f"Analyze with: quickprs radio analyze {writer.path} "
+          f"--extract radio.PRS")
+    return 0 if result.same == len(plan) else 1
 
 
 def cmd_radio_analyze(capture_path, extract=None, transcript=None):
