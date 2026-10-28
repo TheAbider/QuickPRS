@@ -87,7 +87,7 @@ The GUI includes a dedicated RadioReference import wizard (File > Import Wizard)
 - Comprehensive validation against XG-100P hardware limits
 - File repair and data salvage for damaged PRS files
 - Lossless binary roundtrip (parse and rewrite produces byte-identical output)
-- 5,400+ automated tests
+- 5,600+ automated tests
 
 ## Quick Start
 

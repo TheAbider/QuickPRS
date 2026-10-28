@@ -2,7 +2,7 @@
 
 All notable changes to QuickPRS will be documented in this file.
 
-## [Unreleased]
+## [1.2.0] - 2026-10-28
 
 ### Fixed
 - Templates: FRS, GMRS 8-14, MURS 1-3 and the public safety simplex channels were 25 kHz channels where the FCC allows 12.5 kHz or less (47 CFR 95.573, 95.1773, 95.2773, 90.209(b)(5)); they are narrowband now. Marine channel 70 carries DSC only (no voice) and is no longer in the marine template
@@ -14,9 +14,23 @@ All notable changes to QuickPRS will be documented in this file.
 - `merge` named every system after the first one of its class, rebuilt P25 systems from defaults (system ID 0, no home unit ID, a guessed IDEN set), left P25 conventional systems out and could add a second set under a name already in use. It now copies systems and the sets they use exactly and reports name clashes
 - Adding a set under a name already used by a set of the same type is refused: systems find their sets by name
 - `wizard --modify FILE` ignored FILE and built a new personality; it now adds to FILE. The wizard replaced an existing output file without asking or keeping a backup
+- Renaming a set (`edit --rename-set`, the GUI) left the systems that use it naming a set that no longer existed; their references now follow the rename, as does a P25 conventional set's talkgroup set reference. A name already in use is refused
+- The personality name and user name are stored twice in a file (RPM writes both copies the same); `edit --name/--author`, `fleet` and `clone-personality --name` changed only one
+- `export-config` dropped narrowband, TX-off and scan-off from conventional channels (PAWSOVERMAWS's FURRY NB set came back from `build` as 25 kHz channels) and wrote `template = X` for any set with a template's frequencies, so a MURS set programmed wide would build narrowband
+- The CSV files `template-csv` writes did not work: inject and fleet read their `#` comment lines as data
+- The RadioReference cache dropped conventional channels, categories (the GUI's category filter) and color codes
+- Validation checked frequencies against 30-960 MHz, so 220 or 900 MHz passed; it now checks the XG-100P's bands (136-174, 380-520, 762-870 MHz). It no longer warns about a trunk set and talkgroup set sharing a name, or about PTCT, RPM's default 2-position switch function: RPM writes both
+- New analog channels get the values RPM writes in every channel it creates (85 in both tone address fields, the tone mode flag set); QuickPRS wrote 0, 0 and off
+- GUI: with the search filtering rows, editing or moving a trunk channel changed another channel; Export to CSV on a P25 conventional set wrote an empty file; the NAC editor and IDEN set delete spliced raw sections (IDEN delete left a stale count); the RadioReference fetch thread called Tk; deleting a set now names the systems that use it
+
+### Added
+- `edit --rename-set` takes `iden` and `p25conv` sets
+- Config file channel lines take an optional seventh field of flags: `nb`, `rxonly`, `noscan`
+- `merge` merges P25 conventional systems
 
 ### Changed
 - JSON exports carry every field of each set, channel and talkgroup (bytes as hex) and an `archive` block with the rest of the file; IDEN elements carry their slot (`index`)
+- `compare` matches items by key and names the fields that changed
 
 ## [1.1.0] - 2026-10-28
 
