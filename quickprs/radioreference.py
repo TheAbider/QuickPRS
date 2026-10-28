@@ -1201,6 +1201,31 @@ class ConvChannelData:
     description: str = ""   # description/notes
     tx_freq: float = 0.0    # TX freq (0 = same as freq / simplex)
     tx_tone: str = ""       # TX tone
+    nac: int = -1           # P25 network access code (-1 = none given)
+
+
+def parse_rr_tone(text):
+    """Read RadioReference's Tone column.
+
+    Returns ('ctcss', '136.5'), ('dcs', 'D023'), ('nac', 0x293) or
+    (None, '') for '136.5 PL', '023 DPL' or 'D023 N', '293 NAC' or
+    'NAC 293', and 'CSQ' (carrier squelch) or anything unreadable.
+    """
+    from .freq_tools import validate_ctcss_tone
+    t = text.strip().upper()
+    m = re.search(r'NAC\s*\$?([0-9A-F]{1,3})\b|\$?\b([0-9A-F]{1,3})\s*NAC\b',
+                  t)
+    if m:
+        return 'nac', int(m.group(1) or m.group(2), 16)
+    m = re.search(r'\bD?(\d{3})\s*(?:DPL|DCS)\b|\bDCS\s*(\d{3})\b'
+                  r'|\bD(\d{3})(?:\s*([NI]))?\b', t)
+    if m:
+        code = m.group(1) or m.group(2) or m.group(3)
+        return 'dcs', f"D{code}" + ("I" if m.group(4) == "I" else "")
+    m = re.search(r'\b(\d{2,3}\.\d)\b', t)
+    if m and validate_ctcss_tone(m.group(1)):
+        return 'ctcss', m.group(1)
+    return None, ''
 
 
 def parse_pasted_conv_channels(text):
@@ -1316,11 +1341,11 @@ def _parse_conv_line(line, col_map):
             elif col == 'description':
                 ch.description = val
             elif col == 'tone':
-                # Parse tone: "136.5 PL" -> "136.5", "D023 N" -> "D023"
-                tone_match = re.match(
-                    r'([\d.]+)\s*(?:PL)?|(D\d{3})\s*(?:N)?', val)
-                if tone_match:
-                    ch.tone = tone_match.group(1) or tone_match.group(2)
+                kind, tone = parse_rr_tone(val)
+                if kind == 'nac':
+                    ch.nac = tone
+                elif kind:
+                    ch.tone = tone
             elif col == 'mode':
                 ch.mode = val
             elif col == 'input':
@@ -1346,10 +1371,11 @@ def _parse_conv_line(line, col_map):
 
     # Try to extract tone from second part
     if len(parts) >= 2:
-        tone_match = re.match(
-            r'^([\d.]+)\s*(?:PL)?$|^(D\d{3})\s*(?:N)?$', parts[1])
-        if tone_match:
-            ch.tone = tone_match.group(1) or tone_match.group(2)
+        kind, tone = parse_rr_tone(parts[1])
+        if kind == 'nac':
+            ch.nac = tone
+        elif kind:
+            ch.tone = tone
         else:
             ch.name = parts[1]
 
@@ -1362,44 +1388,112 @@ def _parse_conv_line(line, col_map):
     return ch
 
 
+# RadioReference modes an analog conventional channel can carry; a
+# channel with no mode given is taken as analog unless it has a NAC
+ANALOG_MODES = {"", "FM", "FMN", "NFM"}
+NARROW_MODES = {"FMN", "NFM"}
+
+
+def conv_channel_kind(ch):
+    """'analog', 'p25' or None (a mode the XG-100P's conventional sets do
+    not carry: DMR, NXDN, AM, telemetry and the like)."""
+    mode = (ch.mode or "").strip().upper()
+    if mode.startswith("P25") or (not mode and ch.nac >= 0):
+        return "p25"
+    if mode in ANALOG_MODES:
+        return "analog"
+    return None
+
+
+def _conv_names(ch):
+    """(short_name, long_name) from a channel's name, description or
+    frequency."""
+    short = ch.name[:8].upper() if ch.name else f"{ch.freq:.4f}"[:8]
+    if ch.description:
+        long = ch.description[:16].upper()
+    elif ch.name:
+        long = ch.name[:16].upper()
+    else:
+        long = short
+    return short, long
+
+
 def conv_channels_to_set_data(channels):
-    """Convert ConvChannelData list to dicts for make_conv_set().
+    """Convert the analog channels of a ConvChannelData list to dicts for
+    make_conv_set(); P25 and other digital channels are left out (see
+    p25_conv_channels_to_set_data and conv_channel_kind).
 
     Generates short_name (8-char) and long_name (16-char) from the channel
     data. If no name is available, generates from frequency.
 
-    Args:
-        channels: list of ConvChannelData objects
-
     Returns:
         list of dicts with keys: short_name, tx_freq, rx_freq, tx_tone,
-        rx_tone, long_name
+        rx_tone, long_name, narrowband
     """
     result = []
     for ch in channels:
-        # Generate names from available data
-        if ch.name:
-            short = ch.name[:8].upper()
-        else:
-            # Format freq as name: "155.7600" or "462.562"
-            short = f"{ch.freq:.4f}"[:8]
-
-        if ch.description:
-            long = ch.description[:16].upper()
-        elif ch.name:
-            long = ch.name[:16].upper()
-        else:
-            long = short
-
-        # TX freq: use explicit tx_freq if set, else same as RX (simplex)
-        tx_freq = ch.tx_freq if ch.tx_freq > 0 else ch.freq
-
+        if conv_channel_kind(ch) != "analog":
+            continue
+        short, long = _conv_names(ch)
         result.append({
             'short_name': short,
-            'tx_freq': tx_freq,
+            # TX freq: explicit input frequency, else simplex
+            'tx_freq': ch.tx_freq if ch.tx_freq > 0 else ch.freq,
             'rx_freq': ch.freq,
-            'tx_tone': ch.tone,
-            'rx_tone': ch.tone,  # same tone for TX and RX by default
+            'tx_tone': ch.tx_tone or ch.tone,
+            'rx_tone': ch.tone,
+            'long_name': long,
+            'narrowband': (ch.mode or "").strip().upper() in NARROW_MODES,
+        })
+    return result
+
+
+def p25_conv_channels_to_set_data(channels):
+    """Dicts for make_p25_conv_set() from the P25 channels of a
+    ConvChannelData list (NAC 293, the P25 default, when none is given)."""
+    result = []
+    for ch in channels:
+        if conv_channel_kind(ch) != "p25":
+            continue
+        short, long = _conv_names(ch)
+        nac = ch.nac if ch.nac >= 0 else 0x293
+        result.append({
+            'short_name': short,
+            'tx_freq': ch.tx_freq if ch.tx_freq > 0 else ch.freq,
+            'rx_freq': ch.freq,
+            'nac_tx': nac,
+            'nac_rx': nac,
             'long_name': long,
         })
     return result
+
+
+def add_rr_conv_channels(prs, set_name, long_name, channels):
+    """Add pasted RadioReference conventional channels to a personality:
+    analog ones as a conventional system and set named set_name, P25 ones
+    as a P25 conventional system and set (set_name with P25 at the end).
+
+    Returns (analog_count, p25_count, skipped) where skipped lists the
+    channels whose mode neither can carry.
+    """
+    from .injector import (add_conv_system, add_p25_conv_set,
+                           add_p25_conv_system, make_conv_set,
+                           make_p25_conv_set)
+    from .record_types import ConvSystemConfig, P25ConvSystemConfig
+    analog = conv_channels_to_set_data(channels)
+    p25 = p25_conv_channels_to_set_data(channels)
+    skipped = [ch for ch in channels if conv_channel_kind(ch) is None]
+    set_name = set_name[:8]
+    long_name = long_name[:16].upper()
+    if analog:
+        add_conv_system(prs, ConvSystemConfig(
+            system_name=set_name, long_name=long_name,
+            conv_set_name=set_name),
+            conv_set=make_conv_set(set_name, analog))
+    if p25:
+        p25_name = f"{set_name[:5]}P25"
+        add_p25_conv_set(prs, make_p25_conv_set(p25_name, p25))
+        add_p25_conv_system(prs, P25ConvSystemConfig(
+            system_name=p25_name, long_name=long_name,
+            conv_set_name=p25_name))
+    return len(analog), len(p25), skipped

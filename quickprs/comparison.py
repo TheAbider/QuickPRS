@@ -1,9 +1,13 @@
 """PRS file comparison — diff two personality files at a semantic level.
 
-Compares systems, group sets, trunk sets, IDEN sets, and conv sets between
-two parsed PRS files. Produces a structured list of differences.
+Compares systems, group sets, trunk sets, IDEN sets, conv sets and P25
+conv sets between two parsed PRS files, item by item, then compares the
+two archive trees so that a difference in anything else (system settings,
+radio options, personality fields) is reported too.  Produces a
+structured list of differences.
 """
 
+import dataclasses
 import logging
 
 from .prs_parser import parse_prs
@@ -13,6 +17,7 @@ logger = logging.getLogger("quickprs")
 from .record_types import (
     parse_group_section, parse_trunk_channel_section,
     parse_conv_channel_section, parse_iden_section,
+    parse_p25_conv_channel_section,
     parse_system_short_name, parse_system_long_name,
     parse_system_set_refs,
     is_system_config_data,
@@ -37,8 +42,10 @@ def compare_prs(prs_a, prs_b):
     diffs.extend(_compare_group_sets(prs_a, prs_b))
     diffs.extend(_compare_trunk_sets(prs_a, prs_b))
     diffs.extend(_compare_conv_sets(prs_a, prs_b))
+    diffs.extend(_compare_p25_conv_sets(prs_a, prs_b))
     diffs.extend(_compare_iden_sets(prs_a, prs_b))
     diffs.extend(_compare_sections(prs_a, prs_b))
+    diffs.extend(_compare_documents(prs_a, prs_b, diffs))
     diffs.extend(_compare_size(prs_a, prs_b))
     return diffs
 
@@ -185,45 +192,115 @@ def _compare_set_type(prs_a, prs_b, label, data_cls, set_cls,
     return diffs
 
 
-def _diff_groups(gs_a, gs_b):
-    """Detail diff for group sets — compares talkgroup IDs."""
-    ids_a = {g.group_id for g in gs_a.groups}
-    ids_b = {g.group_id for g in gs_b.groups}
-    added, removed = ids_b - ids_a, ids_a - ids_b
-    if added or removed:
-        parts = []
-        if added:
-            parts.append(f"+{len(added)} TGs")
-        if removed:
-            parts.append(f"-{len(removed)} TGs")
-        return (f"{len(gs_a.groups)}->{len(gs_b.groups)} "
-                f"({', '.join(parts)})")
-    return None
+# Set fields that hold archive bookkeeping (class tags, and bytes that
+# belong to the section rather than to the set), not settings
+_BOOKKEEPING = frozenset({"separator", "set_marker", "trailing_bytes",
+                          "trailing_uint16", "gap_bytes"})
+
+# How many names a change line lists before "and N more"
+_SHOW = 3
 
 
-def _diff_trunks(ts_a, ts_b):
-    """Detail diff for trunk sets — compares frequencies."""
-    freqs_a = {(round(c.rx_freq, 5),) for c in ts_a.channels}
-    freqs_b = {(round(c.rx_freq, 5),) for c in ts_b.channels}
-    added, removed = freqs_b - freqs_a, freqs_a - freqs_b
-    if added or removed:
+def _changed_fields(a, b, skip=frozenset()):
+    """Names of the dataclass fields that differ between a and b; private
+    fields (undecoded flag bytes) are reported as "other flags"."""
+    names = [f.name for f in dataclasses.fields(a)
+             if f.name not in skip and getattr(a, f.name) != getattr(b, f.name)]
+    shown = [n for n in names if not n.startswith("_")]
+    if len(shown) < len(names):
+        shown.append("other flags")
+    return shown
+
+
+def _listed(names):
+    names = list(names)
+    text = ", ".join(names[:_SHOW])
+    if len(names) > _SHOW:
+        text += f" and {len(names) - _SHOW} more"
+    return text
+
+
+def _diff_items(items_a, items_b, key, label, noun):
+    """Describe how two item lists differ, or None when they are equal.
+
+    Items are matched by key (a talkgroup ID, a channel name ...); a
+    matched item whose fields differ is a change, listed with the fields
+    that changed.
+    """
+    if items_a == items_b:
+        return None
+    map_a, map_b = {}, {}
+    for item in items_a:
+        map_a.setdefault(key(item), item)
+    for item in items_b:
+        map_b.setdefault(key(item), item)
+    added = [label(map_b[k]) for k in map_b if k not in map_a]
+    removed = [label(map_a[k]) for k in map_a if k not in map_b]
+    changed = [f"{label(map_b[k])} ({', '.join(_changed_fields(map_a[k], map_b[k]))})"
+               for k in map_a if k in map_b and map_a[k] != map_b[k]]
+    parts = []
+    if len(items_a) != len(items_b):
+        parts.append(f"{len(items_a)}->{len(items_b)} {noun}")
+    if added:
+        parts.append(f"+{len(added)}: {_listed(added)}")
+    if removed:
+        parts.append(f"-{len(removed)}: {_listed(removed)}")
+    if changed:
+        parts.append(f"changed {len(changed)}: {_listed(changed)}")
+    if not parts:
+        parts.append(f"{noun} reordered" if len(map_a) == len(items_a)
+                     else f"{noun} changed")
+    return "; ".join(parts)
+
+
+def _diff_sets(items_attr, key, label, noun):
+    """A diff_fn for _compare_set_type: the set's own fields, then its
+    items."""
+    def diff(set_a, set_b):
         parts = []
-        if added:
-            parts.append(f"+{len(added)} freqs")
-        if removed:
-            parts.append(f"-{len(removed)} freqs")
-        return (f"{len(ts_a.channels)}->{len(ts_b.channels)} "
-                f"({', '.join(parts)})")
-    return None
+        fields = _changed_fields(set_a, set_b,
+                                 skip=_BOOKKEEPING | {items_attr})
+        if fields:
+            parts.append("set fields: " + ", ".join(fields))
+        items = _diff_items(getattr(set_a, items_attr),
+                            getattr(set_b, items_attr), key, label, noun)
+        if items:
+            parts.append(items)
+        return "; ".join(parts) or None
+    return diff
+
+
+_diff_groups = _diff_sets(
+    "groups", lambda g: g.group_id,
+    lambda g: f"{g.group_id} {g.group_name.strip()}", "talkgroups")
+
+_diff_trunks = _diff_sets(
+    "channels", lambda c: (round(c.tx_freq, 5), round(c.rx_freq, 5)),
+    lambda c: f"{c.tx_freq:.5f}/{c.rx_freq:.5f}", "freqs")
+
+_diff_convs = _diff_sets(
+    "channels", lambda c: c.short_name,
+    lambda c: c.short_name.strip() or "(unnamed)", "channels")
 
 
 def _diff_idens(is_a, is_b):
-    """Detail diff for IDEN sets — compares active element counts."""
+    """Detail diff for IDEN sets — elements compared slot by slot."""
+    parts = []
+    fields = _changed_fields(is_a, is_b, skip=_BOOKKEEPING | {"elements"})
+    if fields:
+        parts.append("set fields: " + ", ".join(fields))
     active_a = sum(1 for e in is_a.elements if not e.is_empty())
     active_b = sum(1 for e in is_b.elements if not e.is_empty())
     if active_a != active_b:
-        return f"{active_a}->{active_b} active elements"
-    return None
+        parts.append(f"{active_a}->{active_b} active elements")
+    changed = [f"#{i} ({', '.join(_changed_fields(a, b))})"
+               for i, (a, b) in enumerate(zip(is_a.elements, is_b.elements))
+               if a != b]
+    if changed:
+        parts.append(f"changed {len(changed)}: {_listed(changed)}")
+    elif len(is_a.elements) != len(is_b.elements):
+        parts.append(f"{len(is_a.elements)}->{len(is_b.elements)} elements")
+    return "; ".join(parts) or None
 
 
 def _compare_group_sets(prs_a, prs_b):
@@ -246,7 +323,16 @@ def _compare_conv_sets(prs_a, prs_b):
     return _compare_set_type(prs_a, prs_b, "Conv Set",
                              "CConvChannel", "CConvSet",
                              parse_conv_channel_section,
-                             lambda s: len(s.channels), "channels")
+                             lambda s: len(s.channels), "channels",
+                             _diff_convs)
+
+
+def _compare_p25_conv_sets(prs_a, prs_b):
+    return _compare_set_type(prs_a, prs_b, "P25 Conv Set",
+                             "CP25ConvChannel", "CP25ConvSet",
+                             parse_p25_conv_channel_section,
+                             lambda s: len(s.channels), "channels",
+                             _diff_convs)
 
 
 def _compare_iden_sets(prs_a, prs_b):
@@ -256,6 +342,139 @@ def _compare_iden_sets(prs_a, prs_b):
                              lambda s: sum(1 for e in s.elements
                                            if not e.is_empty()),
                              "active elements", _diff_idens)
+
+
+# Parts of the archive's root object, in order (see archive.Document), and
+# the category a difference in each is reported under.  Lists compared item
+# by item above only get a line here when that comparison found nothing.
+_ROOT_PARTS = [
+    ("Personality", "header fields"),
+    ("System", None),
+    ("Trunk Set", "set data"),
+    ("Personality", "fields after the trunk sets"),
+    ("Conv Set", "set data"),
+    ("Options", None),
+    ("Personality", "name, user and band limits"),
+    ("Group Set", "set data"),
+    ("P25 Conv Set", "set data"),
+    ("Personality", "list after the P25 conv sets"),
+    ("IDEN Set", "set data"),
+    ("Radio Options", "options XML and file tail"),
+]
+
+
+def _system_name(obj):
+    """A system object's short name (its data starts with it)."""
+    data = obj.data()
+    return data[1:1 + data[0]].decode("latin-1") if data else "?"
+
+
+def _compare_documents(prs_a, prs_b, found):
+    """Differences the item comparisons above did not report.
+
+    The archive tree holds every object's data without class tags or
+    list counts, so two files whose trees are equal hold the same
+    personality; anything else that differs is reported here.
+    """
+    from . import archive
+    reported = {cat for kind, cat, _, _ in found if kind != SAME}
+    try:
+        doc_a = archive.document_from_prs(prs_a)
+        doc_b = archive.document_from_prs(prs_b)
+    except archive.WalkError:
+        if prs_a.to_bytes() != prs_b.to_bytes() and not reported:
+            return [(CHANGED, "File", "Content",
+                     "the files differ (layout QuickPRS cannot itemize)")]
+        return []
+
+    parts_a, parts_b = doc_a.root.parts, doc_b.root.parts
+    if len(parts_a) != len(parts_b) or len(parts_a) != len(_ROOT_PARTS):
+        return ([] if parts_a == parts_b else
+                [(CHANGED, "File", "Content", "the files differ")])
+    diffs = []
+    for (cat, what), a, b in zip(_ROOT_PARTS, parts_a, parts_b):
+        if a == b:
+            continue
+        if cat == "System":
+            diffs.extend(_compare_system_objects(a.items, b.items))
+        elif cat == "Options":
+            # options only one file has are reported as sections
+            for cls in sorted({o.cls for o in a.items if o} &
+                              {o.cls for o in b.items if o}):
+                oa = [o for o in a.items if o and o.cls == cls]
+                ob = [o for o in b.items if o and o.cls == cls]
+                if oa != ob:
+                    diffs.append((CHANGED, "Options", cls, "settings differ"))
+        elif what == "header fields":
+            diffs.extend(_compare_personality_headers(prs_a, prs_b))
+        elif what == "name, user and band limits":
+            diffs.extend(_compare_doc_fields(a, b))
+        elif cat in ("Personality", "Radio Options") or cat not in reported:
+            diffs.append((CHANGED, cat, what, "differs"))
+    return diffs
+
+
+def _compare_personality_headers(prs_a, prs_b):
+    """The CPersonality fields that differ (file name, saved by, save
+    time ...)."""
+    from .record_types import parse_personality_section
+    try:
+        pa = parse_personality_section(
+            prs_a.get_section_by_class("CPersonality").raw)
+        pb = parse_personality_section(
+            prs_b.get_section_by_class("CPersonality").raw)
+    except Exception:
+        return [(CHANGED, "Personality", "header fields", "differs")]
+    diffs = [(CHANGED, "Personality", f.name,
+              f"{getattr(pa, f.name)!r} -> {getattr(pb, f.name)!r}")
+             for f in dataclasses.fields(pa)
+             if getattr(pa, f.name) != getattr(pb, f.name)]
+    return diffs or [(CHANGED, "Personality", "header fields", "differ")]
+
+
+def _compare_doc_fields(a, b):
+    """Personality name, user name and band limits (the document fields
+    after the options list)."""
+    from . import archive
+    try:
+        name_a, pos_a = archive.read_cstring(a, 0)
+        name_b, pos_b = archive.read_cstring(b, 0)
+        user_a, end_a = archive.read_cstring(a, pos_a + 2)
+        user_b, end_b = archive.read_cstring(b, pos_b + 2)
+    except (IndexError, ValueError):
+        return [(CHANGED, "Personality", "name, user and band limits",
+                 "differ")]
+    diffs = []
+    if name_a != name_b:
+        diffs.append((CHANGED, "Personality", "personality name",
+                      f"{name_a!r} -> {name_b!r}"))
+    if user_a != user_b:
+        diffs.append((CHANGED, "Personality", "user name",
+                      f"{user_a!r} -> {user_b!r}"))
+    if (a[pos_a:pos_a + 2] != b[pos_b:pos_b + 2]
+            or a[end_a:] != b[end_b:]):
+        diffs.append((CHANGED, "Personality", "band limits and flags",
+                      "differ"))
+    return diffs
+
+
+def _compare_system_objects(items_a, items_b):
+    """Systems present in both files whose settings differ (systems added
+    or removed are reported by _compare_systems)."""
+    by_name_a, by_name_b = {}, {}
+    for o in items_a:
+        by_name_a.setdefault((o.cls, _system_name(o)), o)
+    for o in items_b:
+        by_name_b.setdefault((o.cls, _system_name(o)), o)
+    labels = {"CP25TrkSystem": "P25 Trunked", "CConvSystem": "Conventional",
+              "CP25ConvSystem": "P25 Conv"}
+    diffs = [(CHANGED, labels.get(cls, cls), name, "system settings differ")
+             for (cls, name), o in by_name_a.items()
+             if (cls, name) in by_name_b and by_name_b[(cls, name)] != o]
+    if not diffs and [o for o in items_a] != [o for o in items_b] and \
+            set(by_name_a) == set(by_name_b):
+        diffs.append((CHANGED, "System", "order", "systems reordered"))
+    return diffs
 
 
 def format_comparison(diffs, filepath_a="", filepath_b=""):

@@ -333,6 +333,17 @@ def import_p25_conv_csv(filepath):
 
 # ─── Helpers ────────────────────────────────────────────────────────
 
+def data_lines(f):
+    """The lines of a CSV file that hold data: blank lines and lines
+    starting with '#' (the comments `template-csv` writes) left out.
+    Used for the files `template-csv` makes, not for exported CSVs,
+    whose names may start with '#'."""
+    for line in f:
+        stripped = line.strip()
+        if stripped and not stripped.startswith('#'):
+            yield line
+
+
 def _read_csv(filepath):
     """Read CSV file, return list of rows (each a list of strings)."""
     with open(filepath, 'r', encoding='utf-8-sig') as f:

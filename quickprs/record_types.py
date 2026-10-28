@@ -230,8 +230,11 @@ class ConvChannel:
     rx_freq: float          # MHz
     tx_tone: str = ""       # CTCSS/DCS tone string (e.g., "250.3", "" for none)
     rx_tone: str = ""
-    tx_addr: int = 0        # uint16, tone address code
-    rx_addr: int = 0        # uint16
+    # tx_addr, rx_addr and tone_mode: RPM writes 85, 85 and 1 in every
+    # analog channel it creates, with or without tones (their meaning
+    # is not known); new channels get the same
+    tx_addr: int = 85       # uint16
+    rx_addr: int = 85       # uint16
 
     # Decoded flag fields (from 48-byte flags block)
     flag0: bool = False             # byte 0: 1 for MURS/VHF channels
@@ -239,7 +242,7 @@ class ConvChannel:
     calls: bool = True              # byte 2: call alert enable
     alert: bool = True              # byte 3: alert tone enable
     scan_list_member: bool = True   # byte 4: scan list membership
-    tone_mode: bool = False         # byte 22: 1 when CTCSS/DCS active
+    tone_mode: bool = True          # byte 22: set by RPM on every channel
     narrowband: bool = False        # byte 27: 1=12.5kHz, 0=25kHz
     scan: bool = True               # byte 29: scan enable
     tx: bool = True                 # byte 46: transmit enable

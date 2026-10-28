@@ -1966,8 +1966,11 @@ class QuickPRSApp:
 
             msg = f"Merged {total_added} systems from {Path(source_path).name}"
             if total_skipped:
-                msg += f" ({total_skipped} skipped as duplicates)"
+                msg += f" ({total_skipped} skipped)"
             self.status_set(msg)
+            if stats['conflicts']:
+                messagebox.showinfo(
+                    "Merge", "Not merged:\n" + "\n".join(stats['conflicts']))
             log_action("merge_prs", source=source_path,
                        p25_added=stats['p25_added'],
                        conv_added=stats['conv_added'],

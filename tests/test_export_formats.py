@@ -281,6 +281,9 @@ class TestUnidenExport:
         assert abs(float(noaa['Frequency']) - 162.55) < 0.001
 
     def test_uniden_export_tone(self, tmp_path):
+        """A scanner listens on the receive frequency, so it gets the tone
+        the radio expects there: none for RPT IN (it only sends 100.0 to
+        the repeater), 100.0 for SIMPLEX."""
         prs_file = _create_prs_with_conv(tmp_path)
         prs = parse_prs(prs_file)
         out = tmp_path / "uniden.csv"
@@ -290,7 +293,9 @@ class TestUnidenExport:
             reader = csv.DictReader(f)
             rows = list(reader)
         rpt = [r for r in rows if r['Channel'] == 'RPT IN'][0]
-        assert rpt['Tone'] == '100.0'
+        assert rpt['Tone'] == ''
+        simplex = [r for r in rows if r['Channel'] == 'SIMPLEX'][0]
+        assert simplex['Tone'] == '100.0'
 
     def test_uniden_export_dcs_code(self, tmp_path):
         """DCS tone should go in Code column, not Tone."""
@@ -995,3 +1000,100 @@ class TestExportRealFiles:
         out = tmp_path / "freqs.txt"
         count = export_dsd_freqs(prs, out)
         assert count >= 0
+
+
+# ─── CHIRP tones, mode, skip and TX off ──────────────────────────────
+
+_TONE_CASES = [
+    # (tx_tone, rx_tone, CHIRP Tone, CrossMode or None, {column: value})
+    ("", "", "", None, {}),
+    ("100.0", "", "Tone", None, {"rToneFreq": "100.0"}),
+    ("100.0", "100.0", "TSQL", None, {"cToneFreq": "100.0"}),
+    ("100.0", "123.0", "Cross", "Tone->Tone",
+     {"rToneFreq": "100.0", "cToneFreq": "123.0"}),
+    ("", "123.0", "Cross", "->Tone", {"cToneFreq": "123.0"}),
+    ("D023", "D023", "DTCS", None, {"DtcsCode": "023"}),
+    ("D023", "", "Cross", "DTCS->", {"DtcsCode": "023"}),
+    ("", "D754", "Cross", "->DTCS", {"RxDtcsCode": "754"}),
+    ("D023", "D754", "Cross", "DTCS->DTCS",
+     {"DtcsCode": "023", "RxDtcsCode": "754"}),
+    ("100.0", "D754", "Cross", "Tone->DTCS",
+     {"rToneFreq": "100.0", "RxDtcsCode": "754"}),
+    ("D023", "123.0", "Cross", "DTCS->Tone",
+     {"DtcsCode": "023", "cToneFreq": "123.0"}),
+    ("D023I", "D023", "DTCS", None, {"DtcsCode": "023",
+                                     "DtcsPolarity": "RN"}),
+]
+
+
+def _chirp_rows(tmp_path, channels):
+    """Write channels to a personality, export CHIRP, return the rows and
+    the CSV path."""
+    from quickprs.builder import create_blank_prs
+    from quickprs.injector import add_conv_set, make_conv_set
+    prs = create_blank_prs()
+    add_conv_set(prs, make_conv_set("CHIRP", channels))
+    out = tmp_path / "chirp.csv"
+    export_chirp_csv(prs, out, sets=["CHIRP"])
+    with open(out, newline="") as f:
+        return list(csv.DictReader(f)), out
+
+
+def _tone_channels():
+    return [{"short_name": f"T{i}", "tx_freq": 146.52, "rx_freq": 146.52,
+             "tx_tone": tx, "rx_tone": rx}
+            for i, (tx, rx, *_ ) in enumerate(_TONE_CASES)]
+
+
+class TestChirpTones:
+    """CHIRP's TSQL and DTCS modes use one tone both ways; a channel whose
+    TX and RX tones differ needs Cross mode, or its TX tone is lost."""
+
+    @pytest.mark.parametrize("i", range(len(_TONE_CASES)))
+    def test_export_columns(self, tmp_path, i):
+        rows, _ = _chirp_rows(tmp_path, _tone_channels())
+        tx, rx, mode, cross, columns = _TONE_CASES[i]
+        row = rows[i]
+        assert row["Tone"] == mode, (tx, rx)
+        if cross:
+            assert row["CrossMode"] == cross
+        for column, value in columns.items():
+            assert row[column] == value, (tx, rx, column)
+
+    def test_tones_survive_export_and_import(self, tmp_path):
+        _, out = _chirp_rows(tmp_path, _tone_channels())
+        back = import_chirp_csv(out)
+        assert [(c["tx_tone"], c["rx_tone"]) for c in back] ==             [(tx, rx) for tx, rx, *_ in _TONE_CASES]
+
+
+class TestChirpChannelFlags:
+    """Narrowband, scan and TX-off reach CHIRP's Mode, Skip and Duplex
+    columns and come back on import."""
+
+    CHANNELS = [
+        {"short_name": "WIDE", "tx_freq": 146.52, "narrowband": False},
+        {"short_name": "NARROW", "tx_freq": 151.82, "narrowband": True},
+        {"short_name": "NOSCAN", "tx_freq": 151.88, "scan": False},
+        {"short_name": "RXONLY", "tx_freq": 162.55, "tx": False},
+    ]
+
+    def test_export(self, tmp_path):
+        rows, _ = _chirp_rows(tmp_path, self.CHANNELS)
+        by_name = {r["Name"]: r for r in rows}
+        assert by_name["WIDE"]["Mode"] == "FM"
+        assert by_name["NARROW"]["Mode"] == "NFM"
+        assert by_name["NOSCAN"]["Skip"] == "S"
+        assert by_name["WIDE"]["Skip"] == ""
+        assert by_name["RXONLY"]["Duplex"] == "off"
+        assert by_name["WIDE"]["Duplex"] == ""
+
+    def test_round_trip(self, tmp_path):
+        _, out = _chirp_rows(tmp_path, self.CHANNELS)
+        back = {c["short_name"]: c for c in import_chirp_csv(out)}
+        assert back["NARROW"]["narrowband"] is True
+        assert back["WIDE"]["narrowband"] is False
+        assert back["NOSCAN"]["scan"] is False
+        assert back["WIDE"]["scan"] is True
+        assert back["RXONLY"]["tx"] is False
+        assert back["WIDE"]["tx"] is True
+

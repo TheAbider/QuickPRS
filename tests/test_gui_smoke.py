@@ -135,3 +135,137 @@ def test_import_wizard_injects_into_blank(app):
     ImportWizard._inject_talkgroups(fake, "TGS", [
         {"group_id": 100, "short_name": "TG100", "long_name": "TG 100"}])
     assert archive.check(app.prs) == []
+
+
+def test_trunk_edit_while_filtered_hits_the_right_channel(app, tmp_path):
+    """The search's filter mode detaches rows that do not match, so a
+    row's place among its visible siblings is not its channel's place in
+    the set: editing the second channel while the first was hidden changed
+    the first."""
+    from quickprs import injector
+    from quickprs.builder import create_blank_prs
+    from quickprs.prs_writer import write_prs
+    from quickprs.record_types import P25TrkSystemConfig
+    prs = create_blank_prs("trunk.PRS")
+    injector.add_p25_trunked_system(
+        prs, P25TrkSystemConfig(system_name="CITY", long_name="CITY",
+                                trunk_set_name="CITY", group_set_name="CITY",
+                                wan_name="CITY"),
+        trunk_set=injector.make_trunk_set("CITY", [
+            (806.0125, 851.0125), (806.5125, 851.5125),
+            (807.0125, 852.0125)]),
+        group_set=injector.make_group_set("CITY", [(1, "TG", "TG")]))
+    path = tmp_path / "trunk.PRS"
+    write_prs(prs, path)
+    app._open_path(path, confirmed=True)
+
+    pv = app.personality_view
+    pv._filter_mode.set(True)
+    pv.search_var.set("851.5125")          # only the second channel shows
+    iid, meta = next((i, m) for i, m in pv._item_meta.items()
+                     if m.get("type") == "trunk_channel"
+                     and m.get("rx") == 851.5125)
+    assert pv.tree.index(iid) == 0         # first among visible rows
+    with mock.patch("quickprs.gui.personality_view.messagebox"):
+        pv._commit_inline_edit(iid, meta, "806.525", 16)
+
+    from quickprs.record_types import parse_trunk_channel_section
+    channels = next(s for s in injector._parse_section_data(
+        app.prs.get_section_by_class("CTrunkChannel"),
+        parse_trunk_channel_section,
+        injector._get_first_count(app.prs, "CTrunkSet"))
+        if s.name == "CITY").channels
+    assert [c.tx_freq for c in channels] == [806.0125, 806.525, 807.0125]
+
+
+def _p25_conv_personality(tmp_path):
+    from quickprs import injector
+    from quickprs.builder import create_blank_prs
+    from quickprs.prs_writer import write_prs
+    from quickprs.record_types import P25ConvSystemConfig
+    prs = create_blank_prs("p25c.PRS")
+    injector.add_p25_conv_set(prs, injector.make_p25_conv_set("P25C", [
+        {"short_name": "TAC 1", "tx_freq": 154.43, "nac_tx": 0x3AB}]))
+    injector.add_p25_conv_system(prs, P25ConvSystemConfig(
+        system_name="P25C", long_name="P25 CONV", conv_set_name="P25C"))
+    injector._safe_add_iden_set(prs, injector.make_iden_set(
+        "SPARE", [{"base_freq_hz": 851_012_500}]))
+    injector._safe_add_iden_set(prs, injector.make_iden_set(
+        "KEEP", [{"base_freq_hz": 762_006_250}]))
+    path = tmp_path / "p25c.PRS"
+    write_prs(prs, path)
+    return path
+
+
+def test_p25_conv_set_csv_export(app, tmp_path):
+    """The P25 conv set menu offered Export to CSV, and the file came out
+    empty; it is now P25_CONV_SET.csv, which import-csv reads."""
+    from quickprs.csv_import import import_csv
+    app._open_path(_p25_conv_personality(tmp_path), confirmed=True)
+    pv = app.personality_view
+    meta = next(m for m in pv._item_meta.values()
+                if m.get("type") == "p25_conv_set")
+    out = tmp_path / "out.csv"
+    with mock.patch("quickprs.gui.personality_view.filedialog") as fd, \
+            mock.patch("quickprs.gui.personality_view.messagebox"):
+        fd.asksaveasfilename.return_value = str(out)
+        pv._export_set_csv("p25_conv_set", "P25C", meta["set_data"])
+    kind, sets = import_csv(out)
+    assert kind == "p25conv"
+    assert [(c.short_name, c.nac_tx) for c in sets[0].channels] == [
+        ("TAC 1", 0x3AB)]
+
+
+def test_delete_iden_set_keeps_the_file_readable(app, tmp_path):
+    from quickprs import archive
+    from quickprs.prs_parser import parse_prs_bytes
+    app._open_path(_p25_conv_personality(tmp_path), confirmed=True)
+    pv = app.personality_view
+    pv._delete_iden_set(app.prs, "SPARE")
+    back = parse_prs_bytes(app.prs.to_bytes())
+    assert archive.check(back) == []
+    names = [archive.read_cstring(o.parts[1], 0)[0] for o in
+             archive.document_from_prs(back).list("IDEN sets").items]
+    assert names == ["KEEP"]
+
+
+def test_api_fetch_result_is_handled_on_the_main_thread(app):
+    """The fetch thread called Tk (winfo_toplevel().after) itself; Tk may
+    only be called from the main thread.  The result now comes back
+    through a queue the main thread polls."""
+    import threading
+    import time
+    from quickprs.gui import import_panel as ip
+    from quickprs.radioreference import RRSystem
+
+    panel = app.import_panel
+    seen = {}
+
+    class FakeAPI:
+        def __init__(self, *args):
+            seen["api_thread"] = threading.current_thread()
+
+        def get_system(self, sid):
+            return RRSystem(sid=sid, name="FAKE")
+
+    def complete(system, error):
+        seen["thread"] = threading.current_thread()
+        seen["result"] = (system.name if system else None, error)
+
+    panel.url_var.set("https://www.radioreference.com/db/sid/11628")
+    panel.user_var.set("u")
+    panel.pass_var.set("p")
+    panel.key_var.set("k")
+    with mock.patch.object(ip, "RadioReferenceAPI", FakeAPI), \
+            mock.patch.object(ip, "HAS_ZEEP", True), \
+            mock.patch.object(panel, "_on_fetch_complete", complete), \
+            mock.patch.object(panel, "winfo_toplevel",
+                              side_effect=AssertionError("Tk call")):
+        panel._fetch()
+        deadline = time.time() + 5
+        while "result" not in seen and time.time() < deadline:
+            app.root.update()
+            time.sleep(0.02)
+    assert seen["result"] == ("FAKE", None)
+    assert seen["thread"] is threading.main_thread()
+    assert seen["api_thread"] is not threading.main_thread()

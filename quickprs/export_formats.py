@@ -69,34 +69,59 @@ def _filter_sets(sets, names):
 
 _CHIRP_COLUMNS = [
     "Location", "Name", "Frequency", "Duplex", "Offset", "Tone",
-    "rToneFreq", "cToneFreq", "DtcsCode", "DtcsPolarity", "Mode",
-    "TStep", "Skip", "Comment", "URCALL", "RPT1CALL", "RPT2CALL",
+    "rToneFreq", "cToneFreq", "DtcsCode", "DtcsPolarity", "RxDtcsCode",
+    "CrossMode", "Mode", "TStep", "Skip", "Comment", "URCALL",
+    "RPT1CALL", "RPT2CALL",
 ]
 
 
+def dcs_parts(tone):
+    """(code, polarity) of a DCS tone string such as 'D023', 'D023N' or
+    'D023I' (inverted): ('023', 'N') or ('023', 'R'). None if not DCS."""
+    if not tone or not tone.upper().startswith("D"):
+        return None
+    body = tone[1:].upper()
+    polarity = "N"
+    if body[-1:] in ("N", "I", "R"):
+        polarity = "N" if body[-1] == "N" else "R"
+        body = body[:-1]
+    if not body.isdigit():
+        return None
+    return body.zfill(3), polarity
+
+
 def _tone_to_chirp(tx_tone, rx_tone):
-    """Convert PRS tone strings to CHIRP Tone/rToneFreq/cToneFreq/DtcsCode.
+    """CHIRP's tone columns for a channel's TX and RX tones.
 
-    Returns: (tone_mode, rtonefreq, ctonefreq, dtcscode)
+    CHIRP's TSQL mode sends and expects cToneFreq, and its DTCS mode uses
+    DtcsCode both ways, so they only fit a channel whose two tones are
+    the same. Anything else is Cross mode: CrossMode names the TX and RX
+    halves, TX uses rToneFreq or DtcsCode, RX cToneFreq or RxDtcsCode.
     """
-    if not tx_tone and not rx_tone:
-        return ("", "88.5", "88.5", "023")
-
-    # DCS tones start with "D"
-    if tx_tone and tx_tone.startswith("D"):
-        code = tx_tone[1:]
-        return ("DTCS", "88.5", "88.5", code)
-
-    if tx_tone and rx_tone:
-        # Both set = TSQL (carrier squelch with tone)
-        return ("TSQL", tx_tone, rx_tone, "023")
-
-    if tx_tone:
-        # TX only = Tone (encode only)
-        return ("Tone", tx_tone, "88.5", "023")
-
-    # RX only (uncommon but possible)
-    return ("TSQL", rx_tone, rx_tone, "023")
+    tx_dcs, rx_dcs = dcs_parts(tx_tone), dcs_parts(rx_tone)
+    tx_kind = "DTCS" if tx_dcs else ("Tone" if tx_tone else "")
+    rx_kind = "DTCS" if rx_dcs else ("Tone" if rx_tone else "")
+    fields = {
+        "rToneFreq": tx_tone if tx_kind == "Tone" else "88.5",
+        "cToneFreq": rx_tone if rx_kind == "Tone" else "88.5",
+        "DtcsCode": tx_dcs[0] if tx_dcs else "023",
+        "RxDtcsCode": rx_dcs[0] if rx_dcs else "023",
+        "DtcsPolarity": ((tx_dcs[1] if tx_dcs else "N")
+                         + (rx_dcs[1] if rx_dcs else "N")),
+        "CrossMode": "Tone->Tone",
+    }
+    if not tx_kind and not rx_kind:
+        fields["Tone"] = ""
+    elif tx_kind == "Tone" and not rx_kind:
+        fields["Tone"] = "Tone"
+    elif tx_kind == rx_kind == "Tone" and tx_tone == rx_tone:
+        fields["Tone"] = "TSQL"
+    elif tx_kind == rx_kind == "DTCS" and tx_dcs[0] == rx_dcs[0]:
+        fields["Tone"] = "DTCS"
+    else:
+        fields["Tone"] = "Cross"
+        fields["CrossMode"] = f"{tx_kind}->{rx_kind}"
+    return fields
 
 
 def export_chirp_csv(prs, filepath, sets=None):
@@ -128,7 +153,10 @@ def export_chirp_csv(prs, filepath, sets=None):
             rx = ch.rx_freq
             diff = round(tx - rx, 6)
 
-            if abs(diff) < 0.0001:
+            if not ch.tx:
+                duplex = "off"       # CHIRP: transmit inhibited
+                offset = "0.000000"
+            elif abs(diff) < 0.0001:
                 duplex = ""
                 offset = "0.000000"
             elif diff > 0:
@@ -138,23 +166,16 @@ def export_chirp_csv(prs, filepath, sets=None):
                 duplex = "-"
                 offset = f"{abs(diff):.6f}"
 
-            tone_mode, rtone, ctone, dtcs = _tone_to_chirp(
-                ch.tx_tone, ch.rx_tone)
-
             rows.append({
                 "Location": str(location),
                 "Name": ch.short_name,
                 "Frequency": f"{rx:.6f}",
                 "Duplex": duplex,
                 "Offset": offset,
-                "Tone": tone_mode,
-                "rToneFreq": rtone,
-                "cToneFreq": ctone,
-                "DtcsCode": dtcs,
-                "DtcsPolarity": "NN",
-                "Mode": "FM",
+                **_tone_to_chirp(ch.tx_tone, ch.rx_tone),
+                "Mode": "NFM" if ch.narrowband else "FM",
                 "TStep": "5.00",
-                "Skip": "",
+                "Skip": "" if ch.scan else "S",
                 "Comment": ch.long_name or f"{cset.name} {ch.short_name}",
                 "URCALL": "",
                 "RPT1CALL": "",
@@ -200,20 +221,22 @@ def export_uniden_csv(prs, filepath, sets=None):
 
     for cset in conv_sets:
         for ch in cset.channels:
+            # The scanner listens on the receive frequency, so it takes the
+            # tone the radio expects there, not the one it transmits
             tone_str = ""
             code_str = ""
-            if ch.tx_tone:
-                if ch.tx_tone.startswith("D"):
-                    code_str = ch.tx_tone[1:]
-                else:
-                    tone_str = ch.tx_tone
+            dcs = dcs_parts(ch.rx_tone)
+            if dcs:
+                code_str = dcs[0]
+            elif ch.rx_tone:
+                tone_str = ch.rx_tone
 
             rows.append({
                 "System": cset.name,
                 "Department": cset.name,
                 "Channel": ch.short_name,
                 "Frequency": f"{ch.rx_freq:.4f}",
-                "Modulation": "NFM",
+                "Modulation": "NFM" if ch.narrowband else "FM",
                 "Tone": tone_str,
                 "Code": code_str,
                 "Lockout": "Unlocked",

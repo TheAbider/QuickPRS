@@ -873,21 +873,16 @@ class ImportWizard(tk.Toplevel):
                 self._inject_channels(set_name, channels_data)
 
             elif self._clip_data_type == 'channels':
-                # parse_pasted_conv_channels returns ConvChannelData
-                # objects: freq is the receive frequency, tx_freq 0 means
-                # simplex.
-                channels_data = []
-                for ch in self._clip_data:
-                    rx = ch.freq
-                    channels_data.append({
-                        'short_name': (ch.name or f"{rx:.4f}")[:8],
-                        'tx_freq': ch.tx_freq or rx,
-                        'rx_freq': rx,
-                        'tx_tone': ch.tx_tone or ch.tone,
-                        'rx_tone': ch.tone,
-                        'long_name': (ch.description or ch.name)[:16],
-                    })
-                self._inject_channels(set_name, channels_data)
+                # parse_pasted_conv_channels returns ConvChannelData;
+                # P25 channels go to a P25 conventional set, and modes
+                # neither set carries (DMR, NXDN, AM...) are left out
+                from ..radioreference import add_rr_conv_channels
+                _, _, skipped = add_rr_conv_channels(
+                    self.app.prs, set_name, set_name, self._clip_data)
+                if skipped:
+                    messagebox.showinfo(
+                        "Import", f"{len(skipped)} channel(s) left out: "
+                        "their mode is not analog FM or P25.", parent=self)
 
             self.app.personality_view.refresh()
             self.app.mark_modified()

@@ -555,3 +555,124 @@ class TestTemplateInjection:
         raw1 = Path(prs_file).read_bytes()
         raw2 = prs.to_bytes()
         assert raw1 == raw2
+
+
+# ─── Systems come across exactly ─────────────────────────────────────
+
+
+def _systems(prs):
+    from quickprs import archive
+    return [o for o in archive.document_from_prs(prs).list("systems").items
+            if o is not None]
+
+
+def _system_names(prs):
+    from quickprs.injector import _system_obj_names
+    return [_system_obj_names(o)[0] for o in _systems(prs)]
+
+
+def _source():
+    """Two P25 systems sharing an IDEN set, a conventional system and a P25
+    conventional one, with IDs a rebuild from defaults would lose."""
+    from quickprs import injector
+    from quickprs.builder import create_blank_prs
+    from quickprs.prs_parser import parse_prs_bytes
+    from quickprs.record_types import (
+        P25TrkSystemConfig, ConvSystemConfig, P25ConvSystemConfig)
+    prs = create_blank_prs("source.PRS")
+    iden = injector.make_iden_set("SHARED", [
+        {"base_freq_hz": 851_012_500, "tx_offset_mhz": -45.0}])
+    for i, name in enumerate(("CITY", "COUNTY")):
+        injector.add_p25_trunked_system(
+            prs,
+            P25TrkSystemConfig(
+                system_name=name, long_name=f"{name} P25",
+                trunk_set_name=name, group_set_name=name, wan_name=name,
+                system_id=900 + i, home_unit_id=1234500 + i,
+                iden_set_name="SHARED"),
+            trunk_set=injector.make_trunk_set(
+                name, [(806.0125 + i, 851.0125 + i)]),
+            group_set=injector.make_group_set(
+                name, [(100 + i, f"TG {i}", f"TALKGROUP {i}")]),
+            iden_set=iden if i == 0 else None)
+    injector.add_conv_system(prs, ConvSystemConfig(
+        system_name="SIMPLEX", long_name="SIMPLEX", conv_set_name="SIMPLEX"),
+        conv_set=injector.make_conv_set("SIMPLEX", [
+            {"short_name": "S1", "tx_freq": 155.16}]))
+    injector.add_p25_conv_set(prs, injector.make_p25_conv_set("P25C", [
+        {"short_name": "TAC", "tx_freq": 154.43, "nac_tx": 0x3AB}]))
+    injector.add_p25_conv_system(prs, P25ConvSystemConfig(
+        system_name="P25C", long_name="P25 CONV", conv_set_name="P25C"))
+    return parse_prs_bytes(prs.to_bytes())
+
+
+class TestMergeKeepsSystems:
+    """merge used to name every system after the first one of its class,
+    rebuild P25 systems from defaults (system ID 0 unless a WAN entry gave
+    one, no home unit ID, a guessed IDEN set) and leave P25 conventional
+    systems out."""
+
+    def test_names_and_settings_are_the_sources(self):
+        from quickprs.builder import create_blank_prs
+        from quickprs.prs_parser import parse_prs_bytes
+        source = _source()
+        target = parse_prs_bytes(create_blank_prs("target.PRS").to_bytes())
+        stats = merge_prs(target, source)
+        # both blanks have "Conv 1", so that one is skipped
+        assert (stats["p25_added"], stats["conv_added"],
+                stats["conv_skipped"]) == (2, 2, 1)
+        merged = {s.cls + ":" + s.parts[0][1:1 + s.parts[0][0]].decode():
+                  s for s in _systems(target)}
+        for obj in _systems(source):
+            key = obj.cls + ":" + obj.parts[0][1:1 + obj.parts[0][0]].decode()
+            assert merged[key] == obj, key
+
+    def test_merged_file_is_complete(self):
+        from quickprs import archive
+        from quickprs.builder import create_blank_prs
+        from quickprs.json_io import prs_to_dict
+        from quickprs.prs_parser import parse_prs_bytes
+        target = parse_prs_bytes(create_blank_prs("target.PRS").to_bytes())
+        merge_prs(target, _source())
+        d = prs_to_dict(parse_prs_bytes(target.to_bytes()))
+        assert [s["name"] for s in d["iden_sets"]] == ["SHARED"]
+        assert [s["name"] for s in d["p25_conv_sets"]] == ["P25C"]
+        assert {w["wan_name"] for w in d["wan_entries"]} == {"CITY",
+                                                             "COUNTY"}
+        systems = {s["name"]: s for s in d["systems"]}
+        assert systems["COUNTY"]["system_id"] == 901
+        assert systems["COUNTY"]["home_unit_id"] == 1234501
+        assert systems["COUNTY"]["iden_set"] == "SHARED"
+        assert archive.check(target) == []
+
+    def test_merging_twice_adds_nothing(self):
+        from quickprs.builder import create_blank_prs
+        from quickprs.prs_parser import parse_prs_bytes
+        target = parse_prs_bytes(create_blank_prs("target.PRS").to_bytes())
+        merge_prs(target, _source())
+        before = target.to_bytes()
+        stats = merge_prs(target, _source())
+        assert stats["p25_added"] == stats["conv_added"] == 0
+        assert target.to_bytes() == before
+
+    def test_a_different_set_under_the_same_name_is_a_conflict(self):
+        from quickprs import injector
+        from quickprs.builder import create_blank_prs
+        from quickprs.prs_parser import parse_prs_bytes
+        target = create_blank_prs("target.PRS")
+        injector.add_conv_set(target, injector.make_conv_set("SIMPLEX", [
+            {"short_name": "OTHER", "tx_freq": 151.625}]))
+        target = parse_prs_bytes(target.to_bytes())
+        stats = merge_prs(target, _source())
+        assert "SIMPLEX" not in _system_names(target)
+        assert stats["conflicts"] == [
+            "SIMPLEX: the target has other sets named 'SIMPLEX'"]
+
+    @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
+    def test_rpm_file_into_blank(self):
+        from quickprs.builder import create_blank_prs
+        from quickprs.prs_parser import parse_prs_bytes
+        source = cached_parse_prs(PAWS)
+        target = parse_prs_bytes(create_blank_prs("target.PRS").to_bytes())
+        merge_prs(target, source)
+        assert _system_names(target) == ["Conv 1"] + _system_names(source)

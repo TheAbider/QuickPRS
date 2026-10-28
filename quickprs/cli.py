@@ -1117,8 +1117,9 @@ def _read_csv_file(filepath):
     path = Path(filepath)
     if not path.exists():
         raise FileNotFoundError(f"CSV file not found: {filepath}")
+    from .csv_import import data_lines
     with open(path, 'r', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
+        reader = csv.DictReader(data_lines(f))
         return list(reader)
 
 
@@ -1557,8 +1558,10 @@ def cmd_merge(target_path, source_path, include_systems=True,
     """Merge systems and channels from source PRS into target PRS.
 
     Copies P25 trunked systems (with their trunk sets, group sets, IDEN sets)
-    and conventional systems (with their conv sets) from source into target.
-    Skips systems that already exist in target (by short name).
+    and conventional and P25 conventional systems (with their channel
+    sets) from source into target, as the source has them.  Skips systems
+    that already exist in target (by short name) and systems naming a set
+    the target holds with other contents.
 
     Args:
         target_path: target PRS file path
@@ -1600,6 +1603,8 @@ def cmd_merge(target_path, source_path, include_systems=True,
               f"{stats['conv_skipped']} skipped")
     if total_added == 0 and total_skipped == 0:
         print("  No systems found in source to merge.")
+    for line in stats['conflicts']:
+        print(f"  Not merged: {line}")
 
     if errors:
         print(f"  Validation: {len(errors)} errors", file=sys.stderr)
@@ -2312,7 +2317,8 @@ def cmd_edit(filepath, name=None, author=None,
         filepath: input PRS file
         name: new personality filename (None = don't change)
         author: new saved-by field (None = don't change)
-        rename_set_type: set type to rename ("trunk", "group", "conv")
+        rename_set_type: set type to rename ("trunk", "group", "conv",
+            "iden", "p25conv"); systems naming the set follow the rename
         rename_old: current set name
         rename_new: new set name
         output: output file path (default: overwrite input)
@@ -2320,9 +2326,7 @@ def cmd_edit(filepath, name=None, author=None,
     Returns:
         0 on success, 1 on error.
     """
-    from .injector import (
-        edit_personality, rename_trunk_set, rename_group_set, rename_conv_set,
-    )
+    from .injector import edit_personality
     from .prs_writer import write_prs
 
     prs = parse_prs(filepath)
@@ -2337,18 +2341,19 @@ def cmd_edit(filepath, name=None, author=None,
             if author is not None:
                 changes.append(f"author='{author}'")
 
-    # Rename set
+    # Rename set (and the systems' references to it)
     if rename_set_type and rename_old and rename_new:
+        from .injector import rename_set, _SET_LISTS
         rename_new = rename_new[:8]
-        if rename_set_type == "trunk":
-            renamed = rename_trunk_set(prs, rename_old, rename_new)
-        elif rename_set_type == "group":
-            renamed = rename_group_set(prs, rename_old, rename_new)
-        elif rename_set_type == "conv":
-            renamed = rename_conv_set(prs, rename_old, rename_new)
-        else:
-            print(f"Error: unknown set type '{rename_set_type}'",
-                  file=sys.stderr)
+        if rename_set_type not in _SET_LISTS:
+            print(f"Error: unknown set type '{rename_set_type}' (use "
+                  f"{', '.join(_SET_LISTS)})", file=sys.stderr)
+            return 1
+        try:
+            renamed = rename_set(prs, rename_set_type, rename_old,
+                                 rename_new)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
             return 1
 
         if not renamed:
@@ -3930,8 +3935,10 @@ def cmd_template_csv(template_type, output=None):
             'default_name': 'channels.csv',
             'content': (
                 "short_name,tx_freq,rx_freq,tx_tone,rx_tone,long_name\n"
-                "# Example: RPT IN,147.000,147.600,100.0,100.0,"
-                "Repeater Input\n"
+                "# Example: RPT 147,147.600,147.000,100.0,100.0,"
+                "Repeater 147.00\n"
+                "# The radio transmits on the repeater's input (tx_freq)\n"
+                "# and receives its output (rx_freq).\n"
             ),
         },
         'units': {
@@ -4651,8 +4658,9 @@ def run_cli(args=None):
                          help="New saved-by field")
     p_edit.add_argument("--rename-set", nargs=3,
                          metavar=("TYPE", "OLD", "NEW"),
-                         help="Rename a set: TYPE OLD NEW "
-                              "(TYPE: trunk, group, conv)")
+                         help="Rename a set and the references to it: "
+                              "TYPE OLD NEW (TYPE: trunk, group, conv, "
+                              "iden, p25conv)")
     p_edit.add_argument("-o", "--output", default=None,
                          help="Output file (default: overwrite input)")
 

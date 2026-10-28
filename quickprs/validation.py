@@ -55,11 +55,12 @@ LIMITS = {
     'long_name_max': 16,
     'talkgroup_id_max': 65535,          # uint16
 
-    # XG-100P frequency range
-    'freq_min_mhz': 30.0,
-    'freq_max_mhz': 960.0,
+    # Lowest and highest frequency of any band below
+    'freq_min_mhz': 136.0,
+    'freq_max_mhz': 870.0,
 
-    # XG-100P band edges (VHF, UHF, 700/800)
+    # XG-100P bands (VHF, UHF, 700/800); the radio tunes nothing between
+    # them (L3Harris lists the same bands for the XG-100M mobile)
     'vhf_min': 136.0, 'vhf_max': 174.0,
     'uhf_min': 380.0, 'uhf_max': 520.0,
     'band_700_min': 762.0, 'band_800_max': 870.0,
@@ -67,6 +68,19 @@ LIMITS = {
     # Recommended limits (exceeding causes performance issues)
     'max_conv_in_mixed_scan': 8,        # more than 8 conv in trunked scan = degraded
 }
+
+
+RADIO_BANDS = (
+    (LIMITS['vhf_min'], LIMITS['vhf_max']),
+    (LIMITS['uhf_min'], LIMITS['uhf_max']),
+    (LIMITS['band_700_min'], LIMITS['band_800_max']),
+)
+BANDS_TEXT = ", ".join(f"{lo:g}-{hi:g}" for lo, hi in RADIO_BANDS) + " MHz"
+
+
+def in_radio_bands(freq_mhz):
+    """True when the XG-100P can tune the frequency."""
+    return any(lo <= freq_mhz <= hi for lo, hi in RADIO_BANDS)
 
 
 # Severity levels
@@ -280,16 +294,14 @@ def validate_trunk_set(trunk_set):
                 f"{trunk_set.rx_max:.1f}. Verify the frequency is correct "
                 f"or update the IDEN band limits."))
 
-    # Check absolute frequency range
+    # Check the radio's bands
     for ch in trunk_set.channels:
         for freq in (ch.tx_freq, ch.rx_freq):
-            if freq < LIMITS['freq_min_mhz'] or freq > LIMITS['freq_max_mhz']:
+            if not in_radio_bands(freq):
                 issues.append((ERROR,
-                    f"Trunk set '{name}' freq {freq:.5f} MHz outside "
-                    f"XG-100P range ({LIMITS['freq_min_mhz']}-"
-                    f"{LIMITS['freq_max_mhz']} MHz). "
-                    f"Remove this frequency or correct it to a valid "
-                    f"XG-100P band."))
+                    f"Trunk set '{name}' freq {freq:.5f} MHz is outside "
+                    f"the XG-100P's bands ({BANDS_TEXT}). "
+                    f"Remove this frequency or correct it."))
 
     # TX and RX the wrong way round: TX on a site downlink frequency and
     # RX on that downlink's uplink.  The radio would then listen where the
@@ -337,13 +349,12 @@ def validate_conv_set(conv_set):
         issues.extend(_validate_name_lengths(
             ch.short_name, ch.long_name, f"channel '{ch.short_name}'"))
 
-        # Check frequency range
+        # Check the radio's bands
         for freq in (ch.tx_freq, ch.rx_freq):
-            if freq < LIMITS['freq_min_mhz'] or freq > LIMITS['freq_max_mhz']:
+            if not in_radio_bands(freq):
                 issues.append((ERROR,
                     f"Conv channel '{ch.short_name}' freq {freq:.5f} MHz "
-                    f"outside XG-100P range ({LIMITS['freq_min_mhz']}-"
-                    f"{LIMITS['freq_max_mhz']} MHz). "
+                    f"is outside the XG-100P's bands ({BANDS_TEXT}). "
                     f"Correct the frequency or remove this channel."))
 
         # Check tone format
@@ -951,7 +962,9 @@ def _validate_system_counts(prs):
 
 
 def _check_duplicate_set_names(prs, issues):
-    """Detect duplicate set names across all set types."""
+    """Detect two sets of one type with the same name.  Systems name their
+    trunk, talkgroup and IDEN sets separately, so a trunk set and a
+    talkgroup set may share a name (RPM names them that way)."""
     set_names = {}  # name -> list of type labels
 
     for cls, label, parser_fn in [
@@ -975,13 +988,14 @@ def _check_duplicate_set_names(prs, issues):
                     set_names.setdefault(s.name, []).append(label)
 
     for name, types in set_names.items():
-        if len(types) > 1:
-            labels = ", ".join(types)
-            issues.append((WARNING,
-                f"Duplicate set name '{name}' used by: {labels}. "
-                "RPM may confuse references. Rename one of the sets "
-                "with 'quickprs edit <file> --rename-set <type> "
-                f"\"{name}\" <new_name>'."))
+        for label in sorted(set(types)):
+            count = types.count(label)
+            if count > 1:
+                issues.append((WARNING,
+                    f"Duplicate set name '{name}': {count} {label} sets. "
+                    "RPM may confuse references. Rename one of the sets "
+                    "with 'quickprs edit <file> --rename-set <type> "
+                    f"\"{name}\" <new_name>'."))
 
 
 

@@ -102,7 +102,7 @@ class TestTemplateCsvChannels:
         out = str(tmp_path / "channels.csv")
         cmd_template_csv("channels", output=out)
         content = Path(out).read_text(encoding='utf-8')
-        assert "RPT IN" in content
+        assert "# Example: RPT 147" in content
 
 
 class TestTemplateCsvUnits:
@@ -711,21 +711,110 @@ class TestWizardCLI:
             result = run_cli(["wizard"])
         assert result == 0
 
-    def test_cli_wizard_modify_flag(self, tmp_path, capsys):
-        """--modify flag is accepted."""
-        out = str(tmp_path / "MOD.PRS")
-        inputs = [
-            "MOD.PRS",
-            out,
-            "n",
-            "",
-            "",
-            "",
-            "",
-        ]
+    def test_cli_wizard_modify_missing_file(self, tmp_path, capsys):
+        """--modify needs a file it can read (it used to build a new
+        personality and report success)."""
+        missing = str(tmp_path / "missing.PRS")
+        with patch('builtins.input', side_effect=AssertionError("asked")):
+            result = run_cli(["wizard", "--modify", missing])
+        assert result == 1
+        assert "cannot read" in capsys.readouterr().err
+
+
+class TestWizardModify:
+    """wizard --modify FILE adds to FILE; it used to ignore FILE and write
+    a new personality to the output name."""
+
+    def _radio(self, tmp_path):
+        from quickprs.builder import create_blank_prs
+        from quickprs.injector import add_conv_set, make_conv_set
+        prs = create_blank_prs(filename="MINE.PRS")
+        add_conv_set(prs, make_conv_set("KEEP", [
+            {"short_name": "KEEP 1", "tx_freq": 151.625}]))
+        path = tmp_path / "radio.PRS"
+        path.write_bytes(prs.to_bytes())
+        return path
+
+    @staticmethod
+    def _conv_set_names(path):
+        from quickprs.prs_parser import parse_prs
+        from quickprs.record_types import (
+            parse_sets_from_sections, parse_conv_channel_section)
+        prs = parse_prs(str(path))
+        return [s.name for s in parse_sets_from_sections(
+            prs.get_section_by_class("CConvSet").raw,
+            prs.get_section_by_class("CConvChannel").raw,
+            parse_conv_channel_section)]
+
+    def test_adds_to_the_file_in_place(self, tmp_path):
+        path = self._radio(tmp_path)
+        before = path.read_bytes()
+        # output (default: the file itself), no P25 system, MURS, no options
+        inputs = ["", "n", "murs", "", "", ""]
         with patch('builtins.input', side_effect=inputs):
-            result = run_cli(["wizard", "--modify", "dummy.PRS"])
-        assert result == 0
+            assert run_cli(["wizard", "--modify", str(path)]) == 0
+        assert self._conv_set_names(path) == ["Conv 1", "KEEP", "MURS"]
+        assert Path(str(path) + ".bak").read_bytes() == before
+        assert not (tmp_path / "New Radio.PRS").exists()
+
+    def test_keeps_the_personality_name(self, tmp_path):
+        from quickprs.prs_parser import parse_prs
+        from quickprs.record_types import parse_personality_section
+        path = self._radio(tmp_path)
+        with patch('builtins.input', side_effect=["", "n", "murs", "", "",
+                                                  ""]):
+            assert run_cli(["wizard", "--modify", str(path)]) == 0
+        prs = parse_prs(str(path))
+        info = parse_personality_section(
+            prs.get_section_by_class("CPersonality").raw)
+        assert "MINE" in str(info)
+
+    def test_name_clash_is_an_error(self, tmp_path, capsys):
+        path = self._radio(tmp_path)
+        before = path.read_bytes()
+        from quickprs.injector import add_conv_set, make_conv_set
+        from quickprs.prs_parser import parse_prs
+        prs = parse_prs(str(path))
+        add_conv_set(prs, make_conv_set("MURS", [
+            {"short_name": "M1", "tx_freq": 151.82}]))
+        path.write_bytes(prs.to_bytes())
+        before = path.read_bytes()
+        with patch('builtins.input', side_effect=["", "n", "murs", "", "",
+                                                  ""]):
+            assert run_cli(["wizard", "--modify", str(path)]) == 1
+        assert "Error building personality" in capsys.readouterr().err
+        assert path.read_bytes() == before
+
+
+class TestWizardOutputExists:
+    """The wizard wrote over an existing output file without asking."""
+
+    def test_declining_keeps_the_file(self, tmp_path, capsys):
+        out = tmp_path / "taken.PRS"
+        out.write_bytes(b"precious")
+        asked = []
+        answers = iter(["NEW.PRS", str(out), "n"])
+
+        def answer(prompt):
+            asked.append(prompt)
+            return next(answers)
+
+        with patch('builtins.input', side_effect=answer):
+            assert run_cli(["wizard"]) == 1
+        assert "exists. Replace it" in asked[-1]
+        assert "Cancelled." in capsys.readouterr().out
+        assert out.read_bytes() == b"precious"
+
+    def test_replacing_keeps_a_backup(self, tmp_path):
+        from quickprs.builder import create_blank_prs
+        out = tmp_path / "taken.PRS"
+        old = create_blank_prs(filename="OLD.PRS").to_bytes()
+        out.write_bytes(old)
+        inputs = ["NEW.PRS", str(out), "y", "n", "", "", "", ""]
+        with patch('builtins.input', side_effect=inputs):
+            assert run_cli(["wizard"]) == 0
+        assert Path(str(out) + ".bak").read_bytes() == old
+        assert out.read_bytes() != old
 
 
 # ─── Wizard validates output ──────────────────────────────────────────

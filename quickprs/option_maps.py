@@ -3700,6 +3700,7 @@ SWITCH_FUNCTION_NAMES = {
     "CHAN_BANK": "Channel Bank",
     "ZONE": "Zone",
     "TALKAROUND": "Talkaround",
+    "PTCT": "PTCT",           # RPM's default for the 2-position switch
 }
 
 

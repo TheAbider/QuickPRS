@@ -48,17 +48,17 @@ def get_template_channels(name):
 def get_murs_channels():
     """Return MURS (Multi-Use Radio Service) channel data.
 
-    5 channels, license-free, 2W max. Channels 1-3 are 11.25 kHz
-    bandwidth, channels 4-5 are 20 kHz bandwidth.
+    5 channels, license-free, 2W max. Channels 1-3 are limited to
+    11.25 kHz (narrowband), channels 4-5 to 20 kHz (47 CFR 95.2773).
     FCC Part 95 Subpart J.
     """
     return [
         {'short_name': 'MURS 1', 'tx_freq': 151.820,
-         'long_name': 'MURS Channel 1'},
+         'long_name': 'MURS Channel 1', 'narrowband': True},
         {'short_name': 'MURS 2', 'tx_freq': 151.880,
-         'long_name': 'MURS Channel 2'},
+         'long_name': 'MURS Channel 2', 'narrowband': True},
         {'short_name': 'MURS 3', 'tx_freq': 151.940,
-         'long_name': 'MURS Channel 3'},
+         'long_name': 'MURS Channel 3', 'narrowband': True},
         {'short_name': 'MURS 4', 'tx_freq': 154.570,
          'long_name': 'MURS Channel 4'},
         {'short_name': 'MURS 5', 'tx_freq': 154.600,
@@ -70,11 +70,12 @@ def get_murs_channels():
 def get_gmrs_channels():
     """Return GMRS (General Mobile Radio Service) channel data.
 
-    22 channels per FCC Part 95 Subpart E.
-    Channels 1-7: 462 MHz simplex (shared with FRS, 5W GMRS / 2W FRS)
-    Channels 8-14: 467 MHz repeater inputs (0.5W)
-    Channels 15-22: 462 MHz simplex (GMRS only, 50W)
-    Repeater outputs for channels 15R-22R on 462 MHz.
+    22 simplex channels per FCC Part 95 Subpart E (repeater pairs are
+    not included):
+    Channels 1-7: 462 MHz interstitial (shared with FRS, 5W), 20 kHz
+    Channels 8-14: 467 MHz interstitial (0.5W), 12.5 kHz (narrowband)
+    Channels 15-22: 462 MHz main channels (50W), 20 kHz
+    Bandwidths per 47 CFR 95.1773.
     """
     channels = []
 
@@ -90,7 +91,7 @@ def get_gmrs_channels():
             'long_name': f'GMRS Channel {i}',
         })
 
-    # Channels 8-14: 467 MHz (FRS/GMRS interstitial, 0.5W)
+    # Channels 8-14: 467 MHz (FRS/GMRS interstitial, 0.5W, 12.5 kHz)
     ch8_14_freqs = [
         467.5625, 467.5875, 467.6125, 467.6375,
         467.6625, 467.6875, 467.7125,
@@ -100,6 +101,7 @@ def get_gmrs_channels():
             'short_name': f'GMRS {i:2d}',
             'tx_freq': freq,
             'long_name': f'GMRS Channel {i}',
+            'narrowband': True,
         })
 
     # Channels 15-22: 462 MHz (GMRS only, higher power)
@@ -125,7 +127,8 @@ def get_frs_channels():
     Channels 1-7: 462 MHz (shared with GMRS, 2W)
     Channels 8-14: 467 MHz (shared with GMRS, 0.5W)
     Channels 15-22: 462 MHz (2W, shared with GMRS)
-    All simplex, license-free.
+    All simplex, license-free, and 12.5 kHz (narrowband) on every
+    channel (47 CFR 95.573).
     """
     channels = []
 
@@ -139,6 +142,7 @@ def get_frs_channels():
             'short_name': f'FRS {i:2d}',
             'tx_freq': freq,
             'long_name': f'FRS Channel {i}',
+            'narrowband': True,
         })
 
     # Channels 8-14: 467 MHz
@@ -151,6 +155,7 @@ def get_frs_channels():
             'short_name': f'FRS {i:2d}',
             'tx_freq': freq,
             'long_name': f'FRS Channel {i}',
+            'narrowband': True,
         })
 
     # Channels 15-22: 462 MHz
@@ -163,6 +168,7 @@ def get_frs_channels():
             'short_name': f'FRS {i:2d}',
             'tx_freq': freq,
             'long_name': f'FRS Channel {i}',
+            'narrowband': True,
         })
 
     return channels
@@ -174,7 +180,9 @@ def get_marine_channels():
 
     Common marine channels per ITU-R M.1084 / FCC Part 80.
     Includes calling/distress (16), secondary calling (9),
-    and common recreational/commercial channels.
+    and common recreational/commercial channels.  Channel 70
+    (156.525 MHz) is left out: it carries digital selective calling
+    (DSC) only, and voice is not allowed on it.
     Simplex channels use the same TX/RX frequency.
     Duplex channels have a 4.6 MHz offset (ship TX on low, coast RX on high).
     """
@@ -209,8 +217,6 @@ def get_marine_channels():
          'long_name': 'Vessel Traffic'},
         {'short_name': 'MAR 14', 'tx_freq': 156.700,
          'long_name': 'Vessel Traffic'},
-        {'short_name': 'MAR 70', 'tx_freq': 156.525,
-         'long_name': 'DSC Calling'},
         # Coast Guard
         {'short_name': 'MAR 22', 'tx_freq': 157.100,
          'long_name': 'USCG Liaison'},
@@ -297,9 +303,11 @@ def get_public_safety_channels():
     """Return common public safety simplex frequencies.
 
     Standard VHF/UHF simplex frequencies used by fire, EMS,
-    and law enforcement for on-scene operations. All simplex.
+    and law enforcement for on-scene operations. All simplex and
+    narrowband: Part 90 stations at 150-174 and 421-512 MHz must use
+    12.5 kHz channels since 2013 (47 CFR 90.209(b)(5)).
     """
-    return [
+    channels = [
         # VHF public safety
         {'short_name': 'PS VHF1', 'tx_freq': 155.3400,
          'long_name': 'PS Simplex 1'},
@@ -323,3 +331,6 @@ def get_public_safety_channels():
         {'short_name': 'PS UHF3', 'tx_freq': 453.1375,
          'long_name': 'PS UHF Simplex3'},
     ]
+    for ch in channels:
+        ch['narrowband'] = True
+    return channels

@@ -199,8 +199,9 @@ def _set_tx_on_set(prs, set_name, enable=True):
 
 
 def _set_personality_name(prs, name):
-    """Set the personality name stored in the CPersonality header (the
-    options XML has no name attribute)."""
+    """Set the personality name (stored in the CPersonality header and
+    again among the document fields; the options XML has no name
+    attribute)."""
     from .injector import edit_personality
     if not name.upper().endswith(".PRS"):
         name = f"{name}.PRS"
