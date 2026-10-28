@@ -561,6 +561,8 @@ class TestColorsModule:
         """supports_color returns True when stdout is a TTY."""
         import quickprs.colors as colors_mod
         monkeypatch.setattr(colors_mod, '_no_color', False)
+        monkeypatch.setattr(colors_mod, '_windows_vt', True)
+        monkeypatch.delenv('NO_COLOR', raising=False)
 
         mock_stdout = MagicMock()
         mock_stdout.isatty.return_value = True
@@ -577,6 +579,116 @@ class TestColorsModule:
             assert colors_mod._no_color is True
         finally:
             colors_mod._no_color = old_val
+
+
+class _FakeKernel32:
+    """Stands in for kernel32's console mode calls."""
+
+    class _Call:
+        def __init__(self, fn):
+            self.fn = fn
+            self.restype = None
+
+        def __call__(self, *args):
+            return self.fn(*args)
+
+    def __init__(self, mode, is_console=True, set_ok=True):
+        self.mode = mode
+        self.set_calls = []
+        self.GetStdHandle = self._Call(lambda n: 7)
+        self.GetConsoleMode = self._Call(self._get)
+        self.SetConsoleMode = self._Call(self._set)
+        self._is_console = is_console
+        self._set_ok = set_ok
+
+    def _get(self, handle, mode_ptr):
+        if not self._is_console:
+            return 0
+        mode_ptr.contents.value = self.mode
+        return 1
+
+    def _set(self, handle, mode):
+        self.set_calls.append(mode)
+        return 1 if self._set_ok else 0
+
+
+class TestColorsInWindowsConsoles:
+    """A Windows console shows ANSI codes as text (a left arrow and
+    "[1m") unless the program turns on their handling."""
+
+    def _tty(self, monkeypatch):
+        import quickprs.colors as colors_mod
+        monkeypatch.setattr(colors_mod, '_no_color', False)
+        monkeypatch.delenv('NO_COLOR', raising=False)
+        mock_stdout = MagicMock()
+        mock_stdout.isatty.return_value = True
+        monkeypatch.setattr(sys, 'stdout', mock_stdout)
+        return colors_mod
+
+    def test_no_color_when_the_console_cannot_show_it(self, monkeypatch):
+        colors_mod = self._tty(monkeypatch)
+        monkeypatch.setattr(sys, 'platform', 'win32')
+        monkeypatch.setattr(colors_mod, '_windows_vt', False)
+        assert colors_mod.supports_color() is False
+        assert colors_mod.red("x") == "x"
+
+    def test_color_once_handling_is_on(self, monkeypatch):
+        colors_mod = self._tty(monkeypatch)
+        monkeypatch.setattr(sys, 'platform', 'win32')
+        monkeypatch.setattr(colors_mod, '_windows_vt', True)
+        assert colors_mod.supports_color() is True
+
+    def test_turns_on_ansi_handling(self, monkeypatch):
+        import quickprs.colors as colors_mod
+        k32 = _FakeKernel32(mode=0x0003)
+        monkeypatch.setattr(colors_mod, '_kernel32', lambda: k32)
+        monkeypatch.setattr(colors_mod, '_windows_vt', None)
+        assert colors_mod._enable_windows_vt() is True
+        assert k32.set_calls == [0x0003 | 0x0004]
+
+    def test_already_on_is_left_alone(self, monkeypatch):
+        import quickprs.colors as colors_mod
+        k32 = _FakeKernel32(mode=0x0007)
+        monkeypatch.setattr(colors_mod, '_kernel32', lambda: k32)
+        monkeypatch.setattr(colors_mod, '_windows_vt', None)
+        assert colors_mod._enable_windows_vt() is True
+        assert k32.set_calls == []
+
+    def test_older_windows_without_ansi_handling(self, monkeypatch):
+        import quickprs.colors as colors_mod
+        k32 = _FakeKernel32(mode=0x0003, set_ok=False)
+        monkeypatch.setattr(colors_mod, '_kernel32', lambda: k32)
+        monkeypatch.setattr(colors_mod, '_windows_vt', None)
+        assert colors_mod._enable_windows_vt() is False
+
+    def test_not_a_console(self, monkeypatch):
+        import quickprs.colors as colors_mod
+        k32 = _FakeKernel32(mode=0, is_console=False)
+        monkeypatch.setattr(colors_mod, '_kernel32', lambda: k32)
+        monkeypatch.setattr(colors_mod, '_windows_vt', None)
+        assert colors_mod._enable_windows_vt() is False
+        assert k32.set_calls == []
+
+    def test_checked_once(self, monkeypatch):
+        import quickprs.colors as colors_mod
+        k32 = _FakeKernel32(mode=0x0003)
+        monkeypatch.setattr(colors_mod, '_kernel32', lambda: k32)
+        monkeypatch.setattr(colors_mod, '_windows_vt', None)
+        colors_mod._enable_windows_vt()
+        colors_mod._enable_windows_vt()
+        assert len(k32.set_calls) == 1
+
+    def test_no_color_environment_variable(self, monkeypatch):
+        colors_mod = self._tty(monkeypatch)
+        monkeypatch.setattr(colors_mod, '_windows_vt', True)
+        monkeypatch.setenv('NO_COLOR', '1')
+        assert colors_mod.supports_color() is False
+
+    def test_empty_no_color_is_ignored(self, monkeypatch):
+        colors_mod = self._tty(monkeypatch)
+        monkeypatch.setattr(colors_mod, '_windows_vt', True)
+        monkeypatch.setenv('NO_COLOR', '')
+        assert colors_mod.supports_color() is True
 
 
 class TestColorsNotPiped:
