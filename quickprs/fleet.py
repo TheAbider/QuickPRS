@@ -102,9 +102,10 @@ def _parse_units_csv(csv_path):
     Returns:
         list of dicts with keys: unit_id (int), name (str), password (str)
     """
+    from .csv_import import data_lines
     units = []
     with open(csv_path, 'r', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
+        reader = csv.DictReader(data_lines(f))
 
         if reader.fieldnames is None:
             raise ValueError("Units CSV is empty (no header row)")

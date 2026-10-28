@@ -1117,8 +1117,9 @@ def _read_csv_file(filepath):
     path = Path(filepath)
     if not path.exists():
         raise FileNotFoundError(f"CSV file not found: {filepath}")
+    from .csv_import import data_lines
     with open(path, 'r', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
+        reader = csv.DictReader(data_lines(f))
         return list(reader)
 
 
@@ -3934,8 +3935,10 @@ def cmd_template_csv(template_type, output=None):
             'default_name': 'channels.csv',
             'content': (
                 "short_name,tx_freq,rx_freq,tx_tone,rx_tone,long_name\n"
-                "# Example: RPT IN,147.000,147.600,100.0,100.0,"
-                "Repeater Input\n"
+                "# Example: RPT 147,147.600,147.000,100.0,100.0,"
+                "Repeater 147.00\n"
+                "# The radio transmits on the repeater's input (tx_freq)\n"
+                "# and receives its output (rx_freq).\n"
             ),
         },
         'units': {
