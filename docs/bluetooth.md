@@ -77,10 +77,25 @@ flowchart LR
 4. Turn the radio on, and in RPM extract it over its Bluetooth COM port.
 5. Press Ctrl+C in QuickPRS, then close BTVS.
 
+When it stops, `sniff` reports what the trace held (packets, Bluetooth
+data packets, RFCOMM frames and serial channels) and, if it found no serial
+data, the likely reason.
+
+To check the setup before a real session, run steps 2 and 3, then with the
+radio on open its port for a few seconds from another console:
+
+```bash
+quickprs radio probe --port COM6 --seconds 10
+```
+
+After Ctrl+C the report should list RFCOMM frames (the channel opening and
+closing) even though nothing was sent.
+
 A full trace holds more than the serial data (Bluetooth link keys among
 it); QuickPRS writes only the serial bytes, and only from the radio's link
 once the trace has shown which link that is. `--pcap trace.pcapng` reads a
-trace saved from Wireshark instead.
+trace saved from Wireshark instead. Traces with or without a direction
+header (pcap link types 201 and 187) both work.
 
 ### Through a virtual null-modem pair
 
