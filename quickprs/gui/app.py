@@ -2082,6 +2082,7 @@ class QuickPRSApp:
                     "Create a default one?"):
                 try:
                     default_xml = _create_default_platform_xml()
+                    self.save_undo_snapshot("Create radio options")
                     if not _inject_platform_xml(self.prs, default_xml):
                         messagebox.showerror(
                             "Error",

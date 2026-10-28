@@ -4719,6 +4719,21 @@ class PersonalityView(ttk.Frame):
         widget.bind("<Enter>", _show)
         widget.bind("<Leave>", _hide)
 
+    def _editing_current(self, prs, win):
+        """True when prs is still the open personality.  An editor keeps
+        the personality it opened on; after Undo, Redo or opening another
+        file its changes would go into an object nothing uses, so it is
+        closed instead."""
+        if prs is self.app.prs:
+            return True
+        messagebox.showwarning(
+            "Not saved",
+            "The personality changed while this window was open (undo, "
+            "redo or another file). Nothing was saved; open the editor "
+            "again.", parent=win)
+        win.destroy()
+        return False
+
     def _show_xml_editor(self, category):
         """Show XML platformConfig editor for a given category."""
         from ..option_maps import (
@@ -4922,6 +4937,9 @@ class PersonalityView(ttk.Frame):
                     continue
                 self._set_xml_field(root, field_def, new_val)
 
+            if not self._editing_current(prs, win):
+                return
+            self.app.save_undo_snapshot(f"Edit {category}")
             new_xml = ET.tostring(root, encoding='unicode')
             write_platform_config(prs, new_xml)
             self.app.mark_modified()
@@ -5140,6 +5158,9 @@ class PersonalityView(ttk.Frame):
                                     child.set("function", raw_val)
                                     break
 
+            if not self._editing_current(prs, win):
+                return
+            self.app.save_undo_snapshot("Edit programmable buttons")
             new_xml = ET.tostring(root, encoding='unicode')
             write_platform_config(prs, new_xml)
             self.app.mark_modified()
@@ -5235,6 +5256,9 @@ class PersonalityView(ttk.Frame):
                         child.set("name", raw_val)
                         break
 
+            if not self._editing_current(prs, win):
+                return
+            self.app.save_undo_snapshot("Edit short menu")
             new_xml = ET.tostring(root, encoding='unicode')
             write_platform_config(prs, new_xml)
             self.app.mark_modified()
@@ -5360,6 +5384,9 @@ class PersonalityView(ttk.Frame):
                 log_error("option_save", str(e))
                 return
             new_raw = sec.raw[:ds] + bytes(new_data)
+            if not self._editing_current(prs, win):
+                return
+            self.app.save_undo_snapshot(f"Edit {display}")
             from ..prs_parser import Section
             idx = prs.sections.index(sec)
             prs.sections[idx] = Section(

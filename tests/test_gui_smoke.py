@@ -437,3 +437,62 @@ def test_diff_viewer_identical(tk_root):
     tops, _, summary = _viewer(tk_root, _personality(), _personality())
     assert summary == "No differences found."
     assert len(tops) == 1 and tops[0].startswith("Systems")
+
+
+def _editor_window(app, category="GPS Settings"):
+    before = set(app.root.winfo_children())
+    app.personality_view._show_xml_editor(category)
+    return next(w for w in app.root.winfo_children()
+                if w not in before and isinstance(w, tk.Toplevel))
+
+
+def _button(widget, text):
+    for child in widget.winfo_children():
+        try:
+            if child.cget("text") == text:
+                return child
+        except tk.TclError:
+            pass
+        found = _button(child, text)
+        if found is not None:
+            return found
+    return None
+
+
+def _options_personality(tmp_path):
+    from quickprs.builder import create_blank_prs
+    from quickprs.option_maps import set_platform_option
+    from quickprs.prs_writer import write_prs
+    prs = create_blank_prs("opts.PRS")
+    set_platform_option(prs, "gps", "gpsMode", "ON")
+    path = tmp_path / "opts.PRS"
+    write_prs(prs, path)
+    return path
+
+
+def test_option_editor_save_can_be_undone(app, tmp_path):
+    """The option editors changed the personality without an undo
+    snapshot."""
+    app._open_path(_options_personality(tmp_path), confirmed=True)
+    assert not app._undo_stack.can_undo()
+    win = _editor_window(app)
+    _button(win, "Save").invoke()
+    assert app._undo_stack.can_undo()
+
+
+def test_option_editor_after_undo_does_not_write(app, tmp_path):
+    """An editor kept the personality it opened on; after Undo replaced
+    it, Save wrote into an object nothing used and said 'Saved'."""
+    app._open_path(_options_personality(tmp_path), confirmed=True)
+    app.save_undo_snapshot("something")
+    app.undo_injection()
+    current = app.prs
+    win = _editor_window(app)
+    app.save_undo_snapshot("another")
+    app.undo_injection()
+    assert app.prs is not current
+    before = app.prs.to_bytes()
+    with mock.patch("quickprs.gui.personality_view.messagebox") as mb:
+        _button(win, "Save").invoke()
+        mb.showwarning.assert_called_once()
+    assert app.prs.to_bytes() == before

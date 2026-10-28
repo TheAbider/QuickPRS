@@ -60,6 +60,7 @@ class ButtonConfigurator(tk.Toplevel):
                     parent=self):
                 try:
                     default_xml = _create_default_platform_xml()
+                    self.app.save_undo_snapshot("Create radio options")
                     if not _inject_platform_xml(prs, default_xml):
                         messagebox.showerror(
                             "Error",
