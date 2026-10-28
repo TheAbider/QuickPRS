@@ -789,12 +789,20 @@ class TestWizardModify:
 class TestWizardOutputExists:
     """The wizard wrote over an existing output file without asking."""
 
-    def test_declining_keeps_the_file(self, tmp_path):
+    def test_declining_keeps_the_file(self, tmp_path, capsys):
         out = tmp_path / "taken.PRS"
         out.write_bytes(b"precious")
-        with patch('builtins.input', side_effect=["NEW.PRS", str(out),
-                                                  "n"]):
+        asked = []
+        answers = iter(["NEW.PRS", str(out), "n"])
+
+        def answer(prompt):
+            asked.append(prompt)
+            return next(answers)
+
+        with patch('builtins.input', side_effect=answer):
             assert run_cli(["wizard"]) == 1
+        assert "exists. Replace it" in asked[-1]
+        assert "Cancelled." in capsys.readouterr().out
         assert out.read_bytes() == b"precious"
 
     def test_replacing_keeps_a_backup(self, tmp_path):
