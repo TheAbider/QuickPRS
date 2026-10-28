@@ -23,7 +23,7 @@ from ..radioreference import (
     parse_rr_url, build_injection_data,
     parse_pasted_talkgroups, parse_pasted_frequencies,
     parse_full_page, parse_pasted_conv_channels,
-    conv_channels_to_set_data,
+    add_rr_conv_channels,
     make_short_name, make_long_name, make_set_name,
     calculate_tx_freq, build_standard_iden_entries,
     build_ecc_from_sites,
@@ -1851,20 +1851,13 @@ class ImportPanel(ttk.Frame):
                 )
 
             # Inject conventional system if we have conv channels
-            conv_count = 0
+            conv_count = p25_conv_count = 0
+            skipped_conv = []
             if selected_conv:
-                conv_data = conv_channels_to_set_data(selected_conv)
-                conv_set = make_conv_set(set_name, conv_data)
-                conv_long = (self.paste_system.name or set_name)[:16]
-                conv_config = ConvSystemConfig(
-                    system_name=set_name,
-                    long_name=conv_long.upper(),
-                    conv_set_name=set_name,
-                )
-                add_conv_system(
-                    self.app.prs, conv_config,
-                    conv_set=conv_set)
-                conv_count = len(conv_data)
+                conv_count, p25_conv_count, skipped_conv = (
+                    add_rr_conv_channels(
+                        self.app.prs, set_name,
+                        self.paste_system.name or set_name, selected_conv))
 
             self.app.mark_modified()
             self.app.personality_view.refresh()
@@ -1884,6 +1877,10 @@ class ImportPanel(ttk.Frame):
                 parts.append(f"{ecc_count} ECC")
             if conv_count:
                 parts.append(f"{conv_count} conv ch")
+            if p25_conv_count:
+                parts.append(f"{p25_conv_count} P25 conv ch")
+            if skipped_conv:
+                parts.append(f"{len(skipped_conv)} skipped (mode)")
 
             summary = f"Injected '{set_name}': " + ", ".join(parts)
             self.app.status_set(summary)

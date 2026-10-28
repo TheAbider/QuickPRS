@@ -1603,3 +1603,96 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ─── Tone column formats and channel modes ───────────────────────────
+
+import pytest  # noqa: E402
+
+from quickprs.radioreference import (  # noqa: E402
+    parse_rr_tone, p25_conv_channels_to_set_data, add_rr_conv_channels,
+    conv_channel_kind,
+)
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("136.5 PL", ("ctcss", "136.5")),
+    ("67.0", ("ctcss", "67.0")),
+    ("023 DPL", ("dcs", "D023")),
+    ("754 DPL", ("dcs", "D754")),
+    ("D023 N", ("dcs", "D023")),
+    ("D023 I", ("dcs", "D023I")),
+    ("293 NAC", ("nac", 0x293)),
+    ("NAC 3AB", ("nac", 0x3AB)),
+    ("CSQ", (None, "")),
+    ("", (None, "")),
+    ("999.9 PL", (None, "")),        # not a CTCSS tone
+])
+def test_parse_rr_tone(text, expected):
+    """A DPL code or a P25 NAC is not a CTCSS tone (754 DPL used to come
+    out as tone '754', 293 NAC as tone '293')."""
+    assert parse_rr_tone(text) == expected
+
+
+_MIXED = """Frequency    License    Type    Tone    Alpha Tag    Description    Mode    Tag
+155.76000    KQD949    BM    136.5 PL    LE D1    Law Dispatch    FMN    Law Dispatch
+155.01000    KQD949    BM    754 DPL    FIRE D1    Fire Dispatch    FM    Fire Dispatch
+154.43000    KQD949    BM    293 NAC    PD TAC    Police Tac    P25    Law Tac
+154.83000    KQD949    BM    CC 1    PW OPS    Public Works    DMR    Public Works
+151.07000    KQD949    BM    F7E NAC    SO ENC    Sheriff Secure    P25E    Law Tac
+"""
+
+
+class TestConvChannelModes:
+    """RR's Mode column decides which set a channel can go in: analog FM
+    (FMN is narrowband), P25 conventional, or neither."""
+
+    def test_tones_and_nacs(self):
+        chans = parse_pasted_conv_channels(_MIXED)
+        assert [c.tone for c in chans] == ["136.5", "D754", "", "", ""]
+        assert [c.nac for c in chans] == [-1, -1, 0x293, -1, 0xF7E]
+
+    def test_kinds(self):
+        chans = parse_pasted_conv_channels(_MIXED)
+        assert [conv_channel_kind(c) for c in chans] == \
+            ["analog", "analog", "p25", None, "p25"]
+
+    def test_analog_set_data(self):
+        data = conv_channels_to_set_data(parse_pasted_conv_channels(_MIXED))
+        assert [d['short_name'] for d in data] == ["LE D1", "FIRE D1"]
+        assert [d['narrowband'] for d in data] == [True, False]
+        assert data[1]['tx_tone'] == data[1]['rx_tone'] == "D754"
+
+    def test_p25_set_data(self):
+        data = p25_conv_channels_to_set_data(
+            parse_pasted_conv_channels(_MIXED))
+        assert [(d['short_name'], d['nac_tx'], d['nac_rx']) for d in data] \
+            == [("PD TAC", 0x293, 0x293), ("SO ENC", 0xF7E, 0xF7E)]
+
+    def test_nac_without_mode_is_p25(self):
+        ch = ConvChannelData(freq=155.0, nac=0x293)
+        assert conv_channel_kind(ch) == "p25"
+
+    def test_added_to_a_personality(self):
+        from quickprs import archive, injector
+        from quickprs.builder import create_blank_prs
+        from quickprs.prs_parser import parse_prs_bytes
+        prs = create_blank_prs()
+        analog, p25, skipped = add_rr_conv_channels(
+            prs, "COUNTY", "County Conv", parse_pasted_conv_channels(_MIXED))
+        assert (analog, p25) == (2, 2)
+        assert [c.name for c in skipped] == ["PW OPS"]
+        back = parse_prs_bytes(prs.to_bytes())
+        from quickprs.record_types import (
+            parse_sets_from_sections, parse_conv_channel_section)
+        conv = {s.name: s for s in parse_sets_from_sections(
+            back.get_section_by_class("CConvSet").raw,
+            back.get_section_by_class("CConvChannel").raw,
+            parse_conv_channel_section)}
+        assert [c.short_name for c in conv["COUNTY"].channels] == \
+            ["LE D1", "FIRE D1"]
+        p25_sets = {s.name: s for s in injector.get_p25_conv_sets(back)}
+        assert [(c.short_name, c.nac_tx) for c in
+                p25_sets["COUNTP25"].channels] == \
+            [("PD TAC", 0x293), ("SO ENC", 0xF7E)]
+        assert archive.check(back) == []
