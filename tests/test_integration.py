@@ -1226,26 +1226,23 @@ class TestEdgeCases:
             pass
 
     def test_frequency_boundaries(self):
-        """Test channels at 30 MHz (min) and 960 MHz (max XG-100P range)."""
-        from quickprs.validation import validate_trunk_set, validate_conv_set, LIMITS
+        """Band edges (136-174, 380-520, 762-870 MHz) pass; just outside
+        each edge fails."""
+        from quickprs.validation import validate_trunk_set, RADIO_BANDS
 
-        # Exactly at boundaries — should pass
-        tset_ok = make_trunk_set("BOUNDOK", [
-            (LIMITS['freq_min_mhz'], LIMITS['freq_min_mhz']),
-            (LIMITS['freq_max_mhz'], LIMITS['freq_max_mhz']),
-        ])
-        issues = validate_trunk_set(tset_ok)
-        freq_errors = [i for i in issues if i[0] == ERROR and "range" in i[1].lower()]
-        assert len(freq_errors) == 0, f"Boundary freqs should be valid: {freq_errors}"
+        edges = [f for band in RADIO_BANDS for f in band]
+        issues = validate_trunk_set(make_trunk_set(
+            "BOUNDOK", [(f, f) for f in edges]))
+        freq_errors = [i for i in issues if i[0] == ERROR and "bands" in i[1]]
+        assert freq_errors == [], f"Band edges should be valid: {freq_errors}"
 
-        # Just outside boundaries — should fail
-        tset_bad = make_trunk_set("BOUNDBAD", [
-            (29.999, 29.999),
-            (960.001, 960.001),
-        ])
-        issues = validate_trunk_set(tset_bad)
-        freq_errors = [i for i in issues if i[0] == ERROR and "range" in i[1].lower()]
-        assert len(freq_errors) >= 2, "Freqs outside 30-960 MHz should error"
+        outside = ([lo - 0.001 for lo, _ in RADIO_BANDS] +
+                   [hi + 0.001 for _, hi in RADIO_BANDS])
+        issues = validate_trunk_set(make_trunk_set(
+            "BOUNDBAD", [(f, f) for f in outside]))
+        freq_errors = [i for i in issues if i[0] == ERROR and "bands" in i[1]]
+        # each channel's TX and RX
+        assert len(freq_errors) == 2 * len(outside)
 
     def test_zero_frequency(self):
         """Inject a channel with 0.0 MHz, check validation catches it."""
@@ -1253,8 +1250,8 @@ class TestEdgeCases:
 
         tset = make_trunk_set("ZEROF", [(0.0, 0.0)])
         issues = validate_trunk_set(tset)
-        freq_errors = [i for i in issues if i[0] == ERROR and "range" in i[1].lower()]
-        assert len(freq_errors) >= 1, "0.0 MHz should be caught as out-of-range"
+        freq_errors = [i for i in issues if i[0] == ERROR and "bands" in i[1]]
+        assert len(freq_errors) >= 1, "0.0 MHz should be caught as out-of-band"
 
     @pytest.mark.skipif(not CLAUDE.exists(), reason="Test PRS data not available")
     def test_duplicate_talkgroup_ids_different_sets(self):

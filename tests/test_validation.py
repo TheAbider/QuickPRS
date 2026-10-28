@@ -175,7 +175,27 @@ def test_validate_trunk_set_out_of_band():
     ], tx_min=10.0, tx_max=10.0, rx_min=10.0, rx_max=10.0)
     issues = validate_trunk_set(ts)
     errors = [msg for sev, msg in issues if sev == ERROR]
-    assert any("outside XG-100P range" in e for e in errors)
+    assert any("outside the XG-100P's bands" in e for e in errors)
+
+
+@pytest.mark.parametrize("freq", [100.0, 220.0, 300.0, 600.0, 900.0])
+def test_between_the_radios_bands_is_an_error(freq):
+    """The check was 30-960 MHz, so 220 or 900 MHz passed although the
+    XG-100P tunes only 136-174, 380-520 and 762-870 MHz."""
+    from quickprs.injector import make_conv_set
+    issues = validate_conv_set(make_conv_set("OOB", [
+        {"short_name": "X", "tx_freq": freq}]))
+    assert any(sev == ERROR and "XG-100P's bands" in msg
+               for sev, msg in issues)
+
+
+@pytest.mark.parametrize("freq", [136.0, 155.76, 174.0, 380.0, 453.2125,
+                                  520.0, 762.0, 806.0125, 851.0125, 870.0])
+def test_inside_the_radios_bands_is_fine(freq):
+    from quickprs.injector import make_conv_set
+    issues = validate_conv_set(make_conv_set("IN", [
+        {"short_name": "X", "tx_freq": freq}]))
+    assert not any("bands" in msg for _, msg in issues)
 
 
 # ─── validate_conv_set ───────────────────────────────────────────────
