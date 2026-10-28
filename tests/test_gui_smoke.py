@@ -176,3 +176,54 @@ def test_trunk_edit_while_filtered_hits_the_right_channel(app, tmp_path):
         injector._get_first_count(app.prs, "CTrunkSet"))
         if s.name == "CITY").channels
     assert [c.tx_freq for c in channels] == [806.0125, 806.525, 807.0125]
+
+
+def _p25_conv_personality(tmp_path):
+    from quickprs import injector
+    from quickprs.builder import create_blank_prs
+    from quickprs.prs_writer import write_prs
+    from quickprs.record_types import P25ConvSystemConfig
+    prs = create_blank_prs("p25c.PRS")
+    injector.add_p25_conv_set(prs, injector.make_p25_conv_set("P25C", [
+        {"short_name": "TAC 1", "tx_freq": 154.43, "nac_tx": 0x3AB}]))
+    injector.add_p25_conv_system(prs, P25ConvSystemConfig(
+        system_name="P25C", long_name="P25 CONV", conv_set_name="P25C"))
+    injector._safe_add_iden_set(prs, injector.make_iden_set(
+        "SPARE", [{"base_freq_hz": 851_012_500}]))
+    injector._safe_add_iden_set(prs, injector.make_iden_set(
+        "KEEP", [{"base_freq_hz": 762_006_250}]))
+    path = tmp_path / "p25c.PRS"
+    write_prs(prs, path)
+    return path
+
+
+def test_p25_conv_set_csv_export(app, tmp_path):
+    """The P25 conv set menu offered Export to CSV, and the file came out
+    empty; it is now P25_CONV_SET.csv, which import-csv reads."""
+    from quickprs.csv_import import import_csv
+    app._open_path(_p25_conv_personality(tmp_path), confirmed=True)
+    pv = app.personality_view
+    meta = next(m for m in pv._item_meta.values()
+                if m.get("type") == "p25_conv_set")
+    out = tmp_path / "out.csv"
+    with mock.patch("quickprs.gui.personality_view.filedialog") as fd, \
+            mock.patch("quickprs.gui.personality_view.messagebox"):
+        fd.asksaveasfilename.return_value = str(out)
+        pv._export_set_csv("p25_conv_set", "P25C", meta["set_data"])
+    kind, sets = import_csv(out)
+    assert kind == "p25conv"
+    assert [(c.short_name, c.nac_tx) for c in sets[0].channels] == [
+        ("TAC 1", 0x3AB)]
+
+
+def test_delete_iden_set_keeps_the_file_readable(app, tmp_path):
+    from quickprs import archive
+    from quickprs.prs_parser import parse_prs_bytes
+    app._open_path(_p25_conv_personality(tmp_path), confirmed=True)
+    pv = app.personality_view
+    pv._delete_iden_set(app.prs, "SPARE")
+    back = parse_prs_bytes(app.prs.to_bytes())
+    assert archive.check(back) == []
+    names = [archive.read_cstring(o.parts[1], 0)[0] for o in
+             archive.document_from_prs(back).list("IDEN sets").items]
+    assert names == ["KEEP"]

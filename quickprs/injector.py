@@ -187,24 +187,120 @@ def _system_obj_names(obj):
     return short, long_name
 
 
-def _system_obj_refs(obj):
-    """The sets a system object of an archive.Document names, as
-    (archive list name, set name) pairs: trunk, talkgroup and IDEN sets
-    for a P25 trunked system, the channel set for the others."""
+def _system_ref_sites(obj):
+    """Where a system object of an archive.Document names its sets:
+    (archive list name, part index, start, end) of each name's CString,
+    trunk, talkgroup and IDEN sets for a P25 trunked system, the channel
+    set for the others."""
     data = obj.parts[0]
     _, pos = archive.read_cstring(data, 0)
     pos += 1 + 2 + 42                       # type byte, FFFF, prefix
     _, pos = archive.read_cstring(data, pos)  # long name
     if obj.cls == "CP25TrkSystem":
         pos += 15
-        trunk, pos = archive.read_cstring(data, pos)
-        group, _ = archive.read_cstring(data, pos)
-        iden, _ = archive.read_cstring(obj.parts[2], 4)
-        return [("trunk sets", trunk), ("group sets", group),
-                ("IDEN sets", iden)]
-    if obj.cls == "CConvSystem":
-        return [("conv sets", archive.read_cstring(data, pos + 12)[0])]
-    return [("P25 conv sets", archive.read_cstring(data, pos + 5 + 4)[0])]
+        _, trunk_end = archive.read_cstring(data, pos)
+        _, group_end = archive.read_cstring(data, trunk_end)
+        _, iden_end = archive.read_cstring(obj.parts[2], 4)
+        return [("trunk sets", 0, pos, trunk_end),
+                ("group sets", 0, trunk_end, group_end),
+                ("IDEN sets", 2, 4, iden_end)]
+    start = pos + (12 if obj.cls == "CConvSystem" else 5 + 4)
+    _, end = archive.read_cstring(data, start)
+    return [("conv sets" if obj.cls == "CConvSystem" else "P25 conv sets",
+             0, start, end)]
+
+
+def _system_obj_refs(obj):
+    """The sets a system object names, as (archive list name, set name)."""
+    return [(list_name,
+             archive.read_cstring(obj.parts[part], start)[0])
+            for list_name, part, start, _ in _system_ref_sites(obj)]
+
+
+def _replace_cstring(data, start, end, text):
+    return data[:start] + archive.write_cstring(text) + data[end:]
+
+
+# The archive set list each rename_* function works on, and its label
+_SET_LISTS = {
+    "trunk": ("trunk sets", "Trunk set"),
+    "group": ("group sets", "Group set"),
+    "conv": ("conv sets", "Conv set"),
+    "iden": ("IDEN sets", "IDEN set"),
+    "p25conv": ("P25 conv sets", "P25 conv set"),
+}
+
+
+def systems_using_set(prs, set_type, name):
+    """Short names of the systems that name this set (set_type as for
+    rename_set).  Empty when the archive cannot be read."""
+    list_name = _SET_LISTS[set_type][0]
+    try:
+        doc = archive.document_from_prs(prs)
+    except archive.WalkError:
+        return []
+    return [_system_obj_names(o)[0] for o in doc.list("systems").items
+            if o is not None and (list_name, name) in _system_obj_refs(o)]
+
+
+def rename_set(prs, set_type, old_name, new_name):
+    """Rename a set and every reference to it.
+
+    Systems find their sets by name, and a P25 conventional set may name a
+    talkgroup set, so those names change with it.
+
+    Args:
+        set_type: "trunk", "group", "conv", "iden" or "p25conv"
+        new_name: 8 characters at most (longer is cut)
+
+    Returns:
+        True if renamed, False if no set of that type has old_name.
+
+    Raises:
+        ValueError: another set of that type already has new_name.
+    """
+    list_name, label = _SET_LISTS[set_type]
+    new_name = new_name[:8]
+    if not prs.sections:
+        return False
+    doc = archive.document_from_prs(prs)
+    sets = [o for o in doc.list(list_name).items if o is not None]
+    target = next((o for o in sets if _set_obj_name(o) == old_name), None)
+    if target is None:
+        return False
+    if new_name == old_name:
+        return True
+    if any(_set_obj_name(o) == new_name for o in sets):
+        raise ValueError(f"{label} '{new_name}' already exists")
+
+    meta = target.parts[1]
+    _, end = archive.read_cstring(meta, 0)
+    target.parts[1] = _replace_cstring(meta, 0, end, new_name)
+
+    for obj in doc.list("systems").items:
+        if obj is None:
+            continue
+        # back to front, so earlier positions stay valid
+        for site_list, part, start, end in reversed(_system_ref_sites(obj)):
+            if (site_list == list_name and
+                    archive.read_cstring(obj.parts[part], start)[0]
+                    == old_name):
+                obj.parts[part] = _replace_cstring(
+                    obj.parts[part], start, end, new_name)
+
+    if list_name == "group sets":
+        for obj in doc.list("P25 conv sets").items:
+            if obj is None:
+                continue
+            meta = obj.parts[1]
+            _, pos = archive.read_cstring(meta, 0)   # set name
+            pos += 1 + 1 + 32                        # sizes, band limits
+            ref, end = archive.read_cstring(meta, pos)
+            if ref == old_name:
+                obj.parts[1] = _replace_cstring(meta, pos, end, new_name)
+
+    archive.write_document(prs, doc)
+    return True
 
 
 def _system_obj_wan_name(obj):
@@ -1021,120 +1117,30 @@ def remove_conv_set(prs, set_name):
 
 
 def rename_trunk_set(prs, old_name, new_name):
-    """Rename a trunk set. Rebuilds CTrunkChannel section with updated name.
-
-    Args:
-        prs: PRSFile object
-        old_name: current set name
-        new_name: new set name (8 chars max)
-
-    Returns:
-        True if renamed, False if not found.
-    """
-    ch_sec = prs.get_section_by_class("CTrunkChannel")
-    set_sec = prs.get_section_by_class("CTrunkSet")
-    if not ch_sec or not set_sec:
-        return False
-
-    byte1, byte2 = _get_header_bytes(ch_sec)
-    set_byte1, set_byte2 = _get_header_bytes(set_sec)
-    first_count = _get_first_count(prs, "CTrunkSet")
-
-    existing_sets = _parse_section_data(ch_sec, parse_trunk_channel_section,
-                                         first_count)
-
-    found = False
-    for s in existing_sets:
-        if s.name == old_name:
-            s.name = new_name[:8]
-            found = True
-            break
-
-    if not found:
-        return False
-
-    _replace_trunk_sections(prs, existing_sets, byte1, byte2,
-                             set_byte1, set_byte2)
-    return True
+    """Rename a trunk set and the references to it (see rename_set)."""
+    return rename_set(prs, "trunk", old_name, new_name)
 
 
 def rename_group_set(prs, old_name, new_name):
-    """Rename a group set. Rebuilds CP25Group section with updated name.
+    """Rename a group set and the references to it (see rename_set)."""
+    return rename_set(prs, "group", old_name, new_name)
 
-    Args:
-        prs: PRSFile object
-        old_name: current set name
-        new_name: new set name (8 chars max)
 
-    Returns:
-        True if renamed, False if not found.
-    """
-    grp_sec = prs.get_section_by_class("CP25Group")
-    set_sec = prs.get_section_by_class("CP25GroupSet")
-    if not grp_sec or not set_sec:
-        return False
+def rename_iden_set(prs, old_name, new_name):
+    """Rename an IDEN set and the references to it (see rename_set)."""
+    return rename_set(prs, "iden", old_name, new_name)
 
-    byte1, byte2 = _get_header_bytes(grp_sec)
-    set_byte1, set_byte2 = _get_header_bytes(set_sec)
-    first_count = _get_first_count(prs, "CP25GroupSet")
 
-    existing_sets = _parse_section_data(grp_sec, parse_group_section,
-                                         first_count)
-
-    found = False
-    for s in existing_sets:
-        if s.name == old_name:
-            s.name = new_name[:8]
-            found = True
-            break
-
-    if not found:
-        return False
-
-    _replace_group_sections(prs, existing_sets, byte1, byte2,
-                             set_byte1, set_byte2)
-    return True
+def rename_p25_conv_set(prs, old_name, new_name):
+    """Rename a P25 conventional set and the references to it (see
+    rename_set)."""
+    return rename_set(prs, "p25conv", old_name, new_name)
 
 
 def rename_conv_set(prs, old_name, new_name):
-    """Rename a conv set. Rebuilds CConvChannel section with updated name.
+    """Rename a conventional set and the references to it (see rename_set)."""
+    return rename_set(prs, "conv", old_name, new_name)
 
-    Args:
-        prs: PRSFile object
-        old_name: current set name
-        new_name: new set name (8 chars max)
-
-    Returns:
-        True if renamed, False if not found.
-    """
-    ch_sec = prs.get_section_by_class("CConvChannel")
-    set_sec = prs.get_section_by_class("CConvSet")
-    if not ch_sec or not set_sec:
-        return False
-
-    byte1, byte2 = _get_header_bytes(ch_sec)
-    set_byte1, set_byte2 = _get_header_bytes(set_sec)
-    first_count = _get_first_count(prs, "CConvSet")
-
-    existing_sets = _parse_section_data(ch_sec, parse_conv_channel_section,
-                                         first_count)
-
-    found = False
-    for s in existing_sets:
-        if s.name == old_name:
-            s.name = new_name[:8]
-            found = True
-            break
-
-    if not found:
-        return False
-
-    _replace_conv_sections(prs, existing_sets, byte1, byte2,
-                            set_byte1, set_byte2)
-    return True
-
-
-# ─── Reorder Operations ──────────────────────────────────────────────
 
 def reorder_talkgroup(prs, set_name, old_index, new_index):
     """Move a talkgroup to a new position within its group set.

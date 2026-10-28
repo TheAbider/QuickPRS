@@ -2317,7 +2317,8 @@ def cmd_edit(filepath, name=None, author=None,
         filepath: input PRS file
         name: new personality filename (None = don't change)
         author: new saved-by field (None = don't change)
-        rename_set_type: set type to rename ("trunk", "group", "conv")
+        rename_set_type: set type to rename ("trunk", "group", "conv",
+            "iden", "p25conv"); systems naming the set follow the rename
         rename_old: current set name
         rename_new: new set name
         output: output file path (default: overwrite input)
@@ -2325,9 +2326,7 @@ def cmd_edit(filepath, name=None, author=None,
     Returns:
         0 on success, 1 on error.
     """
-    from .injector import (
-        edit_personality, rename_trunk_set, rename_group_set, rename_conv_set,
-    )
+    from .injector import edit_personality
     from .prs_writer import write_prs
 
     prs = parse_prs(filepath)
@@ -2342,18 +2341,19 @@ def cmd_edit(filepath, name=None, author=None,
             if author is not None:
                 changes.append(f"author='{author}'")
 
-    # Rename set
+    # Rename set (and the systems' references to it)
     if rename_set_type and rename_old and rename_new:
+        from .injector import rename_set, _SET_LISTS
         rename_new = rename_new[:8]
-        if rename_set_type == "trunk":
-            renamed = rename_trunk_set(prs, rename_old, rename_new)
-        elif rename_set_type == "group":
-            renamed = rename_group_set(prs, rename_old, rename_new)
-        elif rename_set_type == "conv":
-            renamed = rename_conv_set(prs, rename_old, rename_new)
-        else:
-            print(f"Error: unknown set type '{rename_set_type}'",
-                  file=sys.stderr)
+        if rename_set_type not in _SET_LISTS:
+            print(f"Error: unknown set type '{rename_set_type}' (use "
+                  f"{', '.join(_SET_LISTS)})", file=sys.stderr)
+            return 1
+        try:
+            renamed = rename_set(prs, rename_set_type, rename_old,
+                                 rename_new)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
             return 1
 
         if not renamed:
@@ -4658,8 +4658,9 @@ def run_cli(args=None):
                          help="New saved-by field")
     p_edit.add_argument("--rename-set", nargs=3,
                          metavar=("TYPE", "OLD", "NEW"),
-                         help="Rename a set: TYPE OLD NEW "
-                              "(TYPE: trunk, group, conv)")
+                         help="Rename a set and the references to it: "
+                              "TYPE OLD NEW (TYPE: trunk, group, conv, "
+                              "iden, p25conv)")
     p_edit.add_argument("-o", "--output", default=None,
                          help="Output file (default: overwrite input)")
 

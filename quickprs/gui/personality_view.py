@@ -2555,14 +2555,24 @@ class PersonalityView(ttk.Frame):
         }
         label = type_labels.get(item_type, item_type)
 
+        prs = self.app.prs
+        if not prs:
+            return
+
+        users = []
+        if item_type in self._RENAMEABLE_SETS:
+            from ..injector import systems_using_set
+            users = systems_using_set(
+                prs, self._RENAMEABLE_SETS[item_type][0], set_name)
+        warning = ""
+        if users:
+            warning = (f"\n\nUsed by {', '.join(users)}: "
+                       f"{'it' if len(users) == 1 else 'they'} would name "
+                       f"a set that no longer exists.")
         if not messagebox.askyesno(
                 "Confirm Delete",
                 f"Delete {label} set '{set_name}'?\n\n"
-                "All data in this set will be removed."):
-            return
-
-        prs = self.app.prs
-        if not prs:
+                f"All data in this set will be removed.{warning}"):
             return
 
         self.app.save_undo_snapshot("Delete set")
@@ -2649,41 +2659,20 @@ class PersonalityView(ttk.Frame):
                                 set_byte1, set_byte2)
 
     def _delete_iden_set(self, prs, set_name):
-        from ..injector import (_parse_section_data,
-                                _get_header_bytes, _get_first_count)
-        from ..record_types import (parse_iden_section,
-                                     build_iden_section,
-                                     extract_iden_trailing_data)
+        from ..injector import (_parse_section_data, _get_first_count,
+                                _replace_iden_sections)
+        from ..record_types import parse_iden_section
         elem_sec = prs.get_section_by_class("CDefaultIdenElem")
-        set_sec = prs.get_section_by_class("CIdenDataSet")
-        if not elem_sec or not set_sec:
+        if not elem_sec or not prs.get_section_by_class("CIdenDataSet"):
             raise ValueError("No IDEN sections found")
-        byte1, byte2 = _get_header_bytes(elem_sec)
-        set_byte1, set_byte2 = _get_header_bytes(set_sec)
-        first_count = _get_first_count(prs, "CIdenDataSet")
-        trailing = extract_iden_trailing_data(elem_sec.raw, first_count)
         existing = _parse_section_data(
-            elem_sec, parse_iden_section, first_count)
+            elem_sec, parse_iden_section, _get_first_count(prs, "CIdenDataSet"))
         remaining = [i for i in existing if i.name != set_name]
         if len(remaining) == len(existing):
             raise ValueError(f"Set '{set_name}' not found")
         if not remaining:
             raise ValueError("Cannot delete the last IDEN set")
-        # Rebuild using build_iden_section (preserving trailing data)
-        new_raw = build_iden_section(remaining, byte1, byte2,
-                                      trailing_data=trailing)
-        from ..prs_parser import Section
-        from ..injector import _find_section_index, _rebuild_set_section
-        from ..binary_io import write_uint16_le
-        elem_idx = _find_section_index(prs, "CDefaultIdenElem")
-        set_idx = _find_section_index(prs, "CIdenDataSet")
-        prs.sections[elem_idx] = Section(offset=0, raw=new_raw,
-                                           class_name="CDefaultIdenElem")
-        new_set_raw = _rebuild_set_section("CIdenDataSet",
-                                            len(remaining[0].elements),
-                                            set_byte1, set_byte2)
-        prs.sections[set_idx] = Section(offset=0, raw=new_set_raw,
-                                          class_name="CIdenDataSet")
+        _replace_iden_sections(prs, remaining)
 
     # ─── Add standard IDEN set ────────────────────────────────────────
 
@@ -3300,6 +3289,12 @@ class PersonalityView(ttk.Frame):
             return
 
         try:
+            if item_type == "p25_conv_set":
+                from ..csv_export import export_p25_conv_sets
+                export_p25_conv_sets(path, [set_data])
+                self.app.status_set(f"Exported '{name}' to {Path(path).name}")
+                return
+
             with open(path, 'w', newline='', encoding='utf-8') as f:
                 w = csv.writer(f)
 
@@ -4227,216 +4222,37 @@ class PersonalityView(ttk.Frame):
         messagebox.showwarning("Warning",
                                 f"System '{old_name}' not found.")
 
-    def _rename_set(self, set_type, old_name):
-        """Dispatch rename to the appropriate handler."""
-        if set_type == "group_set":
-            self._rename_group_set(old_name)
-        elif set_type == "trunk_set":
-            self._rename_trunk_set(old_name)
-        elif set_type == "conv_set":
-            self._rename_conv_set(old_name)
-        elif set_type == "iden_set":
-            self._rename_iden_set(old_name)
+    # tree item type -> (injector set type, label)
+    _RENAMEABLE_SETS = {
+        "group_set": ("group", "Group Set"),
+        "trunk_set": ("trunk", "Trunk Set"),
+        "conv_set": ("conv", "Conv Set"),
+        "iden_set": ("iden", "IDEN Set"),
+        "p25_conv_set": ("p25conv", "P25 Conv Set"),
+    }
 
-    def _rename_group_set(self, old_name):
-        """Rename a group set (change name in parsed data, rebuild)."""
+    def _rename_set(self, item_type, old_name):
+        """Rename a set; the systems that use it follow (rename_set)."""
         prs = self.app.prs
-        if not prs:
+        if not prs or item_type not in self._RENAMEABLE_SETS:
             return
-
+        set_type, label = self._RENAMEABLE_SETS[item_type]
         new_name = self._prompt_new_name(
-            "Rename Group Set", f"New name for '{old_name}':", old_name)
+            f"Rename {label}", f"New name for '{old_name}':", old_name)
         if not new_name:
             return
 
-        grp_sec = prs.get_section_by_class("CP25Group")
-        set_sec = prs.get_section_by_class("CP25GroupSet")
-        if not grp_sec or not set_sec:
-            return
-
-        from ..injector import _parse_section_data, _replace_group_sections
-        from ..injector import _get_header_bytes, _get_first_count
-
+        from ..injector import rename_set
         try:
-            byte1, byte2 = _get_header_bytes(grp_sec)
-            set_byte1, set_byte2 = _get_header_bytes(set_sec)
-            first_count = _get_first_count(prs, "CP25GroupSet")
-            existing_sets = _parse_section_data(
-                grp_sec, parse_group_section, first_count)
-
-            found = False
-            for gs in existing_sets:
-                if gs.name == old_name:
-                    gs.name = new_name
-                    found = True
-                    break
-
-            if not found:
+            self.app.save_undo_snapshot(f"Rename {label.lower()}")
+            if not rename_set(prs, set_type, old_name, new_name):
                 messagebox.showwarning("Warning",
-                                        f"Group set '{old_name}' not found.")
+                                       f"{label} '{old_name}' not found.")
                 return
-
-            self.app.save_undo_snapshot("Rename group set")
-            _replace_group_sections(prs, existing_sets, byte1, byte2,
-                                     set_byte1, set_byte2)
             self.app.mark_modified()
             self.refresh()
             self.app.status_set(
-                f"Renamed group set '{old_name}' to '{new_name}'")
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Rename failed:\n{e}")
-
-    def _rename_trunk_set(self, old_name):
-        """Rename a trunk set."""
-        prs = self.app.prs
-        if not prs:
-            return
-
-        new_name = self._prompt_new_name(
-            "Rename Trunk Set", f"New name for '{old_name}':", old_name)
-        if not new_name:
-            return
-
-        ch_sec = prs.get_section_by_class("CTrunkChannel")
-        set_sec = prs.get_section_by_class("CTrunkSet")
-        if not ch_sec or not set_sec:
-            return
-
-        from ..injector import _parse_section_data, _replace_trunk_sections
-        from ..injector import _get_header_bytes, _get_first_count
-
-        try:
-            byte1, byte2 = _get_header_bytes(ch_sec)
-            set_byte1, set_byte2 = _get_header_bytes(set_sec)
-            first_count = _get_first_count(prs, "CTrunkSet")
-            existing_sets = _parse_section_data(
-                ch_sec, parse_trunk_channel_section, first_count)
-
-            found = False
-            for ts in existing_sets:
-                if ts.name == old_name:
-                    ts.name = new_name
-                    found = True
-                    break
-
-            if not found:
-                messagebox.showwarning("Warning",
-                                        f"Trunk set '{old_name}' not found.")
-                return
-
-            self.app.save_undo_snapshot("Rename trunk set")
-            _replace_trunk_sections(prs, existing_sets, byte1, byte2,
-                                     set_byte1, set_byte2)
-            self.app.mark_modified()
-            self.refresh()
-            self.app.status_set(
-                f"Renamed trunk set '{old_name}' to '{new_name}'")
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Rename failed:\n{e}")
-
-    def _rename_conv_set(self, old_name):
-        """Rename a conv set."""
-        prs = self.app.prs
-        if not prs:
-            return
-
-        new_name = self._prompt_new_name(
-            "Rename Conv Set", f"New name for '{old_name}':", old_name)
-        if not new_name:
-            return
-
-        conv_sec = prs.get_section_by_class("CConvChannel")
-        set_sec = prs.get_section_by_class("CConvSet")
-        if not conv_sec or not set_sec:
-            return
-
-        from ..injector import _parse_section_data, _replace_conv_sections
-        from ..injector import _get_header_bytes, _get_first_count
-
-        try:
-            byte1, byte2 = _get_header_bytes(conv_sec)
-            set_byte1, set_byte2 = _get_header_bytes(set_sec)
-            first_count = _get_first_count(prs, "CConvSet")
-            existing_sets = _parse_section_data(
-                conv_sec, parse_conv_channel_section, first_count)
-
-            found = False
-            for cs in existing_sets:
-                if cs.name == old_name:
-                    cs.name = new_name
-                    found = True
-                    break
-
-            if not found:
-                messagebox.showwarning("Warning",
-                                        f"Conv set '{old_name}' not found.")
-                return
-
-            self.app.save_undo_snapshot("Rename conv set")
-            _replace_conv_sections(prs, existing_sets, byte1, byte2,
-                                    set_byte1, set_byte2)
-            self.app.mark_modified()
-            self.refresh()
-            self.app.status_set(
-                f"Renamed conv set '{old_name}' to '{new_name}'")
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Rename failed:\n{e}")
-
-    def _rename_iden_set(self, old_name):
-        """Rename an IDEN set."""
-        prs = self.app.prs
-        if not prs:
-            return
-
-        new_name = self._prompt_new_name(
-            "Rename IDEN Set", f"New name for '{old_name}':", old_name)
-        if not new_name:
-            return
-
-        elem_sec = prs.get_section_by_class("CDefaultIdenElem")
-        set_sec = prs.get_section_by_class("CIdenDataSet")
-        if not elem_sec or not set_sec:
-            return
-
-        from ..injector import _parse_section_data, _get_header_bytes
-        from ..injector import _get_first_count, _find_section_index
-        from ..record_types import (parse_iden_section, build_iden_section,
-                                     extract_iden_trailing_data)
-
-        try:
-            byte1, byte2 = _get_header_bytes(elem_sec)
-            first_count = _get_first_count(prs, "CIdenDataSet")
-            trailing = extract_iden_trailing_data(elem_sec.raw, first_count)
-            existing_sets = _parse_section_data(
-                elem_sec, parse_iden_section, first_count)
-
-            found = False
-            for iset in existing_sets:
-                if iset.name == old_name:
-                    iset.name = new_name
-                    found = True
-                    break
-
-            if not found:
-                messagebox.showwarning("Warning",
-                                        f"IDEN set '{old_name}' not found.")
-                return
-
-            self.app.save_undo_snapshot("Rename IDEN set")
-            new_raw = build_iden_section(existing_sets, byte1, byte2,
-                                          trailing_data=trailing)
-            from ..prs_parser import Section
-            elem_idx = _find_section_index(prs, "CDefaultIdenElem")
-            prs.sections[elem_idx] = Section(
-                offset=0, raw=new_raw, class_name="CDefaultIdenElem")
-            self.app.mark_modified()
-            self.refresh()
-            self.app.status_set(
-                f"Renamed IDEN set '{old_name}' to '{new_name}'")
-
+                f"Renamed {label.lower()} '{old_name}' to '{new_name[:8]}'")
         except Exception as e:
             messagebox.showerror("Error", f"Rename failed:\n{e}")
 
@@ -5698,15 +5514,8 @@ class PersonalityView(ttk.Frame):
         if not prs:
             return
 
-        from ..record_types import (
-            parse_p25_conv_channel_section,
-            build_p25_conv_channel_section,
-            build_p25_conv_set_section,
-        )
-        from ..injector import (
-            _get_header_bytes, _get_first_count, _parse_section_data,
-            _find_section_index,
-        )
+        from ..record_types import parse_p25_conv_channel_section
+        from ..injector import _get_first_count, _parse_section_data
 
         ch_sec = prs.get_section_by_class("CP25ConvChannel")
         set_sec = prs.get_section_by_class("CP25ConvSet")
@@ -5714,8 +5523,6 @@ class PersonalityView(ttk.Frame):
             return
 
         try:
-            byte1, byte2 = _get_header_bytes(ch_sec)
-            set_byte1, set_byte2 = _get_header_bytes(set_sec)
             first_count = _get_first_count(prs, "CP25ConvSet")
             existing_sets = _parse_section_data(
                 ch_sec, parse_p25_conv_channel_section, first_count)
@@ -5828,22 +5635,9 @@ class PersonalityView(ttk.Frame):
 
         if result[0]:
             try:
-                from ..prs_parser import Section
+                from ..injector import _replace_p25_conv_sections
                 self.app.save_undo_snapshot("Edit NAC")
-                new_ch_raw = build_p25_conv_channel_section(
-                    existing_sets, byte1, byte2)
-                new_set_raw = build_p25_conv_set_section(
-                    len(existing_sets[0].channels), set_byte1, set_byte2)
-
-                ch_idx_sec = _find_section_index(prs, "CP25ConvChannel")
-                set_idx = _find_section_index(prs, "CP25ConvSet")
-                prs.sections[ch_idx_sec] = Section(
-                    offset=0, raw=new_ch_raw,
-                    class_name="CP25ConvChannel")
-                prs.sections[set_idx] = Section(
-                    offset=0, raw=new_set_raw,
-                    class_name="CP25ConvSet")
-
+                _replace_p25_conv_sections(prs, existing_sets)
                 self.app.mark_modified()
                 self.refresh()
                 self.app.status_set(
