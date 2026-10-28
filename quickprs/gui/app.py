@@ -839,7 +839,8 @@ class QuickPRSApp:
         try:
             has_changes = (self._last_saved_bytes is not None
                            and self.prs.to_bytes() != self._last_saved_bytes)
-            write_prs(self.prs, path, backup=True)
+            write_prs(self.prs, path,
+                      backup=self.settings.get("auto_backup", True))
         except Exception as e:
             log_error("file_save", str(e), path=str(path))
             messagebox.showerror("Error", f"Failed to save:\n{e}")

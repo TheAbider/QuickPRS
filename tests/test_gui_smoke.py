@@ -571,3 +571,19 @@ def test_system_from_database_can_be_undone(app, tmp_path):
     with mock.patch("quickprs.gui.app.messagebox"):
         app.undo_injection()
     assert app.prs.to_bytes() == before
+
+
+@pytest.mark.parametrize("auto_backup, kept", [(True, True), (False, False)])
+def test_save_follows_the_auto_backup_setting(app, tmp_path, auto_backup,
+                                              kept):
+    """Settings offered 'auto backup' but saving always kept a backup."""
+    from quickprs.builder import create_blank_prs
+    from quickprs.prs_writer import write_prs
+    path = tmp_path / "b.PRS"
+    write_prs(create_blank_prs("b.PRS"), path, backup=False)
+    app._open_path(path, confirmed=True)
+    _change(app, "edit")
+    app.settings["auto_backup"] = auto_backup
+    with mock.patch.object(app, "_offer_change_report"):
+        assert app._do_save(path)
+    assert Path(str(path) + ".bak").exists() is kept

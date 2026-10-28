@@ -20,7 +20,7 @@ class TestDefaults:
     def test_defaults_has_required_keys(self):
         """All expected keys are present in DEFAULTS."""
         required = [
-            "home_unit_id", "default_nac", "max_scan_talkgroups",
+            "home_unit_id",
             "scan_enabled_default", "tx_enabled_default",
             "auto_backup", "auto_validate",
             "recent_files", "roaming_mode", "power_level",
@@ -30,17 +30,20 @@ class TestDefaults:
 
     def test_defaults_types(self):
         assert isinstance(DEFAULTS["home_unit_id"], int)
-        assert isinstance(DEFAULTS["default_nac"], int)
-        assert isinstance(DEFAULTS["max_scan_talkgroups"], int)
         assert isinstance(DEFAULTS["scan_enabled_default"], bool)
         assert isinstance(DEFAULTS["recent_files"], list)
 
-    def test_max_scan_default_is_127(self):
-        """127 is the safe maximum (128 breaks scanning)."""
-        assert DEFAULTS["max_scan_talkgroups"] == 127
-
-    def test_nac_default_is_zero(self):
-        assert DEFAULTS["default_nac"] == 0
+    def test_every_setting_is_read(self):
+        """Sixteen settings (a default NAC, the scan limit, thirteen P25
+        system options, an export folder) were stored and shown but read
+        by nothing, and saving ignored auto_backup."""
+        package = Path(__file__).parent.parent / "quickprs"
+        sources = "".join(
+            f.read_text(encoding="utf-8") for f in package.rglob("*.py")
+            if f.name != "settings.py")
+        unread = [key for key in DEFAULTS
+                  if f'"{key}"' not in sources and f"'{key}'" not in sources]
+        assert unread == []
 
     def test_max_recent_files(self):
         assert MAX_RECENT_FILES == 10
@@ -56,19 +59,18 @@ class TestLoadSave:
                         Path("/nonexistent/settings.json")):
             settings = load_settings()
         assert settings["home_unit_id"] == DEFAULTS["home_unit_id"]
-        assert settings["max_scan_talkgroups"] == 127
 
     def test_save_and_load_roundtrip(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "settings.json"
             with mock.patch("quickprs.gui.settings.SETTINGS_FILE", path), \
                  mock.patch("quickprs.gui.settings.SETTINGS_DIR", Path(d)):
-                settings = {"home_unit_id": 12345, "default_nac": 100}
+                settings = {"home_unit_id": 12345, "auto_backup": False}
                 save_settings(settings)
 
                 loaded = load_settings()
                 assert loaded["home_unit_id"] == 12345
-                assert loaded["default_nac"] == 100
+                assert loaded["auto_backup"] is False
 
     def test_load_merges_with_defaults(self):
         """Saved file with missing keys should get defaults filled in."""
@@ -81,7 +83,6 @@ class TestLoadSave:
                 loaded = load_settings()
             assert loaded["home_unit_id"] == 999
             # Missing keys should come from DEFAULTS
-            assert loaded["max_scan_talkgroups"] == 127
             assert loaded["auto_backup"] is True
 
     def test_load_handles_corrupted_json(self):
