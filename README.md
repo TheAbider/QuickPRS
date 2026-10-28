@@ -8,14 +8,64 @@ Generate and edit Harris XG-100P personality (.PRS) files without Harris RPM sof
 
 > **IMPORTANT: This tool does NOT load mission plans onto radios.** QuickPRS generates and edits .PRS personality files. To actually load a personality onto an XG-100P radio, you still need Harris RPM software (for now). QuickPRS replaces the personality *creation and editing* workflow, not the radio flashing process.
 
+## RadioReference Integration
+
+QuickPRS can pull P25 trunked system data directly from [RadioReference.com](https://www.radioreference.com/) and automatically build a complete radio personality — talkgroups, frequencies, IDEN tables, control channels, and WAN config — in a single command.
+
+### One-Click Auto Setup (API)
+
+With a RadioReference premium account and API key:
+
+```bash
+# Fetch a P25 system and build the entire personality automatically
+quickprs create radio.PRS --name "PATROL"
+quickprs auto-setup radio.PRS --sid 8155 --username YOUR_USER --apikey YOUR_KEY
+quickprs validate radio.PRS
+```
+
+This single `auto-setup` command:
+1. Fetches the full system from RadioReference (talkgroups, sites, frequencies)
+2. Creates the trunk frequency set with all site frequencies
+3. Creates the talkgroup set with smart short name generation
+4. Auto-detects and creates IDEN frequency parameters (base freq, spacing, bandwidth, FDMA/TDMA)
+5. Builds Enhanced Control Channel (ECC) entries from site control channels
+6. Configures the P25 trunked system with WACN, SysID, and WAN settings
+7. Runs validation to catch any hardware limit issues
+
+### Import by Pasting from the Website
+
+No API key? Just copy talkgroup/frequency tables from RadioReference and paste them in:
+
+```bash
+# Paste talkgroup data from the website
+quickprs import-paste radio.PRS --name PSERN --sysid 892 --tgs-file tgs.txt
+
+# Or import site/frequency data
+quickprs import-paste radio.PRS --name PSERN --sites-file sites.txt
+```
+
+### GUI Import Wizard
+
+The GUI includes a dedicated RadioReference import wizard (File > Import Wizard) that walks you through system selection, talkgroup filtering by category and service tag, and previews everything before injection.
+
+### What Gets Imported
+
+| Data | Source | Details |
+|------|--------|---------|
+| Talkgroups | Categories + service tags | ID, short name, description, mode, encryption status |
+| Frequencies | All sites | TX/RX pairs with LCN mapping |
+| IDEN Parameters | Channel identifiers | Base freq, spacing, bandwidth, FDMA/TDMA auto-detected |
+| Control Channels | Site details | Enhanced CC entries with NAC and RFSS |
+| System Config | System metadata | WACN, SysID, system type, WAN configuration |
+
 ## Features
 
 - 100% binary format decoded (49 section types, 27 option sections, 514+ fields)
 - Create PRS files from scratch or INI config files
-- Import from RadioReference (SOAP API or paste from website)
+- **RadioReference integration** — auto-setup P25 systems via SOAP API, web scraping, or paste
 - Import from scanner formats (CHIRP, Uniden Sentinel, SDRTrunk)
 - 45+ CLI commands for scripting and batch processing
-- Full GUI with tree view, inline editing, drag-and-drop, RadioReference import
+- Full GUI with tree view, inline editing, drag-and-drop, and RadioReference import wizard
 - Built-in channel templates (MURS, GMRS, FRS, Marine, NOAA, Interop, Public Safety)
 - Built-in P25 system database (30 major US systems)
 - JSON export/import for human-editable radio configs
@@ -34,11 +84,20 @@ Generate and edit Harris XG-100P personality (.PRS) files without Harris RPM sof
 - Comprehensive validation against XG-100P hardware limits
 - File repair and data salvage for damaged PRS files
 - Lossless binary roundtrip (parse and rewrite produces byte-identical output)
-- 4,000+ automated tests
+- 5,300+ automated tests
 
 ## Quick Start
 
-### Build a radio config from an INI file:
+### One-command P25 setup from RadioReference:
+
+```bash
+quickprs create radio.PRS --name "PATROL"
+quickprs auto-setup radio.PRS --sid 8155 --username USER --apikey KEY
+quickprs inject radio.PRS conv --template interop
+quickprs validate radio.PRS
+```
+
+### Build from an INI config file:
 
 ```bash
 quickprs build patrol.ini -o radio.PRS
@@ -46,7 +105,7 @@ quickprs set-option radio.PRS gps.gpsMode ON
 quickprs validate radio.PRS
 ```
 
-### Or use individual commands:
+### Build step by step:
 
 ```bash
 quickprs create radio.PRS --name "PATROL"

@@ -234,6 +234,7 @@ def get_noaa_channels():
             'short_name': f'WX {i}',
             'tx_freq': freq,
             'long_name': f'NOAA Weather {i}',
+            'tx': False,
         })
     return channels
 
@@ -246,13 +247,14 @@ def get_interop_channels():
     - VCALL10 (155.7525 MHz, VHF calling channel)
     - VTAC11-14 (155.7675-156.0375 MHz, VHF tactical)
     - UCALL40 (453.2125 MHz, UHF calling)
-    - UTAC41-44 (453.4625-453.8625 MHz, UHF tactical)
+    - UTAC41-44 (453.4625-453.8875 MHz, UHF tactical)
     - 8CALL90 (866.0125 MHz, 800 MHz calling)
-    - 8TAC91-94 (866.5125-867.5125 MHz, 800 MHz tactical)
+    - 8TAC91-94 (866.5125-868.0125 MHz, 800 MHz tactical)
     - 7CALL50 (769.24375 MHz, 700 MHz calling)
-    - 7TAC51-54 (769.74375-770.74375 MHz, 700 MHz tactical)
+    - 7TAC51-54 (769.74375-771.24375 MHz, 700 MHz tactical)
 
-    All simplex, no CTCSS/DCS tones (interop standard).
+    VHF/UHF/800 channels use 156.7 Hz PL tone (NPSPAC standard).
+    700 MHz channels are P25 digital (no PL tone).
     """
     return [
         # VHF Interop (NPSPAC)

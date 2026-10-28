@@ -144,12 +144,16 @@ def add_trunk_channels(prs, set_name, channels):
 
 def _replace_trunk_sections(prs, sets, byte1, byte2, set_byte1, set_byte2):
     """Replace CTrunkChannel and CTrunkSet sections with rebuilt data."""
+    if not sets:
+        raise ValueError("No trunk sets to write")
     new_ch_raw = _build_trunk_channel_raw(sets, byte1, byte2)
     new_set_raw = _rebuild_set_section("CTrunkSet", len(sets[0].channels),
                                         set_byte1, set_byte2)
 
     ch_idx = _find_section_index(prs, "CTrunkChannel")
     set_idx = _find_section_index(prs, "CTrunkSet")
+    if ch_idx < 0 or set_idx < 0:
+        raise ValueError("CTrunkChannel or CTrunkSet section not found")
     prs.sections[ch_idx] = Section(offset=0, raw=new_ch_raw,
                                     class_name="CTrunkChannel")
     prs.sections[set_idx] = Section(offset=0, raw=new_set_raw,
@@ -255,6 +259,8 @@ def add_talkgroups(prs, set_name, groups):
 
 def _replace_group_sections(prs, sets, byte1, byte2, set_byte1, set_byte2):
     """Replace CP25Group and CP25GroupSet sections with rebuilt data."""
+    if not sets:
+        raise ValueError("No group sets to write")
     new_grp_raw = _build_group_raw(sets, byte1, byte2)
     new_set_raw = _rebuild_set_section("CP25GroupSet",
                                         len(sets[0].groups),
@@ -262,6 +268,8 @@ def _replace_group_sections(prs, sets, byte1, byte2, set_byte1, set_byte2):
 
     grp_idx = _find_section_index(prs, "CP25Group")
     set_idx = _find_section_index(prs, "CP25GroupSet")
+    if grp_idx < 0 or set_idx < 0:
+        raise ValueError("CP25Group or CP25GroupSet section not found")
     prs.sections[grp_idx] = Section(offset=0, raw=new_grp_raw,
                                      class_name="CP25Group")
     prs.sections[set_idx] = Section(offset=0, raw=new_set_raw,
@@ -331,6 +339,8 @@ def add_iden_set(prs, iden_set):
 
     elem_idx = _find_section_index(prs, "CDefaultIdenElem")
     set_idx = _find_section_index(prs, "CIdenDataSet")
+    if elem_idx < 0 or set_idx < 0:
+        raise ValueError("CDefaultIdenElem or CIdenDataSet section not found")
     prs.sections[elem_idx] = Section(offset=0, raw=new_elem_raw,
                                       class_name="CDefaultIdenElem")
     prs.sections[set_idx] = Section(offset=0, raw=new_set_raw,
@@ -677,12 +687,16 @@ def add_conv_set(prs, conv_set):
 
 def _replace_conv_sections(prs, sets, byte1, byte2, set_byte1, set_byte2):
     """Replace CConvChannel and CConvSet sections with rebuilt data."""
+    if not sets:
+        raise ValueError("No conv sets to write")
     new_ch_raw = _build_conv_channel_raw(sets, byte1, byte2)
     new_set_raw = _rebuild_set_section("CConvSet", len(sets[0].channels),
                                         set_byte1, set_byte2)
 
     ch_idx = _find_section_index(prs, "CConvChannel")
     set_idx = _find_section_index(prs, "CConvSet")
+    if ch_idx < 0 or set_idx < 0:
+        raise ValueError("CConvChannel or CConvSet section not found")
     prs.sections[ch_idx] = Section(offset=0, raw=new_ch_raw,
                                     class_name="CConvChannel")
     prs.sections[set_idx] = Section(offset=0, raw=new_set_raw,
@@ -1225,6 +1239,8 @@ def edit_personality(prs, filename=None, saved_by=None):
 
     new_raw = build_personality_section(personality)
     idx = _find_section_index(prs, "CPersonality")
+    if idx < 0:
+        raise ValueError("CPersonality section not found")
     prs.sections[idx] = Section(offset=0, raw=new_raw,
                                  class_name="CPersonality")
     return True
@@ -1661,6 +1677,8 @@ def set_p25_conv_nac(prs, set_name, channel_index, nac_tx=None, nac_rx=None):
 
     ch_idx = _find_section_index(prs, "CP25ConvChannel")
     set_idx = _find_section_index(prs, "CP25ConvSet")
+    if ch_idx < 0 or set_idx < 0:
+        raise ValueError("CP25ConvChannel or CP25ConvSet section not found")
     prs.sections[ch_idx] = Section(offset=0, raw=new_ch_raw,
                                     class_name="CP25ConvChannel")
     prs.sections[set_idx] = Section(offset=0, raw=new_set_raw,
@@ -1808,7 +1826,8 @@ def make_group_set(name, talkgroups, tx_default=False, scan_default=True):
 
 
 def make_conv_channel(short_name, tx_freq, rx_freq=None,
-                      tx_tone="", rx_tone="", long_name=""):
+                      tx_tone="", rx_tone="", long_name="",
+                      tx=True, scan=True):
     """Create a ConvChannel with default flags.
 
     Args:
@@ -1818,6 +1837,8 @@ def make_conv_channel(short_name, tx_freq, rx_freq=None,
         tx_tone: CTCSS/DCS tone string (e.g., "250.3", "" for none)
         rx_tone: CTCSS/DCS tone string
         long_name: 16-char max long name (defaults to short_name)
+        tx: transmit enable (False for receive-only channels like NOAA)
+        scan: scan enable
     """
     if rx_freq is None:
         rx_freq = tx_freq
@@ -1831,6 +1852,7 @@ def make_conv_channel(short_name, tx_freq, rx_freq=None,
     return ConvChannel(
         short_name=short_name, tx_freq=tx_freq, rx_freq=rx_freq,
         tx_tone=tx_tone, rx_tone=rx_tone, long_name=long_name,
+        tx=tx, scan=scan,
     )
 
 
@@ -1852,6 +1874,8 @@ def make_conv_set(name, channels_data):
             tx_tone=ch.get('tx_tone', ''),
             rx_tone=ch.get('rx_tone', ''),
             long_name=ch.get('long_name', ''),
+            tx=ch.get('tx', True),
+            scan=ch.get('scan', True),
         ))
     return ConvSet(name=name[:8], channels=channels)
 

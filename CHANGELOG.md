@@ -2,6 +2,20 @@
 
 All notable changes to QuickPRS will be documented in this file.
 
+## [1.0.3] - 2026-03-16
+
+### Added
+- README: Dedicated RadioReference integration section with auto-setup, paste import, and GUI wizard documentation
+- README: Updated Quick Start to lead with RadioReference one-command workflow
+
+### Fixed
+- Section replacement functions now validate section indices before writing, preventing silent data corruption if expected sections are missing
+- Added empty set guards to prevent IndexError when trunk, group, or conv sets are unexpectedly empty
+- NOAA weather channels now correctly set as receive-only (TX disabled)
+- Interop template docstring corrected to document 156.7 Hz PL tone usage and accurate frequency ranges
+- `make_conv_channel()` and `make_conv_set()` now support `tx` and `scan` flags from template data
+- Updated test count to 5,300+ in README
+
 ## [1.0.2] - 2026-03-15
 
 ### Added
