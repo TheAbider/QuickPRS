@@ -133,8 +133,10 @@ def import_chirp_csv(filepath):
     Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,
     DtcsCode,DtcsPolarity,Mode,TStep,Skip,Comment,...
 
-    Duplex: '', '+', '-', 'split', 'off'
-    Tone: '', 'Tone', 'TSQL', 'DTCS', 'Cross'
+    Duplex: '', '+', '-', 'split', 'off' (transmit inhibited)
+    Tone: '', 'Tone', 'TSQL', 'DTCS', 'Cross' (CrossMode, e.g.
+    'Tone->DTCS', names the TX and RX halves)
+    Mode: 'NFM' is a narrowband channel; Skip: 'S' leaves it out of scan
 
     Returns list of dicts compatible with make_conv_channel().
     """
@@ -179,24 +181,7 @@ def import_chirp_csv(filepath):
             else:
                 tx_freq = freq  # simplex
 
-            # Tone handling
-            tone_mode = row_lower.get('tone', '')
-            tx_tone = ''
-            rx_tone = ''
-
-            if tone_mode in ('Tone', 'TSQL'):
-                rtone = row_lower.get('rtonefreq', '')
-                ctone = row_lower.get('ctonefreq', '')
-                if tone_mode == 'Tone':
-                    tx_tone = rtone
-                elif tone_mode == 'TSQL':
-                    tx_tone = ctone
-                    rx_tone = ctone
-            elif tone_mode == 'DTCS':
-                dtcs = row_lower.get('dtcscode', '')
-                if dtcs:
-                    tx_tone = f"D{dtcs}"
-                    rx_tone = f"D{dtcs}"
+            tx_tone, rx_tone = _chirp_tones(row_lower)
 
             # Comment as long name
             comment = row_lower.get('comment', '')
@@ -210,9 +195,47 @@ def import_chirp_csv(filepath):
                 'rx_tone': rx_tone,
                 'long_name': long_name[:16].upper(),
                 'system_name': '',
+                'tx': duplex.lower() != 'off',
+                'scan': row_lower.get('skip', '').upper() != 'S',
+                'narrowband': row_lower.get('mode', '').upper() == 'NFM',
             })
 
     return channels
+
+
+def _chirp_dcs(code, polarity):
+    """QuickPRS DCS tone string for a CHIRP code and polarity ('N'/'R')."""
+    code = code.strip()
+    if not code.isdigit():
+        return ''
+    return f"D{code.zfill(3)}" + ("I" if polarity == "R" else "")
+
+
+def _chirp_tones(row):
+    """(tx_tone, rx_tone) from a CHIRP row (keys lowercased).
+
+    TSQL uses cToneFreq both ways and DTCS uses DtcsCode both ways; in
+    Cross mode TX takes rToneFreq or DtcsCode, RX cToneFreq or RxDtcsCode.
+    """
+    mode = row.get('tone', '')
+    rtone = row.get('rtonefreq', '')
+    ctone = row.get('ctonefreq', '')
+    dtcs = row.get('dtcscode', '')
+    rx_dtcs = row.get('rxdtcscode', '') or dtcs
+    pol = (row.get('dtcspolarity', '') or 'NN').upper().ljust(2, 'N')
+    if mode == 'Tone':
+        return rtone, ''
+    if mode == 'TSQL':
+        return ctone, ctone
+    if mode == 'DTCS':
+        return _chirp_dcs(dtcs, pol[0]), _chirp_dcs(dtcs, pol[1])
+    if mode == 'Cross':
+        tx_part, _, rx_part = (row.get('crossmode', '')
+                               or 'Tone->Tone').partition('->')
+        tx = {'Tone': rtone, 'DTCS': _chirp_dcs(dtcs, pol[0])}
+        rx = {'Tone': ctone, 'DTCS': _chirp_dcs(rx_dtcs, pol[1])}
+        return tx.get(tx_part, ''), rx.get(rx_part, '')
+    return '', ''
 
 
 def import_sdrtrunk_csv(filepath):
