@@ -4407,6 +4407,7 @@ def run_cli(args=None):
                "  quickprs radio scan\n"
                "  quickprs radio probe --port COM6 --seconds 15 "
                "--log first.jsonl\n"
+               "  quickprs radio sniff --log read.jsonl\n"
                "  quickprs radio relay --pc-port COM21 --radio-port COM6 "
                "--log read.jsonl\n"
                "  quickprs radio analyze read.jsonl --extract radio.PRS")
@@ -4437,6 +4438,25 @@ def run_cli(args=None):
                                "radio)")
     p_rrelay.add_argument("--log", default="session.jsonl")
     p_rrelay.add_argument("--note", default="",
+                          help="What this session is, e.g. 'RPM extract'")
+    p_rsniff = radio_sub.add_parser(
+        "sniff",
+        help="Log RPM's session from a Bluetooth trace (Microsoft's "
+             "Bluetooth Virtual Sniffer)")
+    p_rsniff.add_argument("--host", default="127.0.0.1",
+                          help="Where btvs.exe -Mode Wireshark serves "
+                               "the trace (default 127.0.0.1)")
+    p_rsniff.add_argument("--port", type=int, default=24352,
+                          help="Its TCP port (default 24352)")
+    p_rsniff.add_argument("--pcap", default=None,
+                          help="Read a saved pcap/pcapng trace instead")
+    p_rsniff.add_argument("--address", default=None,
+                          help="Only this device's link (default: the one "
+                               "paired radio)")
+    p_rsniff.add_argument("--all-links", action="store_true",
+                          help="Keep serial data from every Bluetooth link")
+    p_rsniff.add_argument("--log", default="session.jsonl")
+    p_rsniff.add_argument("--note", default="",
                           help="What this session is, e.g. 'RPM extract'")
     p_ranalyze = radio_sub.add_parser(
         "analyze", help="Summarise a capture file")
@@ -5698,6 +5718,11 @@ def run_cli(args=None):
                 return radio_commands.cmd_radio_relay(
                     parsed.pc_port, radio_port=parsed.radio_port,
                     log=parsed.log, note=parsed.note)
+            if parsed.radio_cmd == "sniff":
+                return radio_commands.cmd_radio_sniff(
+                    host=parsed.host, port=parsed.port, log=parsed.log,
+                    pcap=parsed.pcap, address=parsed.address,
+                    all_links=parsed.all_links, note=parsed.note)
             if parsed.radio_cmd == "analyze":
                 return radio_commands.cmd_radio_analyze(
                     parsed.capture, extract=parsed.extract)

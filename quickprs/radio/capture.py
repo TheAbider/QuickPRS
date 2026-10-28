@@ -75,12 +75,15 @@ class CaptureWriter:
     def _now(self):
         return round(time.monotonic() - self._t0, 6)
 
-    def add(self, direction, data):
+    def add(self, direction, data, t=None):
+        """Log a chunk; ``t`` (seconds since the start) defaults to now,
+        and is given when the chunk comes from a trace with its own
+        times."""
         if direction not in DIRECTIONS:
             raise ValueError(f"unknown direction {direction!r}")
         if data:
-            self._write({"t": self._now(), "dir": direction,
-                         "hex": data.hex(" ")})
+            self._write({"t": self._now() if t is None else t,
+                         "dir": direction, "hex": data.hex(" ")})
 
     def event(self, text):
         self._write({"t": self._now(), "event": str(text)})

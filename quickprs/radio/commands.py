@@ -146,6 +146,71 @@ def cmd_radio_relay(pc_port, radio_port=None, log="session.jsonl",
     return 0
 
 
+def _radio_address():
+    """The one paired radio's Bluetooth address, or None."""
+    radios = radio_ports()
+    return radios[0].address if len(radios) == 1 else None
+
+
+def cmd_radio_sniff(host="127.0.0.1", port=24352, log="session.jsonl",
+                    pcap=None, address=None, all_links=False, note=""):
+    """Write the serial data in a Bluetooth HCI trace to a capture file.
+
+    Live: connect to Microsoft's Bluetooth Virtual Sniffer (btvs.exe
+    -Mode Wireshark), which serves the trace on TCP.  Or read a pcap or
+    pcapng file saved from it.  Only the serial (RFCOMM) bytes are kept.
+    """
+    import socket
+    from .hci import read_packets, serial_chunks, PcapError
+
+    if not all_links and address is None:
+        address = _radio_address()
+    counts = {"pc>radio": 0, "radio>pc": 0}
+    source = pcap or f"{host}:{port}"
+    note = note or f"sniff {source}" + (f" ({address})" if address else "")
+
+    if pcap:
+        try:
+            stream = open(pcap, "rb")
+        except OSError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+    else:
+        try:
+            sock = socket.create_connection((host, port), timeout=10)
+        except OSError as e:
+            print(f"Error: cannot connect to {host}:{port} ({e}). Start "
+                  f"the Bluetooth Virtual Sniffer first: btvs.exe -Mode "
+                  f"Wireshark", file=sys.stderr)
+            return 1
+        sock.settimeout(None)
+        stream = sock.makefile("rb")
+        print(f"Reading the Bluetooth trace from {host}:{port}"
+              + (f", link to {address}" if address else "")
+              + f". Run the operation in RPM, then press Ctrl+C here.")
+
+    with CaptureWriter(log, note=note) as writer:
+        try:
+            for t, direction, data in serial_chunks(read_packets(stream),
+                                                    address=address):
+                writer.add(direction, data, t=t)
+                counts[direction] += len(data)
+        except KeyboardInterrupt:
+            pass
+        except PcapError as e:
+            print(f"Error: {e}", file=sys.stderr)
+        finally:
+            stream.close()
+    print(f"RPM to radio: {counts['pc>radio']:,} bytes; radio to RPM: "
+          f"{counts['radio>pc']:,} bytes.")
+    if not any(counts.values()):
+        print("No serial data found. Was Full Packet Logging on in the "
+              "sniffer, and did RPM talk to the radio while it ran?",
+              file=sys.stderr)
+    print(f"Analyze with: quickprs radio analyze {log}")
+    return 0
+
+
 def cmd_radio_analyze(capture_path, extract=None):
     try:
         cap = read_capture(capture_path)
