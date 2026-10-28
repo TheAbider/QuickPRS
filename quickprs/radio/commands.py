@@ -212,7 +212,7 @@ def cmd_radio_sniff(host="127.0.0.1", port=24352, log="session.jsonl",
     return 0
 
 
-def cmd_radio_analyze(capture_path, extract=None):
+def cmd_radio_analyze(capture_path, extract=None, transcript=None):
     try:
         cap = read_capture(capture_path)
     except (OSError, ValueError) as e:
@@ -220,6 +220,12 @@ def cmd_radio_analyze(capture_path, extract=None):
         return 1
     for line in report(cap):
         print(line)
+    if transcript:
+        from .analyze import transcript as conversation
+        print()
+        print("Conversation (consecutive chunks one way are one message):")
+        for line in conversation(cap, limit=transcript):
+            print(line)
     if extract:
         data = extract_personality(cap.stream(RADIO_TO_PC))
         if data is None:

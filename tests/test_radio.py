@@ -192,6 +192,62 @@ def test_report_mentions_archive_and_text(tmp_path):
     assert "'READ PERSONALITY'" in text
 
 
+def _conversation(tmp_path):
+    """A request in two chunks, a reply in two chunks, a late chunk the
+    radio sends on its own, and the next request."""
+    path = tmp_path / "talk.jsonl"
+    with capture.CaptureWriter(path, note="talk") as w:
+        w.add(PC_TO_RADIO, b"\x02RE", t=0.0)
+        w.add(PC_TO_RADIO, b"AD", t=0.01)
+        w.add(RADIO_TO_PC, b"\x06ok", t=0.02)
+        w.add(RADIO_TO_PC, b"!", t=0.03)
+        w.add(RADIO_TO_PC, b"\x15", t=0.5)
+        w.add(PC_TO_RADIO, b"\x02NEXT", t=0.51)
+    return capture.read_capture(path)
+
+
+def test_messages_join_chunks_going_one_way(tmp_path):
+    msgs = analyze.messages(_conversation(tmp_path))
+    assert [(m.direction, m.data) for m in msgs] == [
+        (PC_TO_RADIO, b"\x02READ"),
+        (RADIO_TO_PC, b"\x06ok!"),
+        (RADIO_TO_PC, b"\x15"),            # after a pause: its own message
+        (PC_TO_RADIO, b"\x02NEXT"),
+    ]
+    assert [m.t for m in msgs] == [0.0, 0.02, 0.5, 0.51]
+
+
+def test_transcript_lines(tmp_path):
+    lines = analyze.transcript(_conversation(tmp_path), limit=3)
+    assert len(lines) == 4
+    assert lines[0].split() == ["0.000", PC_TO_RADIO, "5", "B",
+                                "02", "52", "45", "41", "44", "|.READ|"]
+    assert lines[2].split()[1:3] == [RADIO_TO_PC, "1"]
+    assert lines[3] == "... 1 more messages"
+    long = analyze.transcript(_conversation(tmp_path), width=2)
+    assert "02 52 ..." in long[0] and "|.R|" in long[0]
+    assert len(long) == 4                # no "more" line when all fit
+
+
+def test_report_counts_messages(tmp_path):
+    text = "\n".join(analyze.report(_conversation(tmp_path)))
+    assert f"{PC_TO_RADIO}: 10 bytes in 3 chunks, 2 messages" in text
+    assert f"{RADIO_TO_PC}: 5 bytes in 3 chunks, 2 messages" in text
+    assert "common message sizes: 5 B x2" in text
+    assert "common message openers: [06 6f] x1, [15] x1" in text
+
+
+def test_cli_analyze_transcript(tmp_path, capsys):
+    from quickprs.cli import run_cli
+    _conversation(tmp_path)
+    assert run_cli(["radio", "analyze", str(tmp_path / "talk.jsonl"),
+                    "--transcript", "2"]) == 0
+    out = capsys.readouterr().out
+    assert "Conversation" in out
+    assert "|.READ|" in out and "|.ok!|" in out
+    assert "|.NEXT|" not in out and "... 2 more messages" in out
+
+
 def test_cli_analyze_extracts(tmp_path, capsys):
     from quickprs.cli import run_cli
     prs = _blank_bytes()

@@ -127,12 +127,18 @@ Memory Integrity off.
 
 ```bash
 quickprs radio analyze read.jsonl
+quickprs radio analyze read.jsonl --transcript 60
 quickprs radio analyze read.jsonl --extract radio.PRS
 ```
 
-`analyze` counts bytes in each direction, lists readable strings and the
-MFC class names it finds, and `--extract` writes out a personality found in
-the radio's replies. Protocol bytes after the personality can end up in that
+`analyze` counts bytes and messages in each direction, lists the common
+message sizes and first bytes, readable strings and the MFC class names it
+finds. A message is a run of chunks going the same way with less than
+50 ms between them: a serial read returns whatever has arrived, so one
+message often comes in several chunks. `--transcript N` lists the first N
+messages (40 without a number) with their time, direction, length and first
+bytes, which is where a protocol's framing usually shows first.
+`--extract` writes out a personality found in the radio's replies. Protocol bytes after the personality can end up in that
 file, so treat it as something to compare with the .PRS RPM saved for the
 same session, not as a finished file.
 
