@@ -369,7 +369,8 @@ class TestInteropTemplate:
         assert len(vhf) == 5
 
     def test_interop_uhf_channels(self):
-        """Interop has 5 UHF channels (UCALL40 + UTAC41-44)."""
+        """UCALL40 + UTAC41-43, each as a repeater pair and a direct
+        channel."""
         channels = get_interop_channels()
         uhf = [ch for ch in channels
                if ch['short_name'].startswith('U')]
@@ -381,6 +382,13 @@ class TestInteropTemplate:
         ch800 = [ch for ch in channels
                  if ch['short_name'].startswith('8')]
         assert len(ch800) == 10
+
+    def test_interop_bandwidth(self):
+        """VHF and UHF interop is narrowband; 800 MHz (NPSPAC) is wide on
+        the repeater pair and the direct channel alike."""
+        for ch in get_interop_channels():
+            wide = ch['short_name'].startswith('8')
+            assert ch['narrowband'] is (not wide), ch['short_name']
 
     def test_interop_vhf_tones(self):
         """VHF interop channels use 156.7 Hz CTCSS tone."""

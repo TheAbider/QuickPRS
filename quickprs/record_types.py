@@ -1804,7 +1804,7 @@ class P25TrkSystemConfig:
     group_set_name: str = "" # reference to CP25GroupSet (e.g., "PSERN PD")
     wan_name: str = ""       # WAN name, 8-char padded (e.g., "PSERN   ")
     home_unit_id: int = 0    # radio's unit ID on this system
-    system_id: int = 0       # P25 System ID (decimal, e.g., 892 for PSERN)
+    system_id: int = 0       # P25 System ID (decimal, e.g., 939 for PSERN)
     wacn: int = 0            # Wide Area Communication Network ID (for WAN section)
     sys_flags: bytes = P25_TRUNK_DEFAULT_FLAGS  # 15 bytes
 

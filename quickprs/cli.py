@@ -6,14 +6,14 @@ Non-GUI operations for scripting and batch processing:
     quickprs export-csv file.PRS output_dir/
     quickprs compare file_a.PRS file_b.PRS [--detail]
     quickprs dump file.PRS [-s N] [-x BYTES]
-    quickprs inject file.PRS p25 --name PSERN --sysid 892 ...
+    quickprs inject file.PRS p25 --name PSERN --sysid 939 ...
     quickprs inject file.PRS conv --name MURS --channels-csv ch.csv
     quickprs inject file.PRS conv --name MURS --template murs
     quickprs inject file.PRS talkgroups --set "PSERN PD" --tgs-csv tgs.csv
     quickprs merge target.PRS source.PRS [--systems] [--channels] [--all]
     quickprs clone target.PRS source.PRS "PSERN SEATTLE" [-o output.PRS]
     quickprs import-rr file.PRS --sid 8155 --username USER --apikey KEY
-    quickprs import-paste file.PRS --name PSERN --sysid 892 --tgs-file tgs.txt
+    quickprs import-paste file.PRS --name PSERN --sysid 939 --tgs-file tgs.txt
     quickprs export-json file.PRS [-o output.json]
     quickprs import-json file.json [-o output.PRS]
     quickprs remove file.PRS system "PSERN SEATTLE"
@@ -4709,7 +4709,7 @@ def run_cli(args=None):
         formatter_class=fmt,
         epilog="Example:\n"
                "  quickprs import-paste radio.PRS --name PSERN "
-               "--sysid 892 --wacn 781824 "
+               "--sysid 939 --wacn 781824 "
                "--tgs-file tgs.txt --freqs-file freqs.txt")
     p_paste.add_argument("file", help="PRS file to inject into")
     p_paste.add_argument("--name", required=True,
@@ -4877,7 +4877,7 @@ def run_cli(args=None):
         epilog="Subcommands: p25, conv, talkgroups\n\n"
                "Examples:\n"
                "  quickprs inject radio.PRS p25 --name PSERN "
-               "--sysid 892 --freqs-csv freqs.csv --tgs-csv tgs.csv\n"
+               "--sysid 939 --freqs-csv freqs.csv --tgs-csv tgs.csv\n"
                "  quickprs inject radio.PRS conv --template murs\n"
                "  quickprs inject radio.PRS talkgroups "
                "--set \"PSERN PD\" --tgs-csv more_tgs.csv")
@@ -4890,7 +4890,7 @@ def run_cli(args=None):
         formatter_class=fmt,
         epilog="Example:\n"
                "  quickprs inject radio.PRS p25 --name PSERN "
-               "--sysid 892 --wacn 781824 "
+               "--sysid 939 --wacn 781824 "
                "--freqs-csv freqs.csv --tgs-csv tgs.csv")
     p_inj_p25.add_argument("--name", required=True,
                             help="System short name (8 chars max)")
@@ -5463,7 +5463,7 @@ def run_cli(args=None):
         epilog="Examples:\n"
                "  quickprs favorites list\n"
                "  quickprs favorites list systems\n"
-               "  quickprs favorites add system PSERN --sysid 892\n"
+               "  quickprs favorites add system PSERN --sysid 939\n"
                "  quickprs favorites add template murs\n"
                "  quickprs favorites remove system PSERN\n"
                "  quickprs favorites clear")

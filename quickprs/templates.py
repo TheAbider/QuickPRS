@@ -252,9 +252,12 @@ def get_interop_channels():
     - UHF repeater pairs (radio transmits 5 MHz up) and their direct
       ("D") simplex channels: UCALL40 453.2125, UTAC41 453.4625,
       UTAC42 453.7125, UTAC43 453.8625 MHz
-    - 800 MHz repeater pairs (radio transmits 45 MHz down; wide FM) and
-      direct channels: 8CALL90 851.0125, 8TAC91-94 851.5125-853.0125 MHz
-      (the rebanded frequencies; 866-868 MHz is the pre-rebanding plan)
+    - 800 MHz repeater pairs (radio transmits 45 MHz down) and direct
+      channels: 8CALL90 851.0125, 8TAC91-94 851.5125-853.0125 MHz (the
+      rebanded frequencies; 866-868 MHz is the pre-rebanding plan).  All
+      wide FM: 806-809/851-854 MHz has a 20 kHz authorized bandwidth
+      (47 CFR 90.209), direct channels included, although RadioReference
+      lists 8TAC91D-94D as FMN
 
     The 700 MHz channels (7CALL50, 7TAC51-56) are P25 digital (NAC 293),
     which an analog conventional set cannot carry; add them as a P25
@@ -273,22 +276,19 @@ def get_interop_channels():
         ch('VTAC13', 158.7375, long_name='VHF Tactical 13'),
         ch('VTAC14', 159.4725, long_name='VHF Tactical 14'),
     ]
-    for name, out, label in (('UCALL40', 453.2125, 'UHF Call'),
-                             ('UTAC41', 453.4625, 'UHF Tactical 41'),
-                             ('UTAC42', 453.7125, 'UHF Tactical 42'),
-                             ('UTAC43', 453.8625, 'UHF Tactical 43')):
+    for name, out in (('UCALL40', 453.2125), ('UTAC41', 453.4625),
+                      ('UTAC42', 453.7125), ('UTAC43', 453.8625)):
         channels.append(ch(name, out, tx=round(out + 5.0, 4),
                            long_name=f'{name} Repeater'))
         channels.append(ch(name + 'D', out, long_name=f'{name} Direct'))
-    for name, out, label in (('8CALL90', 851.0125, '800 Call'),
-                             ('8TAC91', 851.5125, '800 Tactical 91'),
-                             ('8TAC92', 852.0125, '800 Tactical 92'),
-                             ('8TAC93', 852.5125, '800 Tactical 93'),
-                             ('8TAC94', 853.0125, '800 Tactical 94')):
+    for name, out in (('8CALL90', 851.0125), ('8TAC91', 851.5125),
+                      ('8TAC92', 852.0125), ('8TAC93', 852.5125),
+                      ('8TAC94', 853.0125)):
         channels.append(ch(name, out, tx=round(out - 45.0, 4),
                            long_name=f'{name} Repeater',
                            narrowband=False))
-        channels.append(ch(name + 'D', out, long_name=f'{name} Direct'))
+        channels.append(ch(name + 'D', out, long_name=f'{name} Direct',
+                           narrowband=False))
     return channels
 
 

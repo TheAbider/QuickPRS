@@ -178,7 +178,7 @@ PRESETS = {
         },
     },
     'training': {
-        'description': 'Training mode (GPS on, low power)',
+        'description': 'Training mode (GPS on)',
         'options': {
             'gps.gpsMode': 'ON',
         },
