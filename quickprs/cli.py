@@ -2499,7 +2499,8 @@ def _rr_credentials(username, apikey, password):
 
 
 def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
-                  categories=None, tags=None, output=None, password=None):
+                  categories=None, tags=None, output=None, password=None,
+                  skip_encrypted=False):
     """Import a P25 trunked system from RadioReference and inject into PRS.
 
     Args:
@@ -2579,7 +2580,8 @@ def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
         selected_tags = {t.strip() for t in tags.split(',') if t.strip()}
 
     # Build injection data
-    data = build_injection_data(rr_system, selected_cats, selected_tags)
+    data = build_injection_data(rr_system, selected_cats, selected_tags,
+                                skip_encrypted=skip_encrypted)
     set_name = data['system_name']
     if not set_name:
         set_name = f"SID{sid}"[:8]
@@ -2658,6 +2660,9 @@ def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
     print(f"Imported '{rr_system.name}' (SID {sid}) into {out_path}")
     print(f"  System ID: {data['sysid']}  WACN: {data['wacn']}")
     print(f"  Talkgroups: {n_tgs}  Frequencies: {n_freqs}  Sites: {n_sites}")
+    if data['skipped_encrypted']:
+        print(f"  Left out {data['skipped_encrypted']} fully encrypted "
+              f"talkgroups")
     if errors:
         print(f"  Validation: {len(errors)} errors", file=sys.stderr)
         for _, msg in errors:
@@ -2670,7 +2675,8 @@ def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
 
 
 def cmd_import_paste(filepath, name, sysid, wacn=0, long_name=None,
-                     tgs_file=None, freqs_file=None, output=None):
+                     tgs_file=None, freqs_file=None, output=None,
+                     skip_encrypted=False):
     """Import a P25 system from pasted RadioReference text files.
 
     Args:
@@ -2728,9 +2734,14 @@ def cmd_import_paste(filepath, name, sysid, wacn=0, long_name=None,
             return 1
 
         # Convert RRTalkgroup objects to injection tuples
+        from .radioreference import is_fully_encrypted
         talkgroups = []
+        skipped_encrypted = 0
         for tg in rr_tgs:
             if tg.dec_id <= 0 or tg.dec_id > 65535:
+                continue
+            if skip_encrypted and is_fully_encrypted(tg):
+                skipped_encrypted += 1
                 continue
             short = make_short_name(tg.alpha_tag)
             long = make_long_name(tg.description, tg.alpha_tag)
@@ -2740,6 +2751,9 @@ def cmd_import_paste(filepath, name, sysid, wacn=0, long_name=None,
             group_set = make_group_set(name, talkgroups)
             tg_count = len(talkgroups)
             print(f"  Talkgroups: {tg_count} from {tgs_file}")
+        if skipped_encrypted:
+            print(f"  Left out {skipped_encrypted} fully encrypted "
+                  f"talkgroups")
 
     # Parse frequencies from pasted text
     trunk_set = None
@@ -3488,7 +3502,8 @@ def cmd_freq_tools(subcmd, freq=None, freq_list=None):
 
 
 def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
-                   categories=None, tags=None, output=None, password=None):
+                   categories=None, tags=None, output=None, password=None,
+                   skip_encrypted=False):
     """One-click RadioReference system setup with ECC and IDEN.
 
     Like import-rr but also auto-configures ECC entries and IDEN
@@ -3566,7 +3581,7 @@ def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
 
     # Run auto-setup
     summary = auto_setup_from_rr(prs, rr_system, selected_cats,
-                                 selected_tags)
+                                 selected_tags, skip_encrypted=skip_encrypted)
 
     out_path = output or filepath
     write_prs(prs, out_path, backup=True)
@@ -3575,6 +3590,9 @@ def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
     print(f"Auto-setup complete: '{summary['full_name']}' (SID {sid})")
     print(f"  System ID: {summary['sysid']}  WACN: {summary['wacn']}")
     print(f"  Talkgroups:  {summary['talkgroups']}")
+    if summary['skipped_encrypted']:
+        print(f"  Left out {summary['skipped_encrypted']} fully encrypted "
+              f"talkgroups")
     print(f"  Frequencies: {summary['frequencies']}")
     print(f"  Sites:       {summary['sites']}")
     print(f"  ECC entries: {summary['ecc_entries']}")
@@ -4724,6 +4742,9 @@ def build_parser():
     p_rr.add_argument("--tags", default=None,
                       help="Comma-separated service tags to include "
                            "(default: all)")
+    p_rr.add_argument("--skip-encrypted", action="store_true",
+                      help="Leave out fully encrypted talkgroups (mode "
+                           "AE/DE/TE/E on RadioReference)")
     p_rr.add_argument("-o", "--output", default=None,
                       help="Output file (default: overwrite input)")
 
@@ -4749,6 +4770,9 @@ def build_parser():
                          help="Text file with pasted talkgroup table")
     p_paste.add_argument("--freqs-file", default=None,
                          help="Text file with pasted frequency/site table")
+    p_paste.add_argument("--skip-encrypted", action="store_true",
+                      help="Leave out fully encrypted talkgroups (mode "
+                           "AE/DE/TE/E on RadioReference)")
     p_paste.add_argument("-o", "--output", default=None,
                          help="Output file (default: overwrite input)")
 
@@ -5195,6 +5219,9 @@ def build_parser():
                         help="Comma-separated category IDs to include")
     p_auto.add_argument("--tags", default=None,
                         help="Comma-separated service tags to include")
+    p_auto.add_argument("--skip-encrypted", action="store_true",
+                      help="Leave out fully encrypted talkgroups (mode "
+                           "AE/DE/TE/E on RadioReference)")
     p_auto.add_argument("-o", "--output", default=None,
                         help="Output file (default: overwrite input)")
 
@@ -5817,6 +5844,7 @@ def run_cli(args=None):
                 categories=parsed.categories,
                 tags=parsed.tags,
                 output=parsed.output,
+                skip_encrypted=parsed.skip_encrypted,
             )
         elif parsed.command == "import-paste":
             return cmd_import_paste(
@@ -5828,6 +5856,7 @@ def run_cli(args=None):
                 tgs_file=parsed.tgs_file,
                 freqs_file=parsed.freqs_file,
                 output=parsed.output,
+                skip_encrypted=parsed.skip_encrypted,
             )
         elif parsed.command == "merge":
             # Determine what to merge based on flags
@@ -5997,6 +6026,7 @@ def run_cli(args=None):
                 categories=parsed.categories,
                 tags=parsed.tags,
                 output=parsed.output,
+                skip_encrypted=parsed.skip_encrypted,
             )
         elif parsed.command == "encrypt":
             return cmd_encrypt(

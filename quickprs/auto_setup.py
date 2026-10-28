@@ -17,7 +17,7 @@ logger = logging.getLogger("quickprs")
 
 
 def auto_setup_from_rr(prs, rr_system, selected_categories=None,
-                       selected_tags=None):
+                       selected_tags=None, skip_encrypted=False):
     """Fully automatic P25 system setup from RadioReference data.
 
     Does EVERYTHING:
@@ -62,7 +62,7 @@ def auto_setup_from_rr(prs, rr_system, selected_categories=None,
 
     # Step 1: Build injection data (talkgroups, frequencies, IDEN)
     data = build_injection_data(rr_system, selected_categories,
-                                selected_tags)
+                                selected_tags, skip_encrypted=skip_encrypted)
     set_name = data['system_name']
     if not set_name:
         set_name = make_set_name(f"SID{rr_system.sid}")
@@ -182,6 +182,7 @@ def auto_setup_from_rr(prs, rr_system, selected_categories=None,
         'sysid': data['sysid'],
         'wacn': data['wacn'],
         'talkgroups': len(data['talkgroups']),
+        'skipped_encrypted': data['skipped_encrypted'],
         'frequencies': len(data['frequencies']),
         'sites': len(rr_system.sites),
         'ecc_entries': len(ecc_entries),
