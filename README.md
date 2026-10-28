@@ -252,9 +252,12 @@ template = noaa
 template = interop
 
 [channels.LOCAL]
-; short_name, tx_freq, rx_freq, tx_tone, rx_tone, long_name
+; short_name, tx_freq, rx_freq, tx_tone, rx_tone, long_name[, flags]
+; flags: any of nb (narrowband), rxonly, noscan
 1 = RPT 147,147.600,147.000,100.0,100.0,147.00+ Repeater
 2 = SIMPLEX,146.520,146.520,,,2m Calling
+3 = MURS 1,151.820,151.820,,,MURS 1,nb
+4 = NOAA WX,162.550,162.550,,,NOAA Seattle,rxonly noscan
 
 [options]
 gps.gpsMode = ON
@@ -263,6 +266,13 @@ misc.password = 1234
 ```
 
 Build with: `quickprs build patrol.ini -o patrol.PRS`
+
+A config file is a recipe, not a copy: `export-config` writes what `build`
+can make (systems with their IDs, frequencies and talkgroups, channels with
+their tones and flags, radio options). `build` makes IDEN tables from the
+frequencies and gives each system its own sets, and other settings take
+their defaults. For a complete copy that imports back byte for byte, use
+`export-json` and `import-json`.
 
 ## Built-in Templates
 

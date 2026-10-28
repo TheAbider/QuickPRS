@@ -962,7 +962,9 @@ def _validate_system_counts(prs):
 
 
 def _check_duplicate_set_names(prs, issues):
-    """Detect duplicate set names across all set types."""
+    """Detect two sets of one type with the same name.  Systems name their
+    trunk, talkgroup and IDEN sets separately, so a trunk set and a
+    talkgroup set may share a name (RPM names them that way)."""
     set_names = {}  # name -> list of type labels
 
     for cls, label, parser_fn in [
@@ -986,13 +988,14 @@ def _check_duplicate_set_names(prs, issues):
                     set_names.setdefault(s.name, []).append(label)
 
     for name, types in set_names.items():
-        if len(types) > 1:
-            labels = ", ".join(types)
-            issues.append((WARNING,
-                f"Duplicate set name '{name}' used by: {labels}. "
-                "RPM may confuse references. Rename one of the sets "
-                "with 'quickprs edit <file> --rename-set <type> "
-                f"\"{name}\" <new_name>'."))
+        for label in sorted(set(types)):
+            count = types.count(label)
+            if count > 1:
+                issues.append((WARNING,
+                    f"Duplicate set name '{name}': {count} {label} sets. "
+                    "RPM may confuse references. Rename one of the sets "
+                    "with 'quickprs edit <file> --rename-set <type> "
+                    f"\"{name}\" <new_name>'."))
 
 
 

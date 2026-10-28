@@ -84,6 +84,12 @@ been checked against RPM:
   IDEN value changed would settle it.
 - **Enhanced control channel (ECC) entries:** four numbers per entry; how
   they map to RFSS, site and channel has not been confirmed.
+- **Analog channel fields RPM always sets:** every analog channel RPM
+  creates, with or without tones, holds 85 in both 2-byte fields after the
+  tone strings (QuickPRS calls them `tx_addr` and `rx_addr`) and 1 in flag
+  byte 22 (`tone_mode`). QuickPRS 1.2 and later write the same in new
+  channels; earlier versions wrote 0, 0 and 0, and what difference that
+  makes on the radio is not known.
 
 A good way to settle either: change one value in RPM, save, and compare the
 two files with `quickprs compare --detail` or `quickprs dump`.

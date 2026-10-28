@@ -430,30 +430,44 @@ def test_validate_combined_channel_limit():
     assert len(combined_issues) == 0
 
 
-def test_validate_duplicate_set_names():
-    """Duplicate set names across types produce warnings."""
-    if not CLAUDE_PRS.exists():
-        pytest.skip("test file not found")
-    from quickprs.injector import add_p25_trunked_system, make_group_set, make_trunk_set
+def test_trunk_and_group_sets_may_share_a_name():
+    """Systems name their trunk and talkgroup sets separately, and RPM
+    gives them one name (PAWSOVERMAWS: WASP, NNSS, SNACC, NSRS); this used
+    to be reported as a duplicate."""
+    from quickprs.builder import create_blank_prs
+    from quickprs.injector import (add_p25_trunked_system, make_group_set,
+                                   make_trunk_set)
     from quickprs.record_types import P25TrkSystemConfig
-    prs = cached_parse_prs(CLAUDE_PRS)
-    # Inject a system where trunk and group sets share the name "DUPE"
+    prs = create_blank_prs()
     config = P25TrkSystemConfig(
-        system_name="DUPE",
-        long_name="DUPE TEST",
-        trunk_set_name="DUPE",
-        group_set_name="DUPE",
-        wan_name="DUPEWAN",
-        home_unit_id=100,
-        system_id=555,
-    )
-    gs = make_group_set("DUPE", [(100, "TG1", "TEST TG")])
-    ts = make_trunk_set("DUPE", [(851.0125, 806.0125)])
-    add_p25_trunked_system(prs, config, group_set=gs, trunk_set=ts)
-    issues = validate_prs(prs)
-    dup_issues = [m for _, m in issues if "Duplicate set name" in m]
-    assert len(dup_issues) >= 1
-    assert "DUPE" in dup_issues[0]
+        system_name="SAME", long_name="SAME TEST", trunk_set_name="SAME",
+        group_set_name="SAME", wan_name="SAME", system_id=555)
+    add_p25_trunked_system(
+        prs, config, group_set=make_group_set("SAME", [(100, "TG1", "TG")]),
+        trunk_set=make_trunk_set("SAME", [(806.0125, 851.0125)]))
+    assert not [m for _, m in validate_prs(prs) if "Duplicate set" in m]
+
+
+def test_two_sets_of_one_type_with_one_name_warn():
+    from quickprs.builder import create_blank_prs
+    from quickprs.injector import _write_set_list, make_conv_set
+    prs = create_blank_prs()
+    _write_set_list(prs, "conv sets", [
+        make_conv_set("DUPE", [{"short_name": "A", "tx_freq": 151.625}]),
+        make_conv_set("DUPE", [{"short_name": "B", "tx_freq": 154.57}])])
+    dups = [m for _, m in validate_prs(prs) if "Duplicate set" in m]
+    assert dups == [dups[0]] and "'DUPE': 2 conv sets" in dups[0]
+
+
+def test_rpm_file_has_no_false_warnings():
+    """Neither the shared set names nor RPM's default 2-position switch
+    function (PTCT) is a problem."""
+    paws = Path(__file__).parent / "testdata" / "PAWSOVERMAWS.PRS"
+    if not paws.exists():
+        pytest.skip("test file not found")
+    messages = [m for _, m in validate_prs(cached_parse_prs(paws))]
+    assert not [m for m in messages if "Duplicate set" in m]
+    assert not [m for m in messages if "not a known switch" in m]
 
 
 def test_validate_zone_advisory_large_group_set():
