@@ -6,7 +6,7 @@ Generate and edit Harris XG-100P personality (.PRS) files without Harris RPM sof
 
 > **STATUS: In Development.** This tool is under active development. While the binary format has been extensively reverse-engineered and tested against known-good RPM files, it has NOT been exhaustively tested on all XG-100P hardware revisions and firmware versions. Test on non-critical equipment first.
 
-> **IMPORTANT: This tool does NOT load mission plans onto radios.** QuickPRS generates and edits .PRS personality files. To actually load a personality onto an XG-100P radio, you still need Harris RPM software (for now). QuickPRS replaces the personality *creation and editing* workflow, not the radio flashing process.
+> **IMPORTANT: This tool does NOT load mission plans onto radios.** QuickPRS generates and edits .PRS personality files. To actually load a personality onto an XG-100P radio, you still need Harris RPM software (for now). The `quickprs radio` commands are groundwork for reading radios directly over Bluetooth: they find the radio and record RPM's sessions with it, and never send bytes of their own (see [docs/bluetooth.md](docs/bluetooth.md)).
 
 ## RadioReference Integration
 
@@ -23,6 +23,8 @@ quickprs auto-setup radio.PRS --sid 8155 --username YOUR_USER --apikey YOUR_KEY
 quickprs validate radio.PRS
 ```
 
+`auto-setup` and `import-rr` log in with your RadioReference username and password plus the API key. The password is asked for when you run them (or comes from `--password` or `QUICKPRS_RR_PASSWORD`; `QUICKPRS_RR_USER` and `QUICKPRS_RR_APIKEY` work for the other two).
+
 This single `auto-setup` command:
 1. Fetches the full system from RadioReference (talkgroups, sites, frequencies)
 2. Creates the trunk frequency set with all site frequencies
@@ -37,11 +39,9 @@ This single `auto-setup` command:
 No API key? Just copy talkgroup/frequency tables from RadioReference and paste them in:
 
 ```bash
-# Paste talkgroup data from the website
-quickprs import-paste radio.PRS --name PSERN --sysid 892 --tgs-file tgs.txt
-
-# Or import site/frequency data
-quickprs import-paste radio.PRS --name PSERN --sites-file sites.txt
+# Paste the talkgroup table, the site/frequency table, or both
+quickprs import-paste radio.PRS --name PSERN --sysid 939 --wacn 781824 \
+    --tgs-file tgs.txt --freqs-file freqs.txt
 ```
 
 ### GUI Import Wizard
@@ -60,14 +60,17 @@ The GUI includes a dedicated RadioReference import wizard (File > Import Wizard)
 
 ## Features
 
-- 100% binary format decoded (49 section types, 27 option sections, 514+ fields)
+- Writes personalities the way RPM does: the .PRS is an MFC archive, and every save rebuilds its class tags and list counts ([format notes](docs/prs-format.md))
+- Refuses to save an edit that breaks the archive structure; `repair` fixes files saved by QuickPRS 1.0.x
 - Create PRS files from scratch or INI config files
 - **RadioReference integration** — auto-setup P25 systems via SOAP API, web scraping, or paste
 - Import from scanner formats (CHIRP, Uniden Sentinel, SDRTrunk)
-- 45+ CLI commands for scripting and batch processing
+- P25 conventional channel sets (CSV export and import)
+- 60+ CLI commands for scripting and batch processing
 - Full GUI with tree view, inline editing, drag-and-drop, and RadioReference import wizard
 - Built-in channel templates (MURS, GMRS, FRS, Marine, NOAA, Interop, Public Safety)
-- Built-in P25 system database (30 major US systems)
+- Built-in list of 28 US P25 systems as a starting point (IDs unverified except where marked: confirm them before programming)
+- Bluetooth groundwork: find a paired radio and record RPM's sessions with it (`quickprs radio`)
 - JSON export/import for human-editable radio configs
 - Export to CHIRP CSV, Uniden CSV, SDRTrunk, DSD+, Markdown, INI
 - Merge, clone, and compare PRS files
@@ -84,7 +87,7 @@ The GUI includes a dedicated RadioReference import wizard (File > Import Wizard)
 - Comprehensive validation against XG-100P hardware limits
 - File repair and data salvage for damaged PRS files
 - Lossless binary roundtrip (parse and rewrite produces byte-identical output)
-- 5,300+ automated tests
+- 5,400+ automated tests
 
 ## Quick Start
 
@@ -109,7 +112,7 @@ quickprs validate radio.PRS
 
 ```bash
 quickprs create radio.PRS --name "PATROL"
-quickprs inject radio.PRS p25 --name PSERN --sysid 892 --freqs-csv freqs.csv --tgs-csv tgs.csv
+quickprs inject radio.PRS p25 --name PSERN --sysid 939 --wacn 781824 --freqs-csv freqs.csv --tgs-csv tgs.csv
 quickprs inject radio.PRS conv --template murs
 quickprs inject radio.PRS conv --template noaa
 quickprs inject radio.PRS conv --template interop
@@ -138,6 +141,8 @@ Or use the standalone EXE from [Releases](../../releases) (no Python required).
 - `darkdetect` — Auto dark mode detection
 - `windnd` — Drag-and-drop file support (Windows)
 - `zeep` — RadioReference SOAP API access (requires premium subscription)
+- `pyserial` — serial and Bluetooth ports for `quickprs radio`
+- `bleak` — BLE device scan (`quickprs radio scan --ble`)
 
 ## CLI Commands
 
@@ -168,6 +173,10 @@ Or use the standalone EXE from [Releases](../../releases) (no Python required).
 | `import-paste` | Import from pasted RadioReference text |
 | `import-scanner` | Import from CHIRP, Uniden, or SDRTrunk CSV |
 | `import-json` | Create a PRS from a JSON file |
+| `import-csv` | Import talkgroup, trunk, conventional and P25 conventional sets from CSV (the `export-csv` format) |
+| `convert` | Convert between PRS, JSON, INI, CSV, CHIRP and Markdown |
+| `preset` | Apply named option presets (GPS, covert, quiet, etc.) |
+| `favorites` | Bookmark systems, talkgroups, channels and templates |
 | `systems` | Browse/search/add from built-in P25 system database |
 | `template-csv` | Generate blank CSV/INI templates for data entry |
 | `validate` | Validate PRS file against XG-100P hardware limits |
@@ -200,6 +209,10 @@ Or use the standalone EXE from [Releases](../../releases) (no Python required).
 | `export-config` | Export PRS to editable INI config file |
 | `watch` | File watcher with auto-validation on change |
 | `cheat-sheet` | Quick reference of common CLI workflows |
+| `radio` | Find a paired radio, listen to it, or log RPM talking to it ([docs](docs/bluetooth.md)) |
+| `tutorial` | Interactive step-by-step CLI tutorial |
+| `demo` | Build an example patrol radio from scratch, non-interactively |
+| `about` | Project info and statistics |
 
 ## Config File Format
 
@@ -260,7 +273,7 @@ Build with: `quickprs build patrol.ini -o patrol.PRS`
 | `frs` | 22 | Family Radio Service (462-467 MHz) |
 | `marine` | 15 | Marine VHF (156-157 MHz) |
 | `noaa` / `weather` | 7 | NOAA Weather Radio (162 MHz) |
-| `interop` | 20 | National Interoperability (NPSPAC) |
+| `interop` | 23 | National interoperability (NIFOG): VHF, UHF and 800 MHz calling and tactical channels |
 | `public_safety` | 10 | Public Safety simplex frequencies |
 
 Usage: `quickprs inject file.PRS conv --template murs`
@@ -282,7 +295,7 @@ Note: Test PRS data files are not included in this repository. Tests that requir
 - This tool is an independent project and is NOT affiliated with, endorsed by, or supported by L3Harris Technologies, Harris Corporation, or any radio manufacturer
 - XG-100P, RPM, and related trademarks belong to their respective owners
 - Users are responsible for ensuring their radio configurations comply with all applicable FCC regulations and local laws
-- The P25 system database contains publicly available information from FCC records
+- The built-in P25 system list is a starting point only: its System IDs and WACNs are unverified unless marked, and a wrong one keeps a radio off the system
 
 ## License
 

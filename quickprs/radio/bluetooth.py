@@ -124,7 +124,7 @@ def scan_ble(seconds=5.0):
     except ImportError as e:
         raise RuntimeError(
             "BLE scanning needs the 'bleak' package "
-            "(pip install quickprs[radio])") from e
+            "(pip install bleak)") from e
 
     async def _scan():
         found = await BleakScanner.discover(timeout=seconds,

@@ -22,7 +22,7 @@ def open_serial(port, baudrate=115200, timeout=0.2, dtr=False, rts=False):
         import serial
     except ImportError as e:
         raise LinkError("serial ports need the 'pyserial' package "
-                        "(pip install quickprs[radio])") from e
+                        "(pip install pyserial)") from e
     ser = serial.Serial()
     ser.port = port
     ser.baudrate = baudrate
