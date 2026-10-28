@@ -227,3 +227,45 @@ def test_delete_iden_set_keeps_the_file_readable(app, tmp_path):
     names = [archive.read_cstring(o.parts[1], 0)[0] for o in
              archive.document_from_prs(back).list("IDEN sets").items]
     assert names == ["KEEP"]
+
+
+def test_api_fetch_result_is_handled_on_the_main_thread(app):
+    """The fetch thread called Tk (winfo_toplevel().after) itself; Tk may
+    only be called from the main thread.  The result now comes back
+    through a queue the main thread polls."""
+    import threading
+    import time
+    from quickprs.gui import import_panel as ip
+    from quickprs.radioreference import RRSystem
+
+    panel = app.import_panel
+    seen = {}
+
+    class FakeAPI:
+        def __init__(self, *args):
+            seen["api_thread"] = threading.current_thread()
+
+        def get_system(self, sid):
+            return RRSystem(sid=sid, name="FAKE")
+
+    def complete(system, error):
+        seen["thread"] = threading.current_thread()
+        seen["result"] = (system.name if system else None, error)
+
+    panel.url_var.set("https://www.radioreference.com/db/sid/11628")
+    panel.user_var.set("u")
+    panel.pass_var.set("p")
+    panel.key_var.set("k")
+    with mock.patch.object(ip, "RadioReferenceAPI", FakeAPI), \
+            mock.patch.object(ip, "HAS_ZEEP", True), \
+            mock.patch.object(panel, "_on_fetch_complete", complete), \
+            mock.patch.object(panel, "winfo_toplevel",
+                              side_effect=AssertionError("Tk call")):
+        panel._fetch()
+        deadline = time.time() + 5
+        while "result" not in seen and time.time() < deadline:
+            app.root.update()
+            time.sleep(0.02)
+    assert seen["result"] == ("FAKE", None)
+    assert seen["thread"] is threading.main_thread()
+    assert seen["api_thread"] is not threading.main_thread()

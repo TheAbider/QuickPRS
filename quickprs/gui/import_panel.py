@@ -16,6 +16,7 @@ API workflow (requires premium account + app key):
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+import queue
 import threading
 
 from ..radioreference import (
@@ -2168,17 +2169,27 @@ class ImportPanel(ttk.Frame):
             foreground="blue")
         self.fetch_btn.config(state=tk.DISABLED)
 
+        # Tk may only be called from this (the main) thread: the worker
+        # leaves its result in a queue and the main thread polls for it
+        results = queue.Queue()
+
         def _do_fetch():
             try:
                 api = RadioReferenceAPI(username, password, app_key)
-                system = api.get_system(sid)
-                self.winfo_toplevel().after(
-                    0, self._on_fetch_complete, system, None)
+                results.put((api.get_system(sid), None))
             except Exception as e:
-                self.winfo_toplevel().after(
-                    0, self._on_fetch_complete, None, str(e))
+                results.put((None, str(e)))
+
+        def _poll():
+            try:
+                system, error = results.get_nowait()
+            except queue.Empty:
+                self.after(100, _poll)
+                return
+            self._on_fetch_complete(system, error)
 
         threading.Thread(target=_do_fetch, daemon=True).start()
+        self.after(100, _poll)
 
     def _on_fetch_complete(self, system, error):
         self.fetch_btn.config(state=tk.NORMAL)
