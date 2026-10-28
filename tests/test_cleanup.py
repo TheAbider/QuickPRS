@@ -343,3 +343,31 @@ class TestCleanupEdgeCases:
             prs = parse_prs(fp)
             lines = cleanup_report(prs)
             assert len(lines) > 0
+
+
+class TestUnusedSetsSeeSystemReferences:
+    """A set a system names is in use (cleanup used to report every
+    trunk and talkgroup set of an RPM-saved file as unused)."""
+
+    @pytest.mark.skipif(not PAWS.exists(),
+                        reason="Test PRS data not available")
+    def test_rpm_saved_system_sets_are_used(self):
+        unused = find_unused_sets(cached_parse_prs(PAWS))
+        assert unused["trunk_sets"] == []
+        assert unused["group_sets"] == []
+        # WA and NV both use FURRY NB; nothing names WA WIDE
+        assert unused["conv_sets"] == ["WA WIDE"]
+
+    def test_built_system_sets_are_used(self):
+        from quickprs.config_builder import build_from_config
+        prs = build_from_config(str(TESTDATA / "example_patrol.ini"))
+        unused = find_unused_sets(prs)
+        assert unused["trunk_sets"] == []
+        assert unused["group_sets"] == []
+
+    def test_unreferenced_set_is_still_reported(self):
+        from quickprs.config_builder import build_from_config
+        from quickprs.injector import make_group_set, add_group_set
+        prs = build_from_config(str(TESTDATA / "example_patrol.ini"))
+        add_group_set(prs, make_group_set("SPARE", [(77, "SPARE", "Spare")]))
+        assert find_unused_sets(prs)["group_sets"] == ["SPARE"]

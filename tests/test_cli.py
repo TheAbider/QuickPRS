@@ -986,3 +986,32 @@ class TestFreqToolsCLI:
         """freq-tools without subcommand should show help."""
         result = run_cli(["freq-tools"])
         assert result == 1
+
+
+class TestImportJsonKeepsSource:
+    """import-json's default output is the .PRS the JSON was exported
+    from, so it must not overwrite it silently."""
+
+    def _export(self, tmp_path):
+        from quickprs.cli import cmd_create, cmd_export_json
+        prs_path = tmp_path / "radio.PRS"
+        assert cmd_create(str(prs_path), name="RADIO") == 0
+        json_path = tmp_path / "radio.json"
+        assert cmd_export_json(str(prs_path), str(json_path)) == 0
+        return prs_path, json_path
+
+    def test_default_output_is_not_overwritten(self, tmp_path, capsys):
+        from quickprs.cli import cmd_import_json
+        prs_path, json_path = self._export(tmp_path)
+        before = prs_path.read_bytes()
+        prs_path.write_bytes(before + b"edited since export")
+        assert cmd_import_json(str(json_path)) == 1
+        assert prs_path.read_bytes() == before + b"edited since export"
+        assert "already exists" in capsys.readouterr().err
+
+    def test_explicit_output_is_written(self, tmp_path):
+        from quickprs.cli import cmd_import_json
+        _, json_path = self._export(tmp_path)
+        out = tmp_path / "copy.PRS"
+        assert cmd_import_json(str(json_path), str(out)) == 0
+        assert out.exists()

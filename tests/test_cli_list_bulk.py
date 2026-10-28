@@ -374,3 +374,24 @@ class TestGuiImportable:
         """gui.app should have a main() function."""
         from quickprs.gui.app import main
         assert callable(main)
+
+
+def _personality_with_channel(path, short_name="ODD", freq=851.00625,
+                              tx_tone=""):
+    from quickprs.builder import create_blank_prs
+    from quickprs.injector import make_conv_set, _safe_add_conv_set
+    from quickprs.prs_writer import write_prs
+    prs = create_blank_prs()
+    _safe_add_conv_set(prs, make_conv_set("ODD", [
+        {"short_name": short_name, "tx_freq": freq, "rx_freq": freq,
+         "tx_tone": tx_tone, "rx_tone": tx_tone}]))
+    write_prs(prs, str(path), backup=False)
+    return prs
+
+
+def test_list_channels_keeps_6_25_khz_digits(tmp_path, capsys):
+    """6.25 kHz channels need five decimals (851.00625, not 851.0063)."""
+    path = tmp_path / "odd.PRS"
+    _personality_with_channel(path)
+    assert cmd_list(str(path), "channels") == 0
+    assert "851.00625\t851.00625" in capsys.readouterr().out

@@ -785,3 +785,27 @@ class TestAutoNameValidation:
         issues = validate_prs(prs)
         errors = [(s, m) for s, m in issues if s == ERROR]
         assert len(errors) == 0
+
+
+class TestCloneNameAndUnitId:
+    """clone-personality --name sets the name in the CPersonality header
+    and --unit-id the Home Unit ID of every P25 trunked system."""
+
+    def _patrol(self):
+        from quickprs.config_builder import build_from_config
+        return build_from_config(str(TESTDATA / "example_patrol.ini"))
+
+    def test_name_goes_in_header(self):
+        from quickprs.record_types import parse_personality_section
+        clone = clone_personality(self._patrol(), {"name": "CLONED"})
+        header = parse_personality_section(
+            clone.get_section_by_class("CPersonality").raw)
+        assert header.filename == "CLONED.PRS"
+
+    def test_unit_id_in_every_trunked_system(self):
+        from test_fleet import _read_home_unit_ids
+        clone = clone_personality(self._patrol(), {"unit_id": 4242})
+        systems = _read_home_unit_ids(clone)
+        assert systems
+        for _, uids in systems:
+            assert uids == [4242, 4242, 4242]

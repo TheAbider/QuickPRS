@@ -217,3 +217,27 @@ class TestReportCLI:
         from quickprs.cli import run_cli
         result = run_cli(["report", "nonexistent.PRS"])
         assert result == 1
+
+
+def _personality_with_channel(path, short_name="ODD", freq=851.00625,
+                              tx_tone=""):
+    from quickprs.builder import create_blank_prs
+    from quickprs.injector import make_conv_set, _safe_add_conv_set
+    from quickprs.prs_writer import write_prs
+    prs = create_blank_prs()
+    _safe_add_conv_set(prs, make_conv_set("ODD", [
+        {"short_name": short_name, "tx_freq": freq, "rx_freq": freq,
+         "tx_tone": tx_tone, "rx_tone": tx_tone}]))
+    write_prs(prs, str(path), backup=False)
+    return prs
+
+
+def test_summary_card_escapes_tone_names(tmp_path):
+    """Tone names come from the file, so the card escapes them like the
+    full report does."""
+    from quickprs.reports import generate_summary_card
+    prs = _personality_with_channel(tmp_path / "t.PRS",
+                                    tx_tone="<b>x</b>")
+    html = generate_summary_card(prs)
+    assert "<b>x</b>" not in html
+    assert "&lt;b&gt;x&lt;/b&gt;" in html

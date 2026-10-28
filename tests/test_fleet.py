@@ -612,3 +612,36 @@ class TestFleetMultiSystem:
         uids = _read_home_unit_ids(prs)
         assert len(uids) == 1  # only the P25 system
         assert uids[0][1] == [3001, 3001, 3001]
+
+
+class TestFleetOutputNames:
+    """Unit names stay inside the output folder, duplicates are reported,
+    short rows are read, and unit IDs fit 24 bits."""
+
+    def test_name_cannot_leave_output_dir(self, tmp_path):
+        units = _write_csv(tmp_path, "unit_id,name\n1001,../escape\n")
+        out = tmp_path / "out"
+        results = build_fleet(str(PATROL_INI), units, str(out))
+        assert results[0][2], results
+        assert not (tmp_path / "escape.PRS").exists()
+        assert (out / "escape.PRS").exists()
+
+    def test_duplicate_names_are_reported(self, tmp_path):
+        units = _write_csv(tmp_path,
+                           "unit_id,name\n1001,CAR\n1002,CAR\n")
+        out = tmp_path / "out"
+        results = build_fleet(str(PATROL_INI), units, str(out))
+        assert results[0][2]
+        assert not results[1][2]
+        assert "duplicate" in results[1][3]
+
+    def test_short_row_is_read(self, tmp_path):
+        units = _write_csv(tmp_path, "unit_id,name,password\n1001\n")
+        parsed = _parse_units_csv(units)
+        assert parsed[0]["unit_id"] == 1001
+        assert parsed[0].get("name", "") == ""
+
+    def test_unit_id_over_24_bits_rejected(self, tmp_path):
+        units = _write_csv(tmp_path, "unit_id\n16777216\n")
+        with pytest.raises(ValueError, match="24-bit"):
+            _parse_units_csv(units)

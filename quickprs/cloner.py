@@ -37,14 +37,15 @@ def clone_personality(source_prs, modifications=None):
     Args:
         source_prs: PRSFile to clone
         modifications: dict with optional keys:
-            'name': new personality name (stored in options)
+            'name': new personality name (in the CPersonality header;
+                '.PRS' is added when missing)
             'remove_sets': list of set names to remove (trunk/group/conv)
             'remove_systems': list of system long names to remove
             'add_talkgroups': {set_name: [(id, short_name, long_name), ...]}
             'remove_talkgroups': {set_name: [group_id, ...]}
             'enable_tx_sets': [set_names where TX should be enabled]
             'disable_tx_sets': [set_names where TX should be disabled]
-            'unit_id': int for HomeUnitID
+            'unit_id': Home Unit ID for every P25 trunked system
             'password': str for radio password
 
     Returns:
