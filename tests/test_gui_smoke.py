@@ -392,3 +392,48 @@ def test_trunk_drag_while_filtered_moves_the_right_channels(app, tmp_path):
                  parse_trunk_channel_section)
     assert [c.rx_freq for c in sets["CITY"].channels] == [
         852.0125, 851.0125, 851.5125]
+
+
+def _viewer(tk_root, prs_a, prs_b):
+    from quickprs.gui.diff_viewer import DiffViewer
+    viewer = DiffViewer(tk_root, prs_a, prs_b)
+    viewer.withdraw()
+    tops = [viewer.tree_b.item(i, "text")
+            for i in viewer.tree_b.get_children()]
+    rows = {viewer.tree_b.item(i, "text"):
+            [(viewer.tree_b.item(c, "text"),
+              viewer.tree_b.item(c, "values")[0])
+             for c in viewer.tree_b.get_children(i)]
+            for i in viewer.tree_b.get_children()}
+    summary = viewer._summary.cget("text")
+    viewer.destroy()
+    return tops, rows, summary
+
+
+def test_diff_viewer_shows_every_kind_of_difference(tk_root):
+    """It drew only talkgroup and trunk set rows from compare_prs, so a
+    file differing in a channel tone, an IDEN element or a system ID read
+    as 'No differences found.'"""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from test_compare_changes import _personality
+    base = _personality()
+    for changed, section, words in [
+        ({"conv_tone": "141.3"}, "Conv Set", "rx_tone"),
+        ({"iden_base": 851_006_250}, "IDEN Set", "base_freq_hz"),
+        ({"system_id": 940}, "P25 Trunked", "system settings differ"),
+        ({"nac": 0x3AB}, "P25 Conv Set", "nac_tx"),
+    ]:
+        tops, rows, summary = _viewer(tk_root, base, _personality(**changed))
+        assert section in tops, (changed, tops)
+        assert any(words in detail for _, detail in rows[section]), rows
+        assert summary != "No differences found."
+
+
+def test_diff_viewer_identical(tk_root):
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from test_compare_changes import _personality
+    tops, _, summary = _viewer(tk_root, _personality(), _personality())
+    assert summary == "No differences found."
+    assert len(tops) == 1 and tops[0].startswith("Systems")
