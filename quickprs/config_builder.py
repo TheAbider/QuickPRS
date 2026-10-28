@@ -407,14 +407,17 @@ def _apply_options(cfg, prs):
 
     from .option_maps import (
         extract_platform_config, config_to_xml, write_platform_config,
+        _inject_platform_xml, _create_default_platform_xml,
     )
 
-    # Get current platform config (may not exist in blank PRS)
+    # Get current platform config.  A new personality has none yet: start
+    # it from RPM's new-radio options, then apply the [options] lines.
     config = extract_platform_config(prs)
     if config is None:
-        # Blank PRS has no platformConfig — nothing to modify
-        logger.debug("No platformConfig found, skipping options")
-        return
+        if not _inject_platform_xml(prs, _create_default_platform_xml()):
+            raise ConfigError(
+                "[options]: this personality cannot take radio options")
+        config = extract_platform_config(prs)
 
     # Apply each option
     for key, value in options:
