@@ -102,7 +102,7 @@ class TestTemplateCsvChannels:
         out = str(tmp_path / "channels.csv")
         cmd_template_csv("channels", output=out)
         content = Path(out).read_text(encoding='utf-8')
-        assert "RPT IN" in content
+        assert "# Example: RPT 147" in content
 
 
 class TestTemplateCsvUnits:
