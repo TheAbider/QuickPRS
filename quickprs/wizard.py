@@ -240,9 +240,10 @@ def run_wizard(modify_file=None):
     """Run the interactive wizard.
 
     Args:
-        modify_file: if provided, path to existing PRS to modify.
-                     Currently only new-file creation is supported;
-                     modify_file is reserved for future use.
+        modify_file: if provided, path to an existing PRS: the systems,
+                     channels and options the wizard collects are added
+                     to it, and it is saved in place unless another
+                     output file is given (a backup is kept).
 
     Returns:
         0 on success, 1 on error.
@@ -252,18 +253,36 @@ def run_wizard(modify_file=None):
     print("=" * 40)
     print()
 
+    base = None
     if modify_file:
+        from .prs_parser import parse_prs
+        try:
+            base = parse_prs(modify_file)
+        except (OSError, ValueError) as e:
+            print(f"Error: cannot read {modify_file}: {e}", file=sys.stderr)
+            return 1
         print(f"Modifying: {modify_file}")
-        print("Note: modify mode re-builds from scratch on top of "
-              "the existing file.")
+        print("The systems, channels and options you add go into this "
+              "file.")
         print()
 
     # --- Step 1: Personality ---
     print("--- Step 1: Personality ---")
-    name = _input("Personality name", "New Radio.PRS")
-    if not name.upper().endswith('.PRS'):
-        name += '.PRS'
-    output_file = _input("Output file", name)
+    if base is not None:
+        name = Path(modify_file).name
+        output_file = _input("Output file", modify_file)
+    else:
+        name = _input("Personality name", "New Radio.PRS")
+        if not name.upper().endswith('.PRS'):
+            name += '.PRS'
+        output_file = _input("Output file", name)
+    out_path = Path(output_file)
+    replacing_other = out_path.exists() and not (
+        modify_file and out_path.resolve() == Path(modify_file).resolve())
+    if replacing_other and not _input_yn(
+            f"{out_path} exists. Replace it (a .bak copy is kept)?", False):
+        print("Cancelled.")
+        return 1
     print()
 
     # --- Step 2: P25 Systems ---
@@ -326,8 +345,9 @@ def run_wizard(modify_file=None):
             f.write(ini_content)
             tmp_ini = f.name
 
-        prs = build_from_config(tmp_ini)
-    except ConfigError as e:
+        prs = build_from_config(tmp_ini, base=base)
+    except (ConfigError, ValueError) as e:
+        # ValueError: a name the file already uses, for one
         print(f"Error building personality: {e}", file=sys.stderr)
         return 1
     finally:
@@ -336,11 +356,15 @@ def run_wizard(modify_file=None):
         except OSError:
             pass
 
-    # Write output
-    out_path = Path(output_file)
+    # Write output (a .bak copy of a replaced file is kept)
+    from .prs_writer import write_prs, UnsafeWriteError
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        write_prs(prs, out_path, backup=True)
+    except UnsafeWriteError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     raw = prs.to_bytes()
-    out_path.write_bytes(raw)
 
     # Validate
     from .validation import validate_prs, ERROR, WARNING

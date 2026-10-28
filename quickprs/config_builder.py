@@ -34,14 +34,16 @@ class ConfigError(Exception):
     pass
 
 
-def build_from_config(config_path):
+def build_from_config(config_path, base=None):
     """Build a complete PRS file from a config file.
 
-    Parses the INI file, creates a blank PRS, then injects systems,
-    channels, and options as specified.
+    Parses the INI file, creates a blank PRS (or takes ``base``), then
+    injects systems, channels, and options as specified.
 
     Args:
         config_path: path to the .ini config file
+        base: optional PRSFile to add to instead of a blank personality
+            (its [personality] name and author are then left as they are)
 
     Returns:
         PRSFile object
@@ -66,7 +68,7 @@ def build_from_config(config_path):
     cfg.read(str(path), encoding='utf-8')
 
     # Build the PRS
-    prs = _build_personality(cfg)
+    prs = base if base is not None else _build_personality(cfg)
     _inject_systems(cfg, prs)
     _inject_channels(cfg, prs)
     _apply_options(cfg, prs)
