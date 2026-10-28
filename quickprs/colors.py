@@ -1,14 +1,21 @@
 """ANSI color support for terminal output.
 
 Provides colored text helpers that auto-detect TTY capability.
-Colors are disabled when output is piped or redirected, or when
-the --no-color flag is active.
+Colors are disabled when output is piped or redirected, when the
+--no-color flag is active or NO_COLOR is set, and in a Windows console
+that cannot show them.
 """
 
+import os
 import sys
 
 # Global flag — set True by --no-color CLI flag
 _no_color = False
+
+# Whether this Windows console shows ANSI codes (None until checked)
+_windows_vt = None
+
+ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
 
 
 def disable_color():
@@ -17,11 +24,45 @@ def disable_color():
     _no_color = True
 
 
+def _kernel32():
+    import ctypes
+    return ctypes.WinDLL("kernel32", use_last_error=True)
+
+
+def _enable_windows_vt():
+    """Turn on ANSI code handling in this Windows console.
+
+    A Windows console prints escape codes as text unless the program
+    turns this on (Windows 10 and later). Returns False when it cannot.
+    """
+    global _windows_vt
+    if _windows_vt is None:
+        _windows_vt = False
+        try:
+            import ctypes
+            from ctypes import wintypes
+            k32 = _kernel32()
+            k32.GetStdHandle.restype = wintypes.HANDLE
+            handle = k32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+            mode = wintypes.DWORD()
+            if k32.GetConsoleMode(handle, ctypes.pointer(mode)):
+                vt = ENABLE_VIRTUAL_TERMINAL_PROCESSING
+                _windows_vt = bool(mode.value & vt) or bool(
+                    k32.SetConsoleMode(handle, mode.value | vt))
+        except (AttributeError, OSError):
+            pass
+    return _windows_vt
+
+
 def supports_color():
     """Check if stdout supports ANSI color codes."""
-    if _no_color:
+    if _no_color or os.environ.get("NO_COLOR"):
         return False
-    return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+    if not (hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()):
+        return False
+    if sys.platform == "win32":
+        return _enable_windows_vt()
+    return True
 
 
 def _code(ansi):
