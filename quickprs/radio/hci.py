@@ -187,6 +187,11 @@ class RfcommFrame:
     pf: bool
     payload: bytes
     credits: int = 0
+    cr: bool = False       # command/response bit of the address
+
+
+FRAME_NAMES = {RFCOMM_SABM: "SABM", RFCOMM_UA: "UA", RFCOMM_DM: "DM",
+               RFCOMM_DISC: "DISC", RFCOMM_UIH: "UIH"}
 
 
 def parse_rfcomm(data, credit_flow=True):
@@ -222,18 +227,32 @@ def parse_rfcomm(data, credit_flow=True):
     if rfcomm_fcs(checked) != data[-1]:
         return None
     return RfcommFrame(dlci, frame_type, pf, bytes(data[pos:pos + length]),
-                       credits)
+                       credits, bool(addr & 2))
 
 
 # ── HCI and L2CAP ─────────────────────────────────────────────────────
 
 @dataclass
+class TraceStats:
+    """What a trace held, so a run that finds no serial data says why."""
+    packets: int = 0
+    linktypes: dict = field(default_factory=dict)      # link type -> count
+    acl_packets: int = 0
+    rfcomm_frames: dict = field(default_factory=dict)  # frame name -> count
+    dlcis: set = field(default_factory=set)            # data channels seen
+    serial_bytes: dict = field(
+        default_factory=lambda: {SENT: 0, RECEIVED: 0})
+
+
+@dataclass
 class _Link:
     """One ACL connection (an HCI handle)."""
     address: str = ""
-    partial: dict = field(default_factory=dict)       # direction -> bytes
-    rfcomm_cids: dict = field(default_factory=dict)   # direction -> CID
-    pending: dict = field(default_factory=dict)       # (dir, id) -> SCID
+    partial: dict = field(default_factory=dict)    # direction -> bytes
+    cid_dirs: dict = field(default_factory=dict)   # CID -> direction of the
+                                                   # packets sent to it
+    learned: dict = field(default_factory=dict)    # direction -> CID
+    pending: dict = field(default_factory=dict)    # ident -> (dir, SCID)
 
 
 def format_address(raw6):
@@ -244,16 +263,23 @@ def format_address(raw6):
 class SerialFromHci:
     """Turn HCI packets into the serial data of RFCOMM channels.
 
-    feed() takes one H4 packet with its direction and returns the serial
-    chunks it completes, as (direction, bytes).  When ``address`` is given,
-    only the link to that device counts (once HCI has said which handle
-    that is; a trace started after the connection never says, and then
-    every link's RFCOMM data counts).
+    feed() takes one H4 packet with its direction (None when the trace has
+    no direction header) and returns the serial chunks it completes, as
+    (direction, bytes).  When ``address`` is given, only the link to that
+    device counts (once HCI has said which handle that is; a trace started
+    after the connection never says, and then every link's RFCOMM data
+    counts).
+
+    Where a trace has no directions, the L2CAP connection setup gives
+    them (the side that asked for the RFCOMM channel is taken to be the
+    PC, which opens it), and without that, RFCOMM's command/response bit
+    does: the PC is the initiator, whose UIH frames carry C/R = 1.
     """
 
-    def __init__(self, address=None):
+    def __init__(self, address=None, stats=None):
         self.address = address.upper() if address else None
         self.links = {}
+        self.stats = stats if stats is not None else TraceStats()
 
     def _link(self, handle):
         return self.links.setdefault(handle, _Link())
@@ -267,6 +293,7 @@ class SerialFromHci:
             return []
         if kind != H4_ACL or len(packet) < 5:
             return []
+        self.stats.acl_packets += 1
         head, length = struct.unpack_from("<HH", packet, 1)
         handle, pb = head & 0x0FFF, (head >> 12) & 0x3
         data = packet[5:5 + length]
@@ -309,18 +336,31 @@ class SerialFromHci:
             return []
         if cid < 0x0040:
             return []
-        known = link.rfcomm_cids.get(direction)
-        if known is not None and cid != known:
-            return []
+        if cid in link.cid_dirs:            # from the connection setup
+            direction = link.cid_dirs[cid]
+        elif link.cid_dirs:
+            return []                       # another channel than RFCOMM's
         frame = parse_rfcomm(payload)
         if frame is None:
             return []
-        if known is None:
-            # no connection setup seen: a valid RFCOMM frame names the CID
-            link.rfcomm_cids[direction] = cid
-        if frame.frame_type == RFCOMM_UIH and frame.dlci and frame.payload:
-            return [(direction, frame.payload)]
-        return []
+        name = FRAME_NAMES.get(frame.frame_type, hex(frame.frame_type))
+        self.stats.rfcomm_frames[name] = self.stats.rfcomm_frames.get(
+            name, 0) + 1
+        if frame.frame_type != RFCOMM_UIH or not frame.dlci:
+            return []
+        if direction is None:
+            direction = SENT if frame.cr else RECEIVED
+        if cid not in link.cid_dirs:
+            # no connection setup seen: the first data frame each way
+            # names that way's CID
+            known = link.learned.setdefault(direction, cid)
+            if known != cid:
+                return []
+        self.stats.dlcis.add(frame.dlci)
+        if not frame.payload:
+            return []
+        self.stats.serial_bytes[direction] += len(frame.payload)
+        return [(direction, frame.payload)]
 
     def _signaling(self, link, direction, data):
         pos = 0
@@ -331,41 +371,78 @@ class SerialFromHci:
             if code == L2CAP_CONN_REQ and len(body) >= 4:
                 psm, scid = struct.unpack_from("<HH", body)
                 if psm == PSM_RFCOMM:
-                    link.pending[(direction, ident)] = scid
+                    link.pending[ident] = (direction, scid)
             elif code == L2CAP_CONN_RSP and len(body) >= 8:
                 dcid, scid, result = struct.unpack_from("<HHH", body)
-                asker = RECEIVED if direction == SENT else SENT
-                if result == 0 and link.pending.pop((asker, ident),
-                                                    None) == scid:
-                    # the asker sends to dcid and is sent to on scid
-                    link.rfcomm_cids[asker] = dcid
-                    link.rfcomm_cids[direction] = scid
+                asked = link.pending.get(ident)
+                if result == 0 and asked and asked[1] == scid:
+                    del link.pending[ident]
+                    # The asker receives on scid and sends to dcid; with
+                    # no direction known, the asker is taken to be the PC
+                    pc_asked = asked[0] in (SENT, None)
+                    link.cid_dirs[scid] = RECEIVED if pc_asked else SENT
+                    link.cid_dirs[dcid] = SENT if pc_asked else RECEIVED
 
 
 def h4_with_direction(linktype, data):
     """(direction, H4 packet) from a pcap record, or None for link types
-    this reader does not handle.  Without a direction header (link type
-    187) ACL data is taken as received; use a trace with directions."""
+    this reader does not handle.  A trace without a direction header
+    (link type 187) gives None; the decoder works the direction out."""
     if linktype == LINKTYPE_H4_WITH_PHDR:
         if len(data) < 5:
             return None
         flag = struct.unpack_from(">I", data)[0]
         return (RECEIVED if flag & 1 else SENT), data[4:]
     if linktype == LINKTYPE_H4:
-        return RECEIVED, data
+        return None, data
     return None
 
 
-def serial_chunks(packets, address=None):
+def serial_chunks(packets, address=None, stats=None):
     """(seconds since the first packet, direction, bytes) for every serial
-    chunk in an iterable of (timestamp, linktype, data) pcap records."""
-    decoder = SerialFromHci(address)
+    chunk in an iterable of (timestamp, linktype, data) pcap records.
+    ``stats``, a TraceStats, is filled in as the trace is read."""
+    decoder = SerialFromHci(address, stats)
+    stats = decoder.stats
     t0 = None
     for ts, linktype, data in packets:
         if t0 is None:
             t0 = ts
+        stats.packets += 1
+        stats.linktypes[linktype] = stats.linktypes.get(linktype, 0) + 1
         split = h4_with_direction(linktype, data)
         if split is None:
             continue
         for direction, chunk in decoder.feed(*split):
             yield round(ts - t0, 6), direction, chunk
+
+
+def describe(stats, address=None):
+    """Lines saying what a trace held, and why when it held no serial
+    data."""
+    kinds = {LINKTYPE_H4_WITH_PHDR: "HCI H4 with direction",
+             LINKTYPE_H4: "HCI H4"}
+    types = ", ".join(f"{n:,} {kinds.get(t, f'link type {t} (not read)')}"
+                      for t, n in sorted(stats.linktypes.items()))
+    lines = [f"Trace: {stats.packets:,} packets ({types or 'none'}), "
+             f"{stats.acl_packets:,} ACL data."]
+    if stats.rfcomm_frames:
+        frames = ", ".join(f"{n:,} {name}" for name, n in
+                           sorted(stats.rfcomm_frames.items()))
+        channels = ", ".join(str(d >> 1) for d in sorted(stats.dlcis))
+        lines.append(f"RFCOMM frames: {frames}"
+                     + (f"; serial channel(s) {channels}" if channels
+                        else ""))
+    elif not stats.packets:
+        lines.append("The sniffer sent nothing: is btvs.exe -Mode "
+                     "Wireshark running?")
+    elif not stats.acl_packets:
+        lines.append("No Bluetooth data packets: did anything talk to the "
+                     "radio while this ran?")
+    else:
+        lines.append("No RFCOMM frames"
+                     + (f" on the link to {address}" if address else "")
+                     + ": was Full Packet Logging on in the sniffer, and "
+                     "did RPM (or quickprs radio probe) connect to the "
+                     "radio while this ran?")
+    return lines

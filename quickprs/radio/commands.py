@@ -161,7 +161,8 @@ def cmd_radio_sniff(host="127.0.0.1", port=24352, log="session.jsonl",
     pcapng file saved from it.  Only the serial (RFCOMM) bytes are kept.
     """
     import socket
-    from .hci import read_packets, serial_chunks, PcapError
+    from .hci import (read_packets, serial_chunks, PcapError, TraceStats,
+                      describe)
 
     if not all_links and address is None:
         address = _radio_address()
@@ -189,10 +190,12 @@ def cmd_radio_sniff(host="127.0.0.1", port=24352, log="session.jsonl",
               + (f", link to {address}" if address else "")
               + f". Run the operation in RPM, then press Ctrl+C here.")
 
+    stats = TraceStats()
     with CaptureWriter(log, note=note) as writer:
         try:
             for t, direction, data in serial_chunks(read_packets(stream),
-                                                    address=address):
+                                                    address=address,
+                                                    stats=stats):
                 writer.add(direction, data, t=t)
                 counts[direction] += len(data)
         except KeyboardInterrupt:
@@ -201,17 +204,15 @@ def cmd_radio_sniff(host="127.0.0.1", port=24352, log="session.jsonl",
             print(f"Error: {e}", file=sys.stderr)
         finally:
             stream.close()
+    for line in describe(stats, address):
+        print(line)
     print(f"RPM to radio: {counts['pc>radio']:,} bytes; radio to RPM: "
           f"{counts['radio>pc']:,} bytes.")
-    if not any(counts.values()):
-        print("No serial data found. Was Full Packet Logging on in the "
-              "sniffer, and did RPM talk to the radio while it ran?",
-              file=sys.stderr)
     print(f"Analyze with: quickprs radio analyze {log}")
     return 0
 
 
-def cmd_radio_analyze(capture_path, extract=None):
+def cmd_radio_analyze(capture_path, extract=None, transcript=None):
     try:
         cap = read_capture(capture_path)
     except (OSError, ValueError) as e:
@@ -219,6 +220,12 @@ def cmd_radio_analyze(capture_path, extract=None):
         return 1
     for line in report(cap):
         print(line)
+    if transcript:
+        from .analyze import transcript as conversation
+        print()
+        print("Conversation (consecutive chunks one way are one message):")
+        for line in conversation(cap, limit=transcript):
+            print(line)
     if extract:
         data = extract_personality(cap.stream(RADIO_TO_PC))
         if data is None:

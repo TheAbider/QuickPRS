@@ -77,6 +77,48 @@ def summarize(capture, opener_len=2):
     return out
 
 
+@dataclass
+class Message:
+    t: float
+    direction: str
+    data: bytes
+
+
+def messages(capture, gap=0.05):
+    """The conversation as messages: consecutive chunks going the same way
+    with less than ``gap`` seconds between them are one message (a serial
+    read returns whatever has arrived, so one message often comes in
+    several chunks)."""
+    out = []
+    last_t = None
+    for c in capture.chunks:
+        if (out and out[-1].direction == c.direction
+                and last_t is not None and c.t - last_t < gap):
+            out[-1].data.extend(c.data)
+        else:
+            out.append(Message(c.t, c.direction, bytearray(c.data)))
+        last_t = c.t
+    for m in out:
+        m.data = bytes(m.data)
+    return out
+
+
+def transcript(capture, limit=40, width=32, gap=0.05):
+    """The first ``limit`` messages, one line each: time, direction,
+    length, and the first ``width`` bytes in hex and as text."""
+    lines = []
+    msgs = messages(capture, gap)
+    for m in msgs[:limit]:
+        head = m.data[:width]
+        text = "".join(chr(b) if 32 <= b < 127 else "." for b in head)
+        more = " ..." if len(m.data) > width else ""
+        lines.append(f"{m.t:9.3f}  {m.direction:8s} {len(m.data):6,} B  "
+                     f"{head.hex(' ')}{more}  |{text}|")
+    if len(msgs) > limit:
+        lines.append(f"... {len(msgs) - limit} more messages")
+    return lines
+
+
 def extract_personality(data):
     """Bytes of a .PRS archive found in ``data``, or None.
 
@@ -110,12 +152,20 @@ def report(capture, top=8):
         span = capture.chunks[-1].t - capture.chunks[0].t
         lines.append(f"{len(capture.chunks)} chunks over {span:.1f} s, "
                      f"{len(capture.events)} line events")
+    msgs = messages(capture)
     for direction, s in summarize(capture).items():
         lines.append("")
+        mine = [m for m in msgs if m.direction == direction]
         lines.append(f"{direction}: {s.total_bytes:,} bytes in "
-                     f"{s.chunks} chunks")
+                     f"{s.chunks} chunks, {len(mine)} messages")
         if not s.chunks:
             continue
+        sizes = Counter(len(m.data) for m in mine)
+        openers = Counter(m.data[:2].hex(" ") for m in mine)
+        lines.append("  common message sizes: " + ", ".join(
+            f"{size} B x{n}" for size, n in sizes.most_common(top)))
+        lines.append("  common message openers: " + ", ".join(
+            f"[{k}] x{n}" for k, n in openers.most_common(top)))
         sizes = ", ".join(f"{size} B x{n}"
                           for size, n in s.chunk_sizes.most_common(top))
         lines.append(f"  common chunk sizes: {sizes}")

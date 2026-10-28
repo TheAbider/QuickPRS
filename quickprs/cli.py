@@ -4425,6 +4425,7 @@ def build_parser():
                "  quickprs radio sniff --log read.jsonl\n"
                "  quickprs radio relay --pc-port COM21 --radio-port COM6 "
                "--log read.jsonl\n"
+               "  quickprs radio analyze read.jsonl --transcript 60\n"
                "  quickprs radio analyze read.jsonl --extract radio.PRS")
     radio_sub = p_radio.add_subparsers(dest="radio_cmd")
     p_rscan = radio_sub.add_parser(
@@ -4476,6 +4477,10 @@ def build_parser():
     p_ranalyze = radio_sub.add_parser(
         "analyze", help="Summarise a capture file")
     p_ranalyze.add_argument("capture", help="Capture (.jsonl) file")
+    p_ranalyze.add_argument("--transcript", type=int, nargs="?",
+                            const=40, default=None, metavar="N",
+                            help="Show the first N messages of the "
+                                 "conversation (default 40)")
     p_ranalyze.add_argument("--extract", default=None,
                             help="Write a personality archive found in the "
                                  "radio's replies to this .PRS path")
@@ -5769,7 +5774,8 @@ def run_cli(args=None):
                     all_links=parsed.all_links, note=parsed.note)
             if parsed.radio_cmd == "analyze":
                 return radio_commands.cmd_radio_analyze(
-                    parsed.capture, extract=parsed.extract)
+                    parsed.capture, extract=parsed.extract,
+                    transcript=parsed.transcript)
             subcommand_parsers["radio"].print_help()
             return 1
         elif parsed.command == "import-csv":

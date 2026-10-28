@@ -1,6 +1,9 @@
 # Build artifacts
 dist/
 build/
+
+# Developer scratch files (see CONTRIBUTING.md)
+local/
 *.spec
 *.exe
 
