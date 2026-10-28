@@ -92,7 +92,7 @@ class TestSearchSystems:
         assert len(results) >= 2  # PSERN, KCERS, WSP
 
     def test_search_by_system_id(self):
-        results = search_systems("892")
+        results = search_systems("939")
         assert any(s.name == "PSERN" for s in results)
 
     def test_search_by_description(self):
@@ -118,7 +118,9 @@ class TestGetSystemByName:
     def test_exact_name(self):
         s = get_system_by_name("PSERN")
         assert s is not None
-        assert s.system_id == 892
+        # 939 as RPM saved it for a radio on PSERN (the old 892 was wrong)
+        assert s.system_id == 939
+        assert s.verified is True
 
     def test_case_insensitive(self):
         s = get_system_by_name("psern")
@@ -138,7 +140,7 @@ class TestGetSystemById:
     """Test get_system_by_id lookup."""
 
     def test_existing_id(self):
-        results = get_system_by_id(892)
+        results = get_system_by_id(939)
         assert len(results) >= 1
         assert results[0].name == "PSERN"
 
@@ -246,8 +248,18 @@ class TestCLISystems:
         result = run_cli(["systems", "info", "PSERN"])
         assert result == 0
         out = capsys.readouterr().out
-        assert "892" in out
+        assert "939" in out
         assert "Puget Sound" in out
+        assert "unverified" not in out
+
+    def test_systems_info_warns_unverified(self, capsys):
+        assert run_cli(["systems", "info", "NYPD"]) == 0
+        assert "unverified" in capsys.readouterr().out
+
+    def test_only_checked_entries_are_verified(self):
+        from quickprs.system_database import SYSTEMS, unverified_warning
+        assert [s.name for s in SYSTEMS if s.verified] == ["PSERN"]
+        assert all(unverified_warning(s) for s in SYSTEMS if not s.verified)
 
     def test_systems_info_not_found(self, capsys):
         result = run_cli(["systems", "info", "NONEXISTENT"])
@@ -267,7 +279,7 @@ class TestCLISystems:
             out = capsys.readouterr().out
             assert "Added P25 system" in out
             assert "PSERN" in out
-            assert "892" in out
+            assert "939" in out
 
     @pytest.mark.skipif(not PAWS.exists(), reason="Test PRS data not available")
     def test_systems_add_to_prs_output_flag(self, capsys):

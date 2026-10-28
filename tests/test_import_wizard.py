@@ -192,7 +192,7 @@ class TestWizardDatabaseSearch:
         assert len(wa_systems) >= 1
 
     def test_search_by_id(self):
-        results = search_systems("892")
+        results = search_systems("939")    # PSERN
         assert len(results) >= 1
 
     def test_search_empty_returns_all(self):

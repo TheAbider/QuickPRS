@@ -599,9 +599,16 @@ class ImportWizard(tk.Toplevel):
             return
 
         name = selection[0]
-        from ..system_database import get_system_by_name, get_iden_template_key
+        from ..system_database import (
+            get_system_by_name, get_iden_template_key, unverified_warning,
+        )
         sys = get_system_by_name(name)
         if not sys:
+            return
+        warning = unverified_warning(sys)
+        if warning and not messagebox.askyesno(
+                "Unverified IDs", warning + "\n\nAdd it anyway?",
+                icon=messagebox.WARNING, parent=self):
             return
 
         self.app.save_undo_snapshot(f"Add system {sys.name}")

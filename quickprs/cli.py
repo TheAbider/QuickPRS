@@ -3592,7 +3592,7 @@ def cmd_systems(subcmd, query=None, filepath=None, system_name=None,
     """
     from .system_database import (
         list_all_systems, search_systems, get_system_by_name,
-        get_iden_template_key, get_default_iden_name,
+        get_iden_template_key, get_default_iden_name, unverified_warning,
     )
 
     if subcmd == "list":
@@ -3605,8 +3605,10 @@ def cmd_systems(subcmd, query=None, filepath=None, system_name=None,
         print("-" * 75)
         for s in systems:
             print(f"{s.name:<10} {s.location:<25} {s.band:<10} "
-                  f"{s.system_type:<10} {s.system_id:>6}  {s.wacn:>8}")
-        print(f"\n{len(systems)} systems in database")
+                  f"{s.system_type:<10} {s.system_id:>6}  {s.wacn:>8}"
+                  f"{'' if s.verified else '  (unverified)'}")
+        print(f"\n{len(systems)} systems in database. IDs marked "
+              f"unverified are examples: confirm them on RadioReference.")
         return 0
 
     elif subcmd == "search":
@@ -3652,6 +3654,8 @@ def cmd_systems(subcmd, query=None, filepath=None, system_name=None,
         print(f"State:       {sys_obj.state}")
         print(f"System ID:   {sys_obj.system_id}")
         print(f"WACN:        {sys_obj.wacn}")
+        if not sys_obj.verified:
+            print(f"Warning:     {unverified_warning(sys_obj)}")
         print(f"Band:        {sys_obj.band}")
         print(f"Type:        {sys_obj.system_type}")
         print(f"IDEN Key:    {iden_key}")
@@ -3688,6 +3692,10 @@ def cmd_systems(subcmd, query=None, filepath=None, system_name=None,
         )
         from .record_types import P25TrkSystemConfig
         from .iden_library import get_template
+
+        warning = unverified_warning(sys_obj)
+        if warning:
+            print(f"Warning: {warning}", file=sys.stderr)
 
         prs = parse_prs(filepath)
 
@@ -4163,6 +4171,9 @@ def run_cli(args=None):
         "  fleet-check       Compare fleet for consistency\n"
         "  snapshot          Save/compare configuration snapshots\n"
         "\n"
+        "Radio link (Bluetooth / serial):\n"
+        "  radio             scan, probe, relay (log RPM), analyze\n"
+        "\n"
         "Modify:\n"
         "  inject            Add systems/channels/talkgroups\n"
         "  remove            Remove systems or sets\n"
@@ -4352,6 +4363,58 @@ def run_cli(args=None):
                            help="Output file (default: overwrite input)")
 
     # export-csv
+    # radio (Bluetooth / serial link to the radio itself)
+    p_radio = sub.add_parser(
+        "radio",
+        help="Find a paired radio, listen to it, or log RPM talking to it",
+        formatter_class=fmt,
+        epilog="The XG-100P's Bluetooth is Classic (serial port profile), "
+               "which RPM\n"
+               "programs over just like the USB cable. These commands "
+               "never send\n"
+               "their own bytes to the radio.\n"
+               "Examples:\n"
+               "  quickprs radio scan\n"
+               "  quickprs radio probe --port COM6 --seconds 15 "
+               "--log first.jsonl\n"
+               "  quickprs radio relay --pc-port COM21 --radio-port COM6 "
+               "--log read.jsonl\n"
+               "  quickprs radio analyze read.jsonl --extract radio.PRS")
+    radio_sub = p_radio.add_subparsers(dest="radio_cmd")
+    p_rscan = radio_sub.add_parser(
+        "scan", help="List paired Bluetooth serial ports (radios)")
+    p_rscan.add_argument("--ble", action="store_true",
+                         help="Also list advertising BLE devices")
+    p_rscan.add_argument("--ble-seconds", type=float, default=5.0)
+    p_rprobe = radio_sub.add_parser(
+        "probe", help="Connect and listen without sending anything")
+    p_rprobe.add_argument("--port", default=None,
+                          help="COM port (default: the one paired radio)")
+    p_rprobe.add_argument("--seconds", type=float, default=10.0)
+    p_rprobe.add_argument("--log", default=None,
+                          help="Save the received bytes to a capture file")
+    p_rprobe.add_argument("--dtr", action="store_true",
+                          help="Assert DTR when connecting")
+    p_rprobe.add_argument("--quiet", action="store_true",
+                          help="Do not hex-dump as data arrives")
+    p_rrelay = radio_sub.add_parser(
+        "relay", help="Pass bytes between RPM and the radio, logging both")
+    p_rrelay.add_argument("--pc-port", required=True,
+                          help="Your end of a virtual null-modem pair "
+                               "(RPM opens the other end)")
+    p_rrelay.add_argument("--radio-port", default=None,
+                          help="The radio's port (default: the one paired "
+                               "radio)")
+    p_rrelay.add_argument("--log", default="session.jsonl")
+    p_rrelay.add_argument("--note", default="",
+                          help="What this session is, e.g. 'RPM extract'")
+    p_ranalyze = radio_sub.add_parser(
+        "analyze", help="Summarise a capture file")
+    p_ranalyze.add_argument("capture", help="Capture (.jsonl) file")
+    p_ranalyze.add_argument("--extract", default=None,
+                            help="Write a personality archive found in the "
+                                 "radio's replies to this .PRS path")
+
     p_icsv = sub.add_parser(
         "import-csv",
         help="Import CSV files (talkgroups, trunk, conv, P25 conv)",
@@ -5589,6 +5652,24 @@ def run_cli(args=None):
                 list_opts=parsed.list_opts,
                 output=parsed.output,
             )
+        elif parsed.command == "radio":
+            from .radio import commands as radio_commands
+            if parsed.radio_cmd == "scan":
+                return radio_commands.cmd_radio_scan(
+                    ble=parsed.ble, ble_seconds=parsed.ble_seconds)
+            if parsed.radio_cmd == "probe":
+                return radio_commands.cmd_radio_probe(
+                    port=parsed.port, seconds=parsed.seconds,
+                    log=parsed.log, dtr=parsed.dtr, quiet=parsed.quiet)
+            if parsed.radio_cmd == "relay":
+                return radio_commands.cmd_radio_relay(
+                    parsed.pc_port, radio_port=parsed.radio_port,
+                    log=parsed.log, note=parsed.note)
+            if parsed.radio_cmd == "analyze":
+                return radio_commands.cmd_radio_analyze(
+                    parsed.capture, extract=parsed.extract)
+            p_radio.print_help()
+            return 1
         elif parsed.command == "import-csv":
             return cmd_import_csv(parsed.file, parsed.csv_files,
                                   output=parsed.output)

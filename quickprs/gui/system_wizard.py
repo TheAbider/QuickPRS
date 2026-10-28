@@ -842,6 +842,13 @@ class SystemDatabaseDialog(tk.Toplevel):
                 parent=self):
             return
 
+        from ..system_database import unverified_warning
+        warning = unverified_warning(sys)
+        if warning and not messagebox.askyesno(
+                "Unverified IDs", warning + "\n\nAdd it anyway?",
+                icon=messagebox.WARNING, parent=self):
+            return
+
         self.app.save_undo_snapshot("Add System from Database")
 
         try:
