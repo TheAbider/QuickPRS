@@ -853,8 +853,7 @@ class SystemDatabaseDialog(tk.Toplevel):
 
         try:
             _add_system_from_database(self.app.prs, sys)
-            self.app.modified = True
-            self.app._update_title()
+            self.app.mark_modified()
             self.app.personality_view.refresh()
             log_action("db_add", system=sys.name)
             messagebox.showinfo(

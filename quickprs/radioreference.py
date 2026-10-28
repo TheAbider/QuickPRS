@@ -539,14 +539,24 @@ from .iden_library import (                        # noqa: F401
 
 # ─── System builder ──────────────────────────────────────────────────
 
+def is_fully_encrypted(tg):
+    """True for a talkgroup RadioReference lists as fully encrypted (mode
+    AE, DE, TE or E, or encryption level 2 from the API); a radio without
+    its keys hears nothing on it.  Partly encrypted (Ae, De, Te) is not."""
+    return (MODE_CODES.get(tg.mode, ("", False))[1] == "full"
+            or tg.encrypted == 2)
+
+
 def build_injection_data(rr_system, selected_categories=None,
-                         selected_tags=None):
+                         selected_tags=None, skip_encrypted=False):
     """Convert RadioReference data to QuickPRS injection-ready structures.
 
     Args:
         rr_system: RRSystem from API/scraper
         selected_categories: set of category IDs to include (None = all)
         selected_tags: set of service tag names to include (None = all)
+        skip_encrypted: leave out fully encrypted talkgroups (the count
+            left out is returned as 'skipped_encrypted')
 
     Returns:
         dict with keys:
@@ -563,6 +573,11 @@ def build_injection_data(rr_system, selected_categories=None,
         tgs = [tg for tg in tgs if tg.category_id in selected_categories]
     if selected_tags is not None:
         tgs = [tg for tg in tgs if tg.tag in selected_tags]
+    skipped_encrypted = 0
+    if skip_encrypted:
+        kept = [tg for tg in tgs if not is_fully_encrypted(tg)]
+        skipped_encrypted = len(tgs) - len(kept)
+        tgs = kept
 
     # Build talkgroup tuples
     talkgroups = []
@@ -609,6 +624,7 @@ def build_injection_data(rr_system, selected_categories=None,
         'frequencies': frequencies,
         'sites': sites_info,
         'iden_entries': iden_entries,
+        'skipped_encrypted': skipped_encrypted,
     }
 
 

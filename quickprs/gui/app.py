@@ -745,6 +745,7 @@ class QuickPRSApp:
         """Make ``prs`` the open personality.  Undo history and the saved
         baseline belong to one file, so both start fresh."""
         self.prs = prs
+        self._pending_undo = None
         self.prs_path = Path(path) if path else None
         self._undo_stack = UndoStack(max_levels=20)
         self._update_undo_menu()
@@ -765,8 +766,8 @@ class QuickPRSApp:
         """Recent files and last folder; a settings write failure must not
         break opening or saving."""
         self.settings["last_open_dir"] = str(Path(path).parent)
-        add_recent_file(self.settings, str(path))
         try:
+            add_recent_file(self.settings, str(path))   # writes settings
             self._refresh_recent_menu()
         except Exception as e:
             log_error("recent_files", str(e))
@@ -838,7 +839,8 @@ class QuickPRSApp:
         try:
             has_changes = (self._last_saved_bytes is not None
                            and self.prs.to_bytes() != self._last_saved_bytes)
-            write_prs(self.prs, path, backup=True)
+            write_prs(self.prs, path,
+                      backup=self.settings.get("auto_backup", True))
         except Exception as e:
             log_error("file_save", str(e), path=str(path))
             messagebox.showerror("Error", f"Failed to save:\n{e}")
@@ -931,13 +933,31 @@ class QuickPRSApp:
                     command=dlg.destroy).pack(side=tk.RIGHT, padx=4)
 
     def save_undo_snapshot(self, description=""):
-        """Save current PRS state for potential undo. Call BEFORE modifying."""
+        """Note the PRS state before a modification. Call BEFORE modifying.
+
+        It becomes an undo step when mark_modified() reports that the
+        personality changed, so a dialog cancelled or an operation that
+        fails after this call leaves no undo entry, and the redo history
+        stays.
+        """
         if self.prs:
-            self._undo_stack.push(self.prs.to_bytes(), description)
+            current = self.prs.to_bytes()
+            pending = getattr(self, "_pending_undo", None)
+            if pending is None or pending[0] == current:
+                self._pending_undo = (current, description)
+
+    def _commit_undo(self):
+        """Make the pending snapshot an undo step if the personality has
+        changed since it was taken."""
+        pending = getattr(self, "_pending_undo", None)
+        self._pending_undo = None
+        if pending and self.prs and self.prs.to_bytes() != pending[0]:
+            self._undo_stack.push(*pending)
             self._update_undo_menu()
 
     def mark_modified(self):
         """Call after any injection/modification."""
+        self._commit_undo()
         self.modified = True
         self._update_title()
         self._status_modified.config(text="Modified", foreground="red")
@@ -1012,6 +1032,7 @@ class QuickPRSApp:
             from ..prs_parser import parse_prs_bytes
             current_bytes = self.prs.to_bytes()
             prev_bytes, undone_desc = self._undo_stack.undo(current_bytes)
+            self._pending_undo = None
             self.prs = parse_prs_bytes(prev_bytes)
             self.modified = True
             self._update_title()
@@ -1040,6 +1061,7 @@ class QuickPRSApp:
             from ..prs_parser import parse_prs_bytes
             current_bytes = self.prs.to_bytes()
             next_bytes, redone_desc = self._undo_stack.redo(current_bytes)
+            self._pending_undo = None
             self.prs = parse_prs_bytes(next_bytes)
             self.modified = True
             self._update_title()
@@ -2082,6 +2104,7 @@ class QuickPRSApp:
                     "Create a default one?"):
                 try:
                     default_xml = _create_default_platform_xml()
+                    self.save_undo_snapshot("Create radio options")
                     if not _inject_platform_xml(self.prs, default_xml):
                         messagebox.showerror(
                             "Error",
@@ -2172,11 +2195,13 @@ class QuickPRSApp:
         def on_apply():
             changed = 0
             errors = []
-            self.save_undo_snapshot("Edit radio options")
 
             for (element, attr), (entry_widget, orig_val) in entries.items():
                 new_val = entry_widget.get().strip()
                 if new_val != orig_val:
+                    if not changed and not errors:
+                        # first change: undo goes back to before it
+                        self.save_undo_snapshot("Edit radio options")
                     # The full path, so a nested element such as
                     # audioConfig/microphone[micType=INTERNAL] is the one set
                     try:

@@ -11,32 +11,48 @@ Generates bash and PowerShell completion scripts that complete:
 - List types (systems, talkgroups, channels, frequencies, sets, options)
 """
 
-# All subcommands defined in cli.py run_cli()
-SUBCOMMANDS = [
-    "create", "build", "fleet",
-    "inject", "import-rr", "import-paste", "import-json", "import-scanner",
-    "export-json", "export-csv",
-    "merge", "clone",
-    "remove", "edit", "set-option", "bulk-edit",
-    "list", "validate", "capacity", "repair",
-    "info", "compare", "dump", "diff-options",
-    "iden-templates", "report",
-    "freq-tools", "auto-setup",
-    "encrypt", "set-nac",
-    "health", "suggest", "freq-map",
-]
+def _from_parser():
+    """Commands, the sub-commands of inject, bulk-edit and freq-tools, and
+    every command's flags, read from the CLI's own parser (lists kept by
+    hand fell behind: they had 33 of the 63 commands)."""
+    import argparse
+    from .cli import build_parser
+    parser, _ = build_parser()
+
+    def subcommands(p):
+        for action in p._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                return action.choices
+        return {}
+
+    def flags(p):
+        return [o for action in p._actions for o in action.option_strings
+                if o not in ("-h", "--help")]
+
+    commands = subcommands(parser)
+    nested = {name: {sub: flags(sp) for sub, sp in
+                     subcommands(commands[name]).items()}
+              for name in ("inject", "bulk-edit", "freq-tools")}
+    return ({name: flags(p) for name, p in commands.items()}, nested)
+
+
+_SUBCOMMAND_FLAGS, _NESTED_FLAGS = _from_parser()
+
+# All subcommands of the CLI
+SUBCOMMANDS = list(_SUBCOMMAND_FLAGS)
 
 # Inject sub-subcommands
-INJECT_TYPES = ["p25", "conv", "talkgroups"]
+INJECT_TYPES = list(_NESTED_FLAGS["inject"])
 
 # Bulk-edit sub-subcommands
-BULK_EDIT_TYPES = ["talkgroups", "channels"]
+BULK_EDIT_TYPES = list(_NESTED_FLAGS["bulk-edit"])
 
 # Freq-tools sub-subcommands
-FREQ_TOOLS_TYPES = ["offset", "channel", "tones", "dcs", "nearest"]
+FREQ_TOOLS_TYPES = list(_NESTED_FLAGS["freq-tools"])
 
 # Template names for inject conv --template
-TEMPLATE_NAMES = ["murs", "gmrs", "frs", "marine", "noaa"]
+from .templates import get_template_names
+TEMPLATE_NAMES = get_template_names()
 
 # Scanner format names for import-scanner --format
 SCANNER_FORMATS = ["uniden", "chirp", "sdrtrunk", "auto"]
@@ -65,91 +81,9 @@ def _option_paths():
 
 OPTION_PATHS = _option_paths()
 
-# Flags per subcommand
-_SUBCOMMAND_FLAGS = {
-    "info": ["-d", "--detail"],
-    "validate": [],
-    "create": ["--name", "--author"],
-    "build": ["-o", "--output"],
-    "fleet": ["--units", "-o", "--output"],
-    "inject": [],  # has sub-subcommands
-    "import-rr": [
-        "--sid", "--url", "--username", "--apikey",
-        "--categories", "--tags", "-o", "--output",
-    ],
-    "import-paste": [
-        "--name", "--sysid", "--wacn", "--long-name",
-        "--tgs-file", "--freqs-file", "-o", "--output",
-    ],
-    "import-json": ["-o", "--output"],
-    "import-scanner": [
-        "--csv", "--format", "--name", "-o", "--output",
-    ],
-    "export-json": ["-o", "--output", "--compact"],
-    "export-csv": [],
-    "merge": [
-        "--systems", "--channels", "--all", "-o", "--output",
-    ],
-    "clone": ["-o", "--output"],
-    "remove": ["-o", "--output"],
-    "edit": [
-        "--name", "--author", "--rename-set", "-o", "--output",
-    ],
-    "set-option": ["--list", "-o", "--output"],
-    "bulk-edit": [],  # has sub-subcommands
-    "list": [],
-    "capacity": [],
-    "repair": ["-o", "--output", "--salvage"],
-    "report": ["-o", "--output"],
-    "compare": ["--detail"],
-    "dump": ["-s", "--section", "-x", "--hex"],
-    "diff-options": ["--raw"],
-    "iden-templates": ["-d", "--detail"],
-    "freq-tools": [],  # has sub-subcommands
-    "auto-setup": [
-        "--sid", "--url", "--username", "--apikey",
-        "--categories", "--tags", "-o", "--output",
-    ],
-    "encrypt": [
-        "--set", "--tg", "--all", "--key-id",
-        "--decrypt", "-o", "--output",
-    ],
-    "set-nac": [
-        "--set", "--channel", "--nac", "--nac-rx",
-        "-o", "--output",
-    ],
-    "health": [],
-    "suggest": [],
-    "freq-map": ["--band"],
-}
-
-# Flags for inject sub-subcommands
-_INJECT_FLAGS = {
-    "p25": [
-        "--name", "--long-name", "--sysid", "--wacn",
-        "--freqs-csv", "--tgs-csv",
-        "--iden-base", "--iden-spacing", "-o", "--output",
-    ],
-    "conv": [
-        "--name", "--channels-csv", "--template", "-o", "--output",
-    ],
-    "talkgroups": [
-        "--set", "--tgs-csv", "-o", "--output",
-    ],
-}
-
-# Flags for bulk-edit sub-subcommands
-_BULK_EDIT_FLAGS = {
-    "talkgroups": [
-        "--set", "--enable-scan", "--disable-scan",
-        "--enable-tx", "--disable-tx",
-        "--prefix", "--suffix", "-o", "--output",
-    ],
-    "channels": [
-        "--set", "--set-tone", "--clear-tones",
-        "--set-power", "-o", "--output",
-    ],
-}
+# Flags for inject and bulk-edit sub-subcommands
+_INJECT_FLAGS = _NESTED_FLAGS["inject"]
+_BULK_EDIT_FLAGS = _NESTED_FLAGS["bulk-edit"]
 
 
 def generate_bash_completion():

@@ -7,7 +7,16 @@ Treeview widgets with synchronized scrolling and color-coded differences.
 import tkinter as tk
 from tkinter import ttk
 
-from ..comparison import detailed_comparison, compare_prs, ADDED, REMOVED
+from ..comparison import (
+    detailed_comparison, compare_prs, ADDED, REMOVED, SAME,
+)
+
+
+# compare_prs categories for systems: the Systems section shows systems
+# added or removed; their "settings differ" entries are listed with the
+# other differences
+_SYSTEM_CATEGORIES = ("P25 Trunked", "Conventional", "P25 Conv")
+_SYSTEM_LIST_CATEGORIES = ("System Config",)
 
 
 class DiffViewer(tk.Toplevel):
@@ -125,6 +134,35 @@ class DiffViewer(tk.Toplevel):
         self._scrollbar.set(first, last)
         self.tree_a.yview_moveto(first)
 
+    def _insert_category(self, cat, entries):
+        """One section of compare_prs entries: removed ones on A's side,
+        added ones on B's, changed ones on both."""
+        node_a = self.tree_a.insert(
+            "", tk.END, text=cat, values=("",), tags=(self.TAG_HEADER,))
+        node_b = self.tree_b.insert(
+            "", tk.END, text=cat, values=("",), tags=(self.TAG_HEADER,))
+        for dtype, _, name, detail_str in entries:
+            if dtype == REMOVED:
+                self.tree_a.insert(node_a, tk.END, text=name,
+                                   values=(detail_str,),
+                                   tags=(self.TAG_REMOVED,))
+                self.tree_b.insert(node_b, tk.END, text="(not in B)",
+                                   values=("",),
+                                   tags=(self.TAG_PLACEHOLDER,))
+            elif dtype == ADDED:
+                self.tree_a.insert(node_a, tk.END, text="(not in A)",
+                                   values=("",),
+                                   tags=(self.TAG_PLACEHOLDER,))
+                self.tree_b.insert(node_b, tk.END, text=name,
+                                   values=(detail_str,),
+                                   tags=(self.TAG_ADDED,))
+            else:
+                for tree, node in ((self.tree_a, node_a),
+                                   (self.tree_b, node_b)):
+                    tree.insert(node, tk.END, text=name,
+                                values=(detail_str,),
+                                tags=(self.TAG_CHANGED,))
+
     def _populate(self):
         """Run the comparison and populate both trees."""
         detail = detailed_comparison(self.prs_a, self.prs_b)
@@ -214,75 +252,19 @@ class DiffViewer(tk.Toplevel):
                 sys_node_b, tk.END, text=name,
                 values=("only in B",), tags=(self.TAG_ADDED,))
 
-        # ── Group Sets section (from high-level diffs)
-        gs_diffs_a = [d for d in diffs if d[1] == "Group Set"]
-        if gs_diffs_a:
-            gs_node_a = self.tree_a.insert(
-                "", tk.END, text="Group Sets",
-                values=("",), tags=(self.TAG_HEADER,))
-            gs_node_b = self.tree_b.insert(
-                "", tk.END, text="Group Sets",
-                values=("",), tags=(self.TAG_HEADER,))
-
-            for dtype, cat, name, detail_str in gs_diffs_a:
-                if dtype == REMOVED:
-                    self.tree_a.insert(
-                        gs_node_a, tk.END, text=name,
-                        values=(detail_str,), tags=(self.TAG_REMOVED,))
-                    self.tree_b.insert(
-                        gs_node_b, tk.END, text="(not in B)",
-                        values=("",), tags=(self.TAG_PLACEHOLDER,))
-                elif dtype == ADDED:
-                    self.tree_a.insert(
-                        gs_node_a, tk.END, text="(not in A)",
-                        values=("",), tags=(self.TAG_PLACEHOLDER,))
-                    self.tree_b.insert(
-                        gs_node_b, tk.END, text=name,
-                        values=(detail_str,), tags=(self.TAG_ADDED,))
-                else:
-                    tag = (self.TAG_CHANGED if dtype == "CHANGED"
-                           else self.TAG_SAME)
-                    self.tree_a.insert(
-                        gs_node_a, tk.END, text=name,
-                        values=(detail_str,), tags=(tag,))
-                    self.tree_b.insert(
-                        gs_node_b, tk.END, text=name,
-                        values=(detail_str,), tags=(tag,))
-
-        # ── Trunk Sets section
-        ts_diffs = [d for d in diffs if d[1] == "Trunk Set"]
-        if ts_diffs:
-            ts_node_a = self.tree_a.insert(
-                "", tk.END, text="Trunk Sets",
-                values=("",), tags=(self.TAG_HEADER,))
-            ts_node_b = self.tree_b.insert(
-                "", tk.END, text="Trunk Sets",
-                values=("",), tags=(self.TAG_HEADER,))
-
-            for dtype, cat, name, detail_str in ts_diffs:
-                if dtype == REMOVED:
-                    self.tree_a.insert(
-                        ts_node_a, tk.END, text=name,
-                        values=(detail_str,), tags=(self.TAG_REMOVED,))
-                    self.tree_b.insert(
-                        ts_node_b, tk.END, text="(not in B)",
-                        values=("",), tags=(self.TAG_PLACEHOLDER,))
-                elif dtype == ADDED:
-                    self.tree_a.insert(
-                        ts_node_a, tk.END, text="(not in A)",
-                        values=("",), tags=(self.TAG_PLACEHOLDER,))
-                    self.tree_b.insert(
-                        ts_node_b, tk.END, text=name,
-                        values=(detail_str,), tags=(self.TAG_ADDED,))
-                else:
-                    tag = (self.TAG_CHANGED if dtype == "CHANGED"
-                           else self.TAG_SAME)
-                    self.tree_a.insert(
-                        ts_node_a, tk.END, text=name,
-                        values=(detail_str,), tags=(tag,))
-                    self.tree_b.insert(
-                        ts_node_b, tk.END, text=name,
-                        values=(detail_str,), tags=(tag,))
+        # ── Every other difference compare_prs reports, by category (sets,
+        # system settings, personality fields, options, file).  Systems
+        # added or removed are in the Systems section above.
+        other = [d for d in diffs if d[0] != SAME
+                 and d[1] not in _SYSTEM_LIST_CATEGORIES
+                 and not (d[1] in _SYSTEM_CATEGORIES and d[0] != "CHANGED")]
+        categories = []
+        for d in other:
+            if d[1] not in categories:
+                categories.append(d[1])
+        for cat in categories:
+            self._insert_category(
+                cat, [d for d in other if d[1] == cat])
 
         # ── Freq diffs (for trunk sets in both)
         if freq_diffs:
@@ -384,6 +366,7 @@ class DiffViewer(tk.Toplevel):
             len(d.get('added', [])) + len(d.get('removed', []))
             for d in conv_diffs.values())
         n_opts = len(option_diffs)
+        n_other = len(other)
 
         parts = []
         if n_a_only:
@@ -398,6 +381,8 @@ class DiffViewer(tk.Toplevel):
             parts.append(f"{n_conv} conv change(s)")
         if n_opts:
             parts.append(f"{n_opts} option change(s)")
+        if n_other:
+            parts.append(f"{n_other} set, setting or file difference(s)")
 
         if parts:
             self._summary.config(text="Summary: " + ", ".join(parts))

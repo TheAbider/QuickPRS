@@ -2499,7 +2499,8 @@ def _rr_credentials(username, apikey, password):
 
 
 def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
-                  categories=None, tags=None, output=None, password=None):
+                  categories=None, tags=None, output=None, password=None,
+                  skip_encrypted=False):
     """Import a P25 trunked system from RadioReference and inject into PRS.
 
     Args:
@@ -2579,7 +2580,8 @@ def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
         selected_tags = {t.strip() for t in tags.split(',') if t.strip()}
 
     # Build injection data
-    data = build_injection_data(rr_system, selected_cats, selected_tags)
+    data = build_injection_data(rr_system, selected_cats, selected_tags,
+                                skip_encrypted=skip_encrypted)
     set_name = data['system_name']
     if not set_name:
         set_name = f"SID{sid}"[:8]
@@ -2658,6 +2660,9 @@ def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
     print(f"Imported '{rr_system.name}' (SID {sid}) into {out_path}")
     print(f"  System ID: {data['sysid']}  WACN: {data['wacn']}")
     print(f"  Talkgroups: {n_tgs}  Frequencies: {n_freqs}  Sites: {n_sites}")
+    if data['skipped_encrypted']:
+        print(f"  Left out {data['skipped_encrypted']} fully encrypted "
+              f"talkgroups")
     if errors:
         print(f"  Validation: {len(errors)} errors", file=sys.stderr)
         for _, msg in errors:
@@ -2670,7 +2675,8 @@ def cmd_import_rr(filepath, sid=None, url=None, username=None, apikey=None,
 
 
 def cmd_import_paste(filepath, name, sysid, wacn=0, long_name=None,
-                     tgs_file=None, freqs_file=None, output=None):
+                     tgs_file=None, freqs_file=None, output=None,
+                     skip_encrypted=False):
     """Import a P25 system from pasted RadioReference text files.
 
     Args:
@@ -2728,9 +2734,14 @@ def cmd_import_paste(filepath, name, sysid, wacn=0, long_name=None,
             return 1
 
         # Convert RRTalkgroup objects to injection tuples
+        from .radioreference import is_fully_encrypted
         talkgroups = []
+        skipped_encrypted = 0
         for tg in rr_tgs:
             if tg.dec_id <= 0 or tg.dec_id > 65535:
+                continue
+            if skip_encrypted and is_fully_encrypted(tg):
+                skipped_encrypted += 1
                 continue
             short = make_short_name(tg.alpha_tag)
             long = make_long_name(tg.description, tg.alpha_tag)
@@ -2740,6 +2751,9 @@ def cmd_import_paste(filepath, name, sysid, wacn=0, long_name=None,
             group_set = make_group_set(name, talkgroups)
             tg_count = len(talkgroups)
             print(f"  Talkgroups: {tg_count} from {tgs_file}")
+        if skipped_encrypted:
+            print(f"  Left out {skipped_encrypted} fully encrypted "
+                  f"talkgroups")
 
     # Parse frequencies from pasted text
     trunk_set = None
@@ -3488,7 +3502,8 @@ def cmd_freq_tools(subcmd, freq=None, freq_list=None):
 
 
 def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
-                   categories=None, tags=None, output=None, password=None):
+                   categories=None, tags=None, output=None, password=None,
+                   skip_encrypted=False):
     """One-click RadioReference system setup with ECC and IDEN.
 
     Like import-rr but also auto-configures ECC entries and IDEN
@@ -3566,7 +3581,7 @@ def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
 
     # Run auto-setup
     summary = auto_setup_from_rr(prs, rr_system, selected_cats,
-                                 selected_tags)
+                                 selected_tags, skip_encrypted=skip_encrypted)
 
     out_path = output or filepath
     write_prs(prs, out_path, backup=True)
@@ -3575,6 +3590,9 @@ def cmd_auto_setup(filepath, sid=None, url=None, username=None, apikey=None,
     print(f"Auto-setup complete: '{summary['full_name']}' (SID {sid})")
     print(f"  System ID: {summary['sysid']}  WACN: {summary['wacn']}")
     print(f"  Talkgroups:  {summary['talkgroups']}")
+    if summary['skipped_encrypted']:
+        print(f"  Left out {summary['skipped_encrypted']} fully encrypted "
+              f"talkgroups")
     print(f"  Frequencies: {summary['frequencies']}")
     print(f"  Sites:       {summary['sites']}")
     print(f"  ECC entries: {summary['ecc_entries']}")
@@ -4179,12 +4197,9 @@ def cmd_diff_report(filepath_a, filepath_b, output=None):
     return 0
 
 
-def run_cli(args=None):
-    """Parse CLI arguments and dispatch to the appropriate command.
-
-    Returns exit code (0=success, 1=error/validation failure).
-    Returns None if no CLI flags found (caller should launch GUI).
-    """
+def build_parser():
+    """The CLI's argument parser, and the subcommand parsers whose help
+    run_cli prints itself, by command name."""
     import argparse
 
     fmt = argparse.RawDescriptionHelpFormatter
@@ -4407,6 +4422,7 @@ def run_cli(args=None):
                "  quickprs radio scan\n"
                "  quickprs radio probe --port COM6 --seconds 15 "
                "--log first.jsonl\n"
+               "  quickprs radio sniff --log read.jsonl\n"
                "  quickprs radio relay --pc-port COM21 --radio-port COM6 "
                "--log read.jsonl\n"
                "  quickprs radio analyze read.jsonl --extract radio.PRS")
@@ -4437,6 +4453,25 @@ def run_cli(args=None):
                                "radio)")
     p_rrelay.add_argument("--log", default="session.jsonl")
     p_rrelay.add_argument("--note", default="",
+                          help="What this session is, e.g. 'RPM extract'")
+    p_rsniff = radio_sub.add_parser(
+        "sniff",
+        help="Log RPM's session from a Bluetooth trace (Microsoft's "
+             "Bluetooth Virtual Sniffer)")
+    p_rsniff.add_argument("--host", default="127.0.0.1",
+                          help="Where btvs.exe -Mode Wireshark serves "
+                               "the trace (default 127.0.0.1)")
+    p_rsniff.add_argument("--port", type=int, default=24352,
+                          help="Its TCP port (default 24352)")
+    p_rsniff.add_argument("--pcap", default=None,
+                          help="Read a saved pcap/pcapng trace instead")
+    p_rsniff.add_argument("--address", default=None,
+                          help="Only this device's link (default: the one "
+                               "paired radio)")
+    p_rsniff.add_argument("--all-links", action="store_true",
+                          help="Keep serial data from every Bluetooth link")
+    p_rsniff.add_argument("--log", default="session.jsonl")
+    p_rsniff.add_argument("--note", default="",
                           help="What this session is, e.g. 'RPM extract'")
     p_ranalyze = radio_sub.add_parser(
         "analyze", help="Summarise a capture file")
@@ -4707,6 +4742,9 @@ def run_cli(args=None):
     p_rr.add_argument("--tags", default=None,
                       help="Comma-separated service tags to include "
                            "(default: all)")
+    p_rr.add_argument("--skip-encrypted", action="store_true",
+                      help="Leave out fully encrypted talkgroups (mode "
+                           "AE/DE/TE/E on RadioReference)")
     p_rr.add_argument("-o", "--output", default=None,
                       help="Output file (default: overwrite input)")
 
@@ -4732,6 +4770,9 @@ def run_cli(args=None):
                          help="Text file with pasted talkgroup table")
     p_paste.add_argument("--freqs-file", default=None,
                          help="Text file with pasted frequency/site table")
+    p_paste.add_argument("--skip-encrypted", action="store_true",
+                      help="Leave out fully encrypted talkgroups (mode "
+                           "AE/DE/TE/E on RadioReference)")
     p_paste.add_argument("-o", "--output", default=None,
                          help="Output file (default: overwrite input)")
 
@@ -5178,6 +5219,9 @@ def run_cli(args=None):
                         help="Comma-separated category IDs to include")
     p_auto.add_argument("--tags", default=None,
                         help="Comma-separated service tags to include")
+    p_auto.add_argument("--skip-encrypted", action="store_true",
+                      help="Leave out fully encrypted talkgroups (mode "
+                           "AE/DE/TE/E on RadioReference)")
     p_auto.add_argument("-o", "--output", default=None,
                         help="Output file (default: overwrite input)")
 
@@ -5592,6 +5636,26 @@ def run_cli(args=None):
             action_group._actions = []
             break
 
+    subcommand_parsers = {
+        "radio": p_radio,
+        "profiles": p_prof,
+        "inject": p_inject,
+        "bulk-edit": p_bulk,
+        "freq-tools": p_freq,
+        "systems": p_sys,
+        "favorites": p_fav,
+        "preset": p_preset,
+    }
+    return parser, subcommand_parsers
+
+
+def run_cli(args=None):
+    """Parse CLI arguments and dispatch to the appropriate command.
+
+    Returns exit code (0=success, 1=error/validation failure).
+    Returns None if no CLI flags found (caller should launch GUI).
+    """
+    parser, subcommand_parsers = build_parser()
     parsed = parser.parse_args(args)
 
     # Handle --no-color flag
@@ -5698,10 +5762,15 @@ def run_cli(args=None):
                 return radio_commands.cmd_radio_relay(
                     parsed.pc_port, radio_port=parsed.radio_port,
                     log=parsed.log, note=parsed.note)
+            if parsed.radio_cmd == "sniff":
+                return radio_commands.cmd_radio_sniff(
+                    host=parsed.host, port=parsed.port, log=parsed.log,
+                    pcap=parsed.pcap, address=parsed.address,
+                    all_links=parsed.all_links, note=parsed.note)
             if parsed.radio_cmd == "analyze":
                 return radio_commands.cmd_radio_analyze(
                     parsed.capture, extract=parsed.extract)
-            p_radio.print_help()
+            subcommand_parsers["radio"].print_help()
             return 1
         elif parsed.command == "import-csv":
             return cmd_import_csv(parsed.file, parsed.csv_files,
@@ -5731,7 +5800,7 @@ def run_cli(args=None):
             return cmd_export_config(parsed.file, output=parsed.output)
         elif parsed.command == "profiles":
             if parsed.prof_cmd is None:
-                p_prof.print_help()
+                subcommand_parsers["profiles"].print_help()
                 return 1
             elif parsed.prof_cmd == "list":
                 return cmd_profiles("list")
@@ -5775,6 +5844,7 @@ def run_cli(args=None):
                 categories=parsed.categories,
                 tags=parsed.tags,
                 output=parsed.output,
+                skip_encrypted=parsed.skip_encrypted,
             )
         elif parsed.command == "import-paste":
             return cmd_import_paste(
@@ -5786,6 +5856,7 @@ def run_cli(args=None):
                 tgs_file=parsed.tgs_file,
                 freqs_file=parsed.freqs_file,
                 output=parsed.output,
+                skip_encrypted=parsed.skip_encrypted,
             )
         elif parsed.command == "merge":
             # Determine what to merge based on flags
@@ -5859,7 +5930,7 @@ def run_cli(args=None):
             return cmd_report(parsed.file, output=parsed.output)
         elif parsed.command == "inject":
             if parsed.inject_cmd is None:
-                p_inject.print_help()
+                subcommand_parsers["inject"].print_help()
                 return 1
             elif parsed.inject_cmd == "p25":
                 return cmd_inject_p25(
@@ -5897,7 +5968,7 @@ def run_cli(args=None):
             return cmd_list(parsed.file, parsed.type)
         elif parsed.command == "bulk-edit":
             if parsed.bulk_cmd is None:
-                p_bulk.print_help()
+                subcommand_parsers["bulk-edit"].print_help()
                 return 1
             elif parsed.bulk_cmd == "talkgroups":
                 return cmd_bulk_edit_talkgroups(
@@ -5920,7 +5991,7 @@ def run_cli(args=None):
                 )
         elif parsed.command == "freq-tools":
             if parsed.freq_cmd is None:
-                p_freq.print_help()
+                subcommand_parsers["freq-tools"].print_help()
                 return 1
             freq_val = getattr(parsed, 'freq', None)
             freq_list = None
@@ -5932,7 +6003,7 @@ def run_cli(args=None):
                                    freq_list=freq_list)
         elif parsed.command == "systems":
             if parsed.sys_cmd is None:
-                p_sys.print_help()
+                subcommand_parsers["systems"].print_help()
                 return 1
             elif parsed.sys_cmd == "list":
                 return cmd_systems("list")
@@ -5955,6 +6026,7 @@ def run_cli(args=None):
                 categories=parsed.categories,
                 tags=parsed.tags,
                 output=parsed.output,
+                skip_encrypted=parsed.skip_encrypted,
             )
         elif parsed.command == "encrypt":
             return cmd_encrypt(
@@ -6054,9 +6126,9 @@ def run_cli(args=None):
             print(generate_cheat_sheet())
             return 0
         elif parsed.command == "favorites":
-            return cmd_favorites(parsed, p_fav)
+            return cmd_favorites(parsed, subcommand_parsers["favorites"])
         elif parsed.command == "preset":
-            return cmd_preset(parsed, p_preset)
+            return cmd_preset(parsed, subcommand_parsers["preset"])
         elif parsed.command == "convert":
             return cmd_convert(parsed.file, parsed.to_format,
                                output_path=parsed.output)

@@ -2,6 +2,23 @@
 
 All notable changes to QuickPRS will be documented in this file.
 
+## [1.3.0] - 2026-10-28
+
+### Added
+- `quickprs radio sniff`: record RPM's session with the radio from a Bluetooth trace served by Microsoft's Bluetooth Virtual Sniffer (or a saved pcap/pcapng file), without a virtual COM port driver. It keeps only the serial bytes RPM and the radio exchange, in the capture format `analyze` reads. com0com, which the relay needs, cannot load while Windows 11's Memory Integrity is on
+- `--skip-encrypted` for `import-rr`, `auto-setup` and `import-paste`: leave out talkgroups RadioReference lists as fully encrypted
+
+### Fixed
+- GUI: pasted talkgroups lost TX, scan, encryption, key ID, priority and audio settings, and pasted channels were looked up by place at paste time, so after an edit (or in another file) another channel was pasted; copy now keeps the whole records, which also lets them be pasted into another personality
+- GUI: dragging a trunk channel while the search filtered the list moved other channels
+- GUI: the comparison window showed only talkgroup and trunk set differences and said "No differences found." when conventional, P25 conventional or IDEN sets, system settings, personality fields or options differed
+- GUI: the radio option, button, short menu and binary option editors could not be undone, and after Undo, Redo or opening another file their Save went into a personality no longer open; they now take an undo step and refuse to write into a stale one
+- GUI: cancelled imports, Apply with nothing changed and failed moves or deletes left undo steps that changed nothing and cleared the redo history; an undo step is now made only for a real change
+- GUI: adding a system from the P25 database could not be undone and left the size and statistics stale
+- GUI: Save always kept a backup whatever the auto backup setting said; sixteen settings nothing read (a default NAC, a scan limit, an export folder and thirteen P25 system options QuickPRS cannot write) are gone
+- GUI: editors that change only the open personality say Apply, not Save; a failure writing the recent files list no longer fails a save
+- Shell completions listed 33 of the 63 commands and stale flags; they are now read from the CLI's parser
+
 ## [1.2.0] - 2026-10-28
 
 ### Fixed

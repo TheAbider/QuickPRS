@@ -60,6 +60,7 @@ class ButtonConfigurator(tk.Toplevel):
                     parent=self):
                 try:
                     default_xml = _create_default_platform_xml()
+                    self.app.save_undo_snapshot("Create radio options")
                     if not _inject_platform_xml(prs, default_xml):
                         messagebox.showerror(
                             "Error",
@@ -280,8 +281,6 @@ class ButtonConfigurator(tk.Toplevel):
                                  parent=self)
             return
 
-        self.app.save_undo_snapshot("Edit buttons/menu")
-
         pb = root.find("progButtons")
 
         for target, key, var, d2r in self._widgets:
@@ -321,6 +320,11 @@ class ButtonConfigurator(tk.Toplevel):
                         break
 
         new_xml = ET.tostring(root, encoding='unicode')
+        if new_xml == ET.tostring(ET.fromstring(xml_str), encoding='unicode'):
+            self.app.status_set("Button configuration unchanged")
+            self.destroy()
+            return
+        self.app.save_undo_snapshot("Edit buttons/menu")
         if write_platform_config(prs, new_xml):
             self.app.mark_modified()
             if hasattr(self.app, 'personality_view'):

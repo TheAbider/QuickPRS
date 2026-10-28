@@ -17,8 +17,6 @@ SETTINGS_FILE = SETTINGS_DIR / "settings.json"
 DEFAULTS = {
     # Injection defaults
     "home_unit_id": 0,
-    "default_nac": 0,
-    "max_scan_talkgroups": 127,
     "scan_enabled_default": True,
     "tx_enabled_default": False,
 
@@ -30,26 +28,12 @@ DEFAULTS = {
     "linear_simulcast": True,
     "tdma_capable": True,
     "adaptive_filter": True,
-    "refresh_proscan_adj": True,
     "avoid_failsoft": False,
-    "cc_tx_request": False,
-    "vdoc_capable": False,
-    "wb_filter": False,
-    "confirmed_tx": False,
-    "emer_disp": False,
-    "emer_audio": False,
-    "emer_user_only": False,
-    "send_emer_alarm": False,
-    "vr_activation": False,
-    "keyback_on_ann": False,
-    "link_layer_auth": False,
-    "authenticate_fne": False,
 
     # Behavior
     "auto_backup": True,
     "auto_validate": True,
     "last_open_dir": "",
-    "last_export_dir": "",
     "window_width": 1400,
     "window_height": 850,
     "recent_files": [],
@@ -157,30 +141,6 @@ class SettingsDialog:
         ttk.Label(row, text="(0 = radio default)",
                   foreground="gray").pack(side=tk.LEFT)
 
-        # Default NAC
-        row = ttk.Frame(parent)
-        row.pack(fill=tk.X, pady=4)
-        ttk.Label(row, text="Default NAC:", width=20,
-                  anchor=tk.W).pack(side=tk.LEFT)
-        self.nac_var = tk.StringVar(
-            value=str(self.settings["default_nac"]))
-        ttk.Entry(row, textvariable=self.nac_var,
-                  width=15).pack(side=tk.LEFT, padx=4)
-        ttk.Label(row, text="(0 = default)",
-                  foreground="gray").pack(side=tk.LEFT)
-
-        # Max scan TGs
-        row = ttk.Frame(parent)
-        row.pack(fill=tk.X, pady=4)
-        ttk.Label(row, text="Max Scan TGs/Set:", width=20,
-                  anchor=tk.W).pack(side=tk.LEFT)
-        self.max_scan_var = tk.StringVar(
-            value=str(self.settings["max_scan_talkgroups"]))
-        ttk.Entry(row, textvariable=self.max_scan_var,
-                  width=15).pack(side=tk.LEFT, padx=4)
-        ttk.Label(row, text="(128 breaks scanning)",
-                  foreground="gray").pack(side=tk.LEFT)
-
         ttk.Separator(parent, orient=tk.HORIZONTAL).pack(
             fill=tk.X, pady=8)
 
@@ -268,7 +228,6 @@ class SettingsDialog:
             ("linear_simulcast", "Linear Simulcast"),
             ("tdma_capable", "TDMA Capable (Phase II)"),
             ("adaptive_filter", "Adaptive Filter"),
-            ("refresh_proscan_adj", "Refresh ProScan Adjacency List"),
         ]
         for key, label in crit_opts:
             var = tk.BooleanVar(value=self.settings.get(key, DEFAULTS[key]))
@@ -276,35 +235,14 @@ class SettingsDialog:
             ttk.Checkbutton(crit_lf, text=label, variable=var).pack(
                 anchor=tk.W, padx=4, pady=1)
 
-        # ── TX/Control Options (usually OFF for NAS) ──
-        tx_lf = ttk.LabelFrame(
-            inner, text="TX/Control (OFF for listen-only)", padding=4)
-        tx_lf.pack(fill=tk.X, pady=(0, 4))
-
-        tx_opts = [
-            ("cc_tx_request", "CC TX Request"),
-            ("confirmed_tx", "Confirmed TX"),
-            ("vdoc_capable", "VDOC Capable"),
-        ]
-        for key, label in tx_opts:
-            var = tk.BooleanVar(value=self.settings.get(key, DEFAULTS[key]))
-            self.p25_bool_vars[key] = var
-            ttk.Checkbutton(tx_lf, text=label, variable=var).pack(
-                anchor=tk.W, padx=4, pady=1)
-
         # ── Misc Options ──
         misc_lf = ttk.LabelFrame(inner, text="Misc Options", padding=4)
         misc_lf.pack(fill=tk.X, pady=(0, 4))
 
+        # Only options build_sys_flags writes are offered: where RPM keeps
+        # the others in a system's flags is not known
         misc_opts = [
             ("avoid_failsoft", "Avoid Failsoft"),
-            ("wb_filter", "WB Filter"),
-            ("emer_disp", "Emergency Display"),
-            ("emer_audio", "Emergency Audio"),
-            ("emer_user_only", "Emer User Only Clear"),
-            ("send_emer_alarm", "Send Emergency Alarm"),
-            ("vr_activation", "VR Activation"),
-            ("keyback_on_ann", "Keyback On Announcement"),
         ]
         # Pack in 2 columns
         row_frame = None
@@ -316,21 +254,6 @@ class SettingsDialog:
             self.p25_bool_vars[key] = var
             ttk.Checkbutton(row_frame, text=label, variable=var,
                             width=28).pack(side=tk.LEFT, padx=4)
-
-        # ── Link Layer Auth ──
-        auth_lf = ttk.LabelFrame(
-            inner, text="Link Layer Authentication", padding=4)
-        auth_lf.pack(fill=tk.X, pady=(0, 4))
-
-        auth_opts = [
-            ("link_layer_auth", "Enable"),
-            ("authenticate_fne", "Authenticate FNE"),
-        ]
-        for key, label in auth_opts:
-            var = tk.BooleanVar(value=self.settings.get(key, DEFAULTS[key]))
-            self.p25_bool_vars[key] = var
-            ttk.Checkbutton(auth_lf, text=label, variable=var).pack(
-                side=tk.LEFT, padx=4)
 
     def _build_behavior_tab(self, parent):
         """Application behavior settings."""
@@ -369,25 +292,7 @@ class SettingsDialog:
             messagebox.showerror("Error", "Home Unit ID must be a number >= 0")
             return
 
-        try:
-            nac = int(self.nac_var.get())
-            if nac < 0 or nac > 0xFFF:
-                raise ValueError("out of range")
-        except ValueError:
-            messagebox.showerror("Error", "NAC must be 0-4095")
-            return
-
-        try:
-            max_scan = int(self.max_scan_var.get())
-            if max_scan < 1 or max_scan > 1024:
-                raise ValueError("out of range")
-        except ValueError:
-            messagebox.showerror("Error", "Max Scan TGs must be 1-1024")
-            return
-
         self.settings["home_unit_id"] = home_id
-        self.settings["default_nac"] = nac
-        self.settings["max_scan_talkgroups"] = max_scan
         self.settings["scan_enabled_default"] = self.scan_default_var.get()
         self.settings["tx_enabled_default"] = self.tx_default_var.get()
         self.settings["auto_backup"] = self.auto_backup_var.get()
@@ -409,8 +314,6 @@ class SettingsDialog:
         """Reset all settings to defaults."""
         if messagebox.askyesno("Reset", "Reset all settings to defaults?"):
             self.home_unit_var.set(str(DEFAULTS["home_unit_id"]))
-            self.nac_var.set(str(DEFAULTS["default_nac"]))
-            self.max_scan_var.set(str(DEFAULTS["max_scan_talkgroups"]))
             self.scan_default_var.set(DEFAULTS["scan_enabled_default"])
             self.tx_default_var.set(DEFAULTS["tx_enabled_default"])
             self.auto_backup_var.set(DEFAULTS["auto_backup"])

@@ -1643,9 +1643,6 @@ class ImportPanel(ttk.Frame):
         if len(set_name) > 8:
             set_name = set_name[:8]
 
-        # Save undo snapshot before modifying
-        self.app.save_undo_snapshot("Import P25 system")
-
         try:
             tg_count = 0
             freq_count = 0
@@ -1841,6 +1838,9 @@ class ImportPanel(ttk.Frame):
                 wan_base_freq_hz=wan_base,
                 ecc_entries=ecc_entries,
             )
+
+            # The prompts are behind us: from here the file changes
+            self.app.save_undo_snapshot("Import P25 system")
 
             # Inject P25 trunked system if we have talkgroups or trunk freqs
             if filtered_tgs or rx_freqs:
@@ -2447,9 +2447,6 @@ class ImportPanel(ttk.Frame):
                 tg_samples=data['talkgroups'][:50] if data['talkgroups'] else None):
             return
 
-        # Save undo snapshot before modifying
-        self.app.save_undo_snapshot("Import RadioReference system")
-
         try:
             s = self.app.settings
             tg_count = 0
@@ -2555,6 +2552,8 @@ class ImportPanel(ttk.Frame):
                 wan_base_freq_hz=wan_base,
             )
 
+            # The prompts are behind us: from here the file changes
+            self.app.save_undo_snapshot("Import RadioReference system")
             add_p25_trunked_system(
                 self.app.prs, config,
                 trunk_set=new_tset,
