@@ -42,11 +42,51 @@ out of range or not paired shows up here as a connection timeout.
 
 ## Record an RPM session
 
-RPM has to talk to the radio through QuickPRS, so give it a virtual port. A
-virtual null-modem pair such as com0com (free, open source; installs a
-driver) links two COM ports, for example COM20 and COM21. RPM opens one end,
-the relay opens the other and the radio's port, and every byte is passed
-across and logged:
+RPM does the talking; QuickPRS only records it. There are two ways.
+
+### From a Bluetooth trace (no driver)
+
+Microsoft's Bluetooth Virtual Sniffer (BTVS, in the free Bluetooth Test
+Platform package from Microsoft) records the packets Windows exchanges with
+its Bluetooth controller, using Windows' own tracing, and serves them on TCP
+for Wireshark. `quickprs radio sniff` reads that stream and keeps only the
+serial bytes RPM and the radio exchange. RPM uses the radio's COM port as
+usual, and nothing is installed in it or between it and the radio.
+
+```mermaid
+flowchart LR
+    RPM["Harris RPM"] -->|"COM6, Bluetooth SPP"| BT["Windows Bluetooth stack"]
+    BT <--> R["XG-100P"]
+    BT -.->|"HCI trace"| BTVS["btvs.exe -Mode Wireshark"]
+    BTVS -->|"TCP 24352"| QP["quickprs radio sniff"]
+    QP --> LOG[("read.jsonl")]
+```
+
+1. Install the Bluetooth Test Platform (an MSI from Microsoft; needs admin).
+2. In an administrator console, from the package's BTVS folder:
+   ```bash
+   btvs.exe -Mode Wireshark
+   ```
+   Click **Full Packet Logging** in its window: without it, large data
+   packets are left out of the trace. Wireshark does not need to be
+   installed.
+3. Start recording:
+   ```bash
+   quickprs radio sniff --log read.jsonl --note "RPM extract"
+   ```
+4. Turn the radio on, and in RPM extract it over its Bluetooth COM port.
+5. Press Ctrl+C in QuickPRS, then close BTVS.
+
+A full trace holds more than the serial data (Bluetooth link keys among
+it); QuickPRS writes only the serial bytes, and only from the radio's link
+once the trace has shown which link that is. `--pcap trace.pcapng` reads a
+trace saved from Wireshark instead.
+
+### Through a virtual null-modem pair
+
+A virtual null-modem pair such as com0com (free, open source) links two COM
+ports, for example COM20 and COM21. RPM opens one end, the relay opens the
+other and the radio's port, and every byte is passed across and logged:
 
 ```mermaid
 flowchart LR
@@ -62,6 +102,11 @@ quickprs radio relay --pc-port COM21 --radio-port COM6 --log read.jsonl --note "
 
 Then point RPM's connection at COM20 and extract the radio's personality as
 usual. The relay also copies RPM's DTR/RTS lines to the radio's port.
+
+com0com's signed x64 driver cannot load while Windows 11's Memory Integrity
+(Core isolation) is on: its INIT section is writable and executable, which
+Memory Integrity refuses. Use the Bluetooth trace instead of turning
+Memory Integrity off.
 
 ## Look at a capture
 
