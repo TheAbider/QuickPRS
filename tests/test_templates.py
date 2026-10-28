@@ -483,3 +483,78 @@ class TestPublicSafetyTemplate:
         """get_template_channels('public_safety') returns data."""
         channels = get_template_channels('public_safety')
         assert len(channels) == 10
+
+
+# ─── Bandwidth the FCC requires ─────────────────────────────────────
+
+
+def _template_channels_in_file(tmp_path, template):
+    """Inject a template into a blank personality and read its channels
+    back from the written file."""
+    from quickprs.builder import create_blank_prs
+    from quickprs.cli import cmd_inject_conv
+    from quickprs.prs_parser import parse_prs
+    from quickprs.record_types import (
+        parse_sets_from_sections, parse_conv_channel_section,
+    )
+    path = tmp_path / "radio.PRS"
+    path.write_bytes(create_blank_prs().to_bytes())
+    assert cmd_inject_conv(str(path), None, template=template) == 0
+    prs = parse_prs(str(path))
+    sets = parse_sets_from_sections(
+        prs.get_section_by_class("CConvSet").raw,
+        prs.get_section_by_class("CConvChannel").raw,
+        parse_conv_channel_section)
+    return [s for s in sets if s.name == template.upper()[:8]][0].channels
+
+
+class TestServiceBandwidths:
+    """Templates mark a channel narrowband where the service's rules cap
+    it at 12.5 kHz or less."""
+
+    def test_frs_is_narrowband_on_every_channel(self):
+        """47 CFR 95.573: FRS occupied bandwidth may not exceed 12.5 kHz."""
+        for ch in get_frs_channels():
+            assert ch.get('narrowband') is True, ch['short_name']
+
+    def test_gmrs_467_interstitials_are_narrowband(self):
+        """47 CFR 95.1773: 12.5 kHz on the 467 MHz interstitial channels
+        (8-14), 20 kHz on the 462 MHz channels."""
+        for ch in get_gmrs_channels():
+            interstitial_467 = 467.5625 <= ch['tx_freq'] <= 467.7125
+            assert bool(ch.get('narrowband')) is interstitial_467, \
+                ch['short_name']
+
+    def test_murs_151_channels_are_narrowband(self):
+        """47 CFR 95.2773: 11.25 kHz on 151.820/151.880/151.940 MHz,
+        20 kHz on 154.570/154.600 MHz."""
+        for ch in get_murs_channels():
+            assert bool(ch.get('narrowband')) is (ch['tx_freq'] < 152.0), \
+                ch['short_name']
+
+    def test_public_safety_simplex_is_narrowband(self):
+        """47 CFR 90.209(b)(5): Part 90 stations at 150-174 and
+        421-512 MHz use 12.5 kHz channels since 2013."""
+        for ch in get_public_safety_channels():
+            assert ch.get('narrowband') is True, ch['short_name']
+
+    def test_marine_and_noaa_stay_wide(self):
+        """Marine VHF and NOAA weather use 25 kHz channels."""
+        for ch in get_marine_channels() + get_noaa_channels():
+            assert not ch.get('narrowband'), ch['short_name']
+
+    def test_marine_leaves_out_dsc_channel_70(self):
+        """Channel 70 (156.525 MHz) carries DSC only; voice is not allowed."""
+        freqs = {ch['tx_freq'] for ch in get_marine_channels()}
+        assert 156.525 not in freqs
+        assert not any(ch['short_name'] == 'MAR 70'
+                       for ch in get_marine_channels())
+
+    @pytest.mark.parametrize("template, expected", [
+        ("frs", [True] * 22),
+        ("murs", [True, True, True, False, False]),
+    ])
+    def test_bandwidth_reaches_the_written_channels(self, tmp_path,
+                                                    template, expected):
+        channels = _template_channels_in_file(tmp_path, template)
+        assert [ch.narrowband for ch in channels] == expected
