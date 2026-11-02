@@ -84,6 +84,15 @@ been checked against RPM:
   IDEN value changed would settle it.
 - **Enhanced control channel (ECC) entries:** four numbers per entry; how
   they map to RFSS, site and channel has not been confirmed.
+- **IDEN sets of systems on two bands:** RPM's IDEN sets for 700/800 MHz
+  networks hold both bands, in the same four slots in both RPM-saved
+  examples: 0 = 800 MHz FDMA, 1 = 700 MHz FDMA, 2 = 800 MHz TDMA,
+  3 = 700 MHz TDMA. QuickPRS's standard IDEN templates cover one band,
+  chosen from a system's first frequency, so a system with sites in both
+  bands gets the other band left out. Whether the radio reads channel
+  identifiers from its programmed IDEN set or learns them from the
+  system's broadcasts, which decides whether the slot numbers must match
+  the system's, is not known.
 - **Analog channel fields RPM always sets:** every analog channel RPM
   creates, with or without tones, holds 85 in both 2-byte fields after the
   tone strings (QuickPRS calls them `tx_addr` and `rx_addr`) and 1 in flag
@@ -110,7 +119,11 @@ quickprs compare before.PRS after.PRS
    control channel entries as `ecc-a.PRS`. Change one number in one entry
    (its RFSS, its site, or its channel, one at a time), saving after each
    as `ecc-b.PRS`, `ecc-c.PRS` and so on.
-3. **The analog channel fields.** Add a conventional channel in RPM with
+3. **IDEN sets of systems on two bands.** In RPM, open (or add) a P25
+   system with both 700 and 800 MHz sites and look at the IDEN set it
+   uses: which slots hold which band, and whether RPM fills them from the
+   system's data or a default. Save it as `iden-mixed.PRS`.
+4. **The analog channel fields.** Add a conventional channel in RPM with
    no tones and save as `ch-a.PRS`. Give it a CTCSS tone, save as
    `ch-b.PRS`; switch the tone to DCS, save as `ch-c.PRS`. If RPM shows a
    squelch or signalling type for the channel, change it on its own too.
