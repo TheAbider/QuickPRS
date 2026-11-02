@@ -54,16 +54,24 @@ def export_trunk_sets(path, sets):
 
 
 def export_conv_sets(path, sets):
-    """Write CONV_SET.csv from a list of ConvSet objects."""
+    """Write CONV_SET.csv from a list of ConvSet objects.  The TX, RX,
+    Scan and Narrowband columns (Y/N) come last, after the columns the
+    file has always had."""
+    def yn(flag):
+        return "Y" if flag else "N"
+
     with open(path, 'w', newline='', encoding='utf-8') as f:
         w = csv.writer(f)
         w.writerow(["Set", "ShortName", "TxFreq", "RxFreq",
-                     "TxTone", "RxTone", "LongName"])
+                     "TxTone", "RxTone", "LongName",
+                     "TX", "RX", "Scan", "Narrowband"])
         for cset in sets:
             for ch in cset.channels:
                 w.writerow([cset.name, ch.short_name,
                             f"{ch.tx_freq:.5f}", f"{ch.rx_freq:.5f}",
-                            ch.tx_tone, ch.rx_tone, ch.long_name])
+                            ch.tx_tone, ch.rx_tone, ch.long_name,
+                            yn(ch.tx), yn(ch.rx), yn(ch.scan),
+                            yn(ch.narrowband)])
     total = sum(len(s.channels) for s in sets)
     return f"CONV_SET.csv ({total} channels)"
 

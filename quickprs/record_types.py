@@ -1458,28 +1458,14 @@ def build_sys_flags(settings=None):
 
 
 def detect_band_limits(frequencies):
-    """Determine band_low_hz/band_high_hz from a list of frequencies.
+    """band_low_hz/band_high_hz for a P25 trunked system with these
+    frequencies (MHz): the radio's whole range, 136-870 MHz.
 
-    Args:
-        frequencies: list of frequency values in MHz
-
-    Returns:
-        (band_low_hz, band_high_hz) tuple. Defaults to 136-870 MHz
-        for wide band coverage. Uses narrower limits for single-band
-        systems (e.g., 767-858 for 700/800 only).
+    RPM writes 136-870 MHz for nearly every system, 800 MHz ones among
+    them (PSERN, whose channels go up to 860.7 MHz).  Narrowing a 700/800
+    MHz system to 767-858 MHz, as QuickPRS did, left out its channels
+    above 858 MHz; 800 MHz downlinks go up to 869.9875 MHz.
     """
-    if not frequencies:
-        return 136_000_000, 870_000_000
-
-    min_freq = min(frequencies)
-    max_freq = max(frequencies)
-
-    # If all frequencies are in a narrow band, use tighter limits
-    # 700/800 MHz only (WA State Patrol pattern: 767-858)
-    if 700 <= min_freq <= 870 and 700 <= max_freq <= 870:
-        return 767_000_000, 858_000_000
-
-    # Default wide band
     return 136_000_000, 870_000_000
 
 

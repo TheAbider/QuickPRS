@@ -7,6 +7,8 @@ Accessible from Tools > Radio Calculator in the main GUI.
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ..validation import BANDS_TEXT, in_radio_bands
+
 from ..freq_tools import (
     CTCSS_TONES, DCS_CODES,
     calculate_repeater_offset, calculate_all_offsets,
@@ -85,6 +87,10 @@ class RadioCalculator(tk.Toplevel):
             self._rpt_result.delete("1.0", tk.END)
             self._rpt_result.insert("1.0", "Enter a valid frequency in MHz.")
             self._rpt_result.config(state=tk.DISABLED)
+            # The last pair is no longer what the result shows
+            self._last_rpt_result = None
+            if self.app and hasattr(self, '_rpt_add_btn'):
+                self._rpt_add_btn.config(state=tk.DISABLED)
             return
 
         lines = []
@@ -126,14 +132,21 @@ class RadioCalculator(tk.Toplevel):
             lines.append(f"  Band:         {band}")
             lines.append("")
 
+            # Only a pair the radio can tune can be added to it
+            usable = in_radio_bands(freq) and in_radio_bands(input_freq)
+            if not usable:
+                lines.append(f"The XG-100P cannot tune this pair "
+                             f"(its bands: {BANDS_TEXT}).")
+                lines.append("")
             self._last_rpt_result = {
                 'output_freq': freq,
                 'input_freq': input_freq,
                 'offset': offset,
                 'direction': direction,
-            }
+            } if usable else None
             if self.app and hasattr(self, '_rpt_add_btn'):
-                self._rpt_add_btn.config(state=tk.NORMAL)
+                self._rpt_add_btn.config(
+                    state=tk.NORMAL if usable else tk.DISABLED)
         else:
             lines.append("Not in a standard repeater band.")
             lines.append("Supported bands: 2m, 1.25m, 70cm, 33cm")
@@ -249,6 +262,12 @@ class RadioCalculator(tk.Toplevel):
             return
         tx_tone = vals[4].strip()
         rx_tone = vals[5].strip()
+        outside = [f for f in (tx_freq, rx_freq) if not in_radio_bands(f)]
+        if outside:
+            messagebox.showerror(
+                "Error", f"{outside[0]:.5f} MHz is outside the XG-100P's "
+                f"bands ({BANDS_TEXT}).", parent=self)
+            return
 
         if not short_name:
             return

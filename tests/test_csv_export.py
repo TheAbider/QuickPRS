@@ -180,7 +180,8 @@ class TestExportConvSets:
             export_conv_sets(os.path.join(d, "c.csv"), sets)
             header, _ = _read_csv(os.path.join(d, "c.csv"))
         assert header == ["Set", "ShortName", "TxFreq", "RxFreq",
-                          "TxTone", "RxTone", "LongName"]
+                          "TxTone", "RxTone", "LongName",
+                          "TX", "RX", "Scan", "Narrowband"]
 
     def test_return_format(self):
         prs = cached_parse_prs(str(PAWS))

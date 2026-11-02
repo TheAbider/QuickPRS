@@ -14,6 +14,25 @@ import tkinter as tk
 from tkinter import ttk
 
 
+# A data line: an 8-digit offset and two spaces, then 16 bytes as "XX"
+# with a space after each (two after the eighth, none after the last):
+# 48 characters; then two spaces and 16 ASCII characters.
+HEX_WIDTH = 48
+ASCII_START = HEX_WIDTH + 2
+
+
+def byte_at_column(hex_col):
+    """The byte (0-15) under a column counted from the first hex digit,
+    in the hex part or the ASCII part, or None between them."""
+    if 0 <= hex_col < 24:
+        return hex_col // 3
+    if 25 <= hex_col < HEX_WIDTH:
+        return 8 + (hex_col - 25) // 3
+    if ASCII_START <= hex_col < ASCII_START + 16:
+        return hex_col - ASCII_START
+    return None
+
+
 class HexViewer(tk.Toplevel):
     """Hex viewer for raw PRS section data."""
 
@@ -26,6 +45,7 @@ class HexViewer(tk.Toplevel):
         self._data = data
         self._file_offset = offset_in_file
         self._search_matches = []
+        self._search_len = 0
         self._current_match = -1
 
         self._build_ui()
@@ -174,13 +194,11 @@ class HexViewer(tk.Toplevel):
                 elif i < 15:
                     self._text.insert(tk.END, " ")
 
-            # Pad if less than 16 bytes
+            # Pad a short last line to a full line's 48 hex characters,
+            # so its ASCII column lines up with the others
             if len(chunk) < 16:
-                remaining = 16 - len(chunk)
-                pad = remaining * 3
-                if len(chunk) <= 8:
-                    pad += 1  # account for missing mid-space
-                self._text.insert(tk.END, " " * pad)
+                used = 3 * len(chunk) + (1 if len(chunk) >= 8 else 0)
+                self._text.insert(tk.END, " " * (HEX_WIDTH - used))
 
             # ASCII column
             self._text.insert(tk.END, "  ")
@@ -213,21 +231,9 @@ class HexViewer(tk.Toplevel):
         if col < hex_start:
             return
 
-        hex_col = col - hex_start
-        # Account for grouping: bytes 0-7 take 24 chars (8*3),
-        # then 1 extra space, bytes 8-15 take 24 chars
-        if hex_col < 24:
-            byte_in_line = hex_col // 3
-        elif hex_col == 24:
-            return  # clicked on separator
-        elif hex_col < 49:
-            byte_in_line = 8 + (hex_col - 25) // 3
-        else:
-            # Clicked in ASCII area
-            ascii_start = 51  # approximate
-            byte_in_line = hex_col - ascii_start
-            if byte_in_line < 0 or byte_in_line >= 16:
-                return
+        byte_in_line = byte_at_column(col - hex_start)
+        if byte_in_line is None:
+            return
 
         byte_offset = data_offset + byte_in_line
         if byte_offset < len(self._data):
@@ -309,6 +315,7 @@ class HexViewer(tk.Toplevel):
                     self._text.tag_add("search_hit", start, end)
 
         self._current_match = 0
+        self._search_len = search_len
         self._highlight_current_match(search_len)
         total = len(self._search_matches)
         self._search_status.config(text=f"1 of {total} matches")
@@ -318,11 +325,9 @@ class HexViewer(tk.Toplevel):
         if not self._search_matches:
             return
 
-        search_len = len(self._search_var.get().strip().replace(" ", ""))
-        if self._search_mode.get() == "hex":
-            search_len = search_len // 2
-        else:
-            search_len = len(self._search_var.get().strip())
+        # The length found, not the box's text, which may have changed
+        # (and "0x41 0x42" is two bytes, not four)
+        search_len = self._search_len
 
         # Remove current highlight
         self._text.tag_remove("search_current", "1.0", tk.END)

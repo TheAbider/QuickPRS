@@ -13,18 +13,40 @@ import io
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+import re
+
 from ..system_database import (
     list_all_systems, search_systems, get_system_by_name,
-    get_iden_template_key, get_default_iden_name,
+    get_iden_template_key, get_default_iden_name, unverified_warning,
 )
-from ..iden_library import get_template, get_template_keys, get_default_name
+from ..iden_library import get_template, get_template_keys
 from ..injector import (
     add_p25_trunked_system, make_trunk_set, make_group_set,
-    make_iden_set, make_p25_group,
+    make_p25_group, iden_set_for_template,
 )
-from ..record_types import P25TrkSystemConfig
+from ..record_types import P25TrkSystemConfig, build_sys_flags
 from ..validation import validate_prs, ERROR
 from ..logger import log_action, log_error
+
+
+MAX_SYSTEM_ID = 0xFFF        # P25 System IDs are 12 bits
+MAX_WACN = 0xFFFFF           # and WACNs 20
+
+
+def parse_hex_id(text, maximum):
+    """A P25 ID typed in hex (as RadioReference, RPM and radios show it,
+    "3AB" or "0x3AB"), or None when it is not hex or above ``maximum``."""
+    try:
+        value = int(str(text).strip(), 16)
+    except ValueError:
+        return None
+    return value if 0 <= value <= maximum else None
+
+
+def _hex_and_decimal(text, maximum):
+    value = parse_hex_id(text, maximum)
+    return (f"{value:X} ({value})" if value is not None
+            else f"{str(text).strip()} (not valid hex)")
 
 
 STEP_TITLES = [
@@ -65,6 +87,8 @@ class SystemWizard(tk.Toplevel):
         # Frequency/talkgroup data
         self.freq_text = ""
         self.tg_text = ""
+        self.freq_skipped = []      # lines _parse_freqs did not understand
+        self.tg_skipped = []
 
         # Build UI
         self._build_ui()
@@ -155,8 +179,8 @@ class SystemWizard(tk.Toplevel):
                 sys = self.selected_system
                 self.sys_name.set(sys.name[:8])
                 self.sys_long_name.set(sys.long_name[:16])
-                self.sys_id.set(str(sys.system_id))
-                self.sys_wacn.set(str(sys.wacn))
+                self.sys_id.set(f"{sys.system_id:X}")
+                self.sys_wacn.set(f"{sys.wacn:X}")
                 self.sys_band.set(sys.band.replace("/", "/"))
                 self.sys_type.set(sys.system_type)
             elif self.source.get() == "database" and not self.selected_system:
@@ -176,42 +200,36 @@ class SystemWizard(tk.Toplevel):
                     "System name is required.",
                     parent=self)
                 return
-            try:
-                sid = int(self.sys_id.get().strip())
-                if sid < 0 or sid > 65535:
-                    raise ValueError("out of range")
-            except ValueError:
+            if parse_hex_id(self.sys_id.get(), MAX_SYSTEM_ID) is None:
                 messagebox.showwarning(
                     "Invalid System ID",
-                    "System ID must be a number 0-65535.",
+                    "System ID must be hex, 0-FFF, as RadioReference "
+                    "shows it (Sysid: 3AB).",
                     parent=self)
                 return
-            try:
-                wacn = int(self.sys_wacn.get().strip())
-                if wacn < 0:
-                    raise ValueError("negative")
-            except ValueError:
+            if parse_hex_id(self.sys_wacn.get(), MAX_WACN) is None:
                 messagebox.showwarning(
                     "Invalid WACN",
-                    "WACN must be a non-negative number.",
+                    "WACN must be hex, 0-FFFFF, as RadioReference shows "
+                    "it (WACN: BEE00).",
                     parent=self)
                 return
 
-        elif self.current_step == 2:
-            # Save frequency text
-            if hasattr(self, '_freq_text_widget'):
-                self.freq_text = self._freq_text_widget.get("1.0", tk.END).strip()
-
-        elif self.current_step == 3:
-            # Save talkgroup text
-            if hasattr(self, '_tg_text_widget'):
-                self.tg_text = self._tg_text_widget.get("1.0", tk.END).strip()
-
+        self._save_step_text()
         self._show_step(self.current_step + 1)
+
+    def _save_step_text(self):
+        """Keep what was typed on the frequency or talkgroup step: the
+        step's widgets are rebuilt each time it is shown."""
+        if self.current_step == 2 and hasattr(self, '_freq_text_widget'):
+            self.freq_text = self._freq_text_widget.get("1.0", tk.END).strip()
+        elif self.current_step == 3 and hasattr(self, '_tg_text_widget'):
+            self.tg_text = self._tg_text_widget.get("1.0", tk.END).strip()
 
     def _prev_step(self):
         """Go back one step."""
         if self.current_step > 0:
+            self._save_step_text()
             self._show_step(self.current_step - 1)
 
     # ─── Step builders ───────────────────────────────────────────────
@@ -324,8 +342,8 @@ class SystemWizard(tk.Toplevel):
         fields = [
             ("System Name (8 chars):", self.sys_name),
             ("Long Name (16 chars):", self.sys_long_name),
-            ("System ID:", self.sys_id),
-            ("WACN:", self.sys_wacn),
+            ("System ID (hex):", self.sys_id),
+            ("WACN (hex):", self.sys_wacn),
         ]
 
         for i, (label, var) in enumerate(fields):
@@ -476,8 +494,8 @@ class SystemWizard(tk.Toplevel):
 
         name = self.sys_name.get().strip()[:8]
         long_name = self.sys_long_name.get().strip()[:16] or name
-        sys_id = self.sys_id.get().strip()
-        wacn = self.sys_wacn.get().strip()
+        sys_id = _hex_and_decimal(self.sys_id.get(), MAX_SYSTEM_ID)
+        wacn = _hex_and_decimal(self.sys_wacn.get(), MAX_WACN)
         band = self.sys_band.get()
         sys_type = self.sys_type.get()
 
@@ -488,6 +506,8 @@ class SystemWizard(tk.Toplevel):
         # IDEN template
         iden_key = f"{band.split('/')[0] if '/' in band else band}-" \
                    f"{'TDMA' if 'II' in sys_type else 'FDMA'}"
+        iden_set, iden_name = (iden_set_for_template(self.app.prs, iden_key)
+                               if self.app.prs else (None, ""))
 
         info_lines = [
             f"System Name:    {name}",
@@ -502,18 +522,33 @@ class SystemWizard(tk.Toplevel):
             f"Talkgroups:     {len(tgs) if tgs else 'None (empty group set)'}",
         ]
 
+        for label, skipped in (("frequency", self.freq_skipped),
+                               ("talkgroup", self.tg_skipped)):
+            if skipped:
+                info_lines.append(
+                    f"Not understood ({len(skipped)} {label} line"
+                    f"{'s' if len(skipped) > 1 else ''}, left out): "
+                    + "; ".join(skipped[:3])
+                    + (" ..." if len(skipped) > 3 else ""))
+
         # What will be created
+        if iden_set is not None:
+            iden_line = (f"  - IDEN Set: {iden_name} (new, standard {band} "
+                         f"template)")
+        elif iden_name:
+            iden_line = (f"  - IDEN Set: {iden_name} (already in the "
+                         f"personality, shared)")
+        else:
+            iden_line = "  - IDEN Set: none (no template for this band)"
         info_lines.extend([
             "",
             "The following will be created:",
             f"  - P25 Trunked System: {name} / {long_name}",
-            f"  - Trunk Set: {name} "
-            f"({len(freqs)} frequencies)" if freqs else
-            f"  - Trunk Set: {name} (empty)",
-            f"  - Group Set: {name} "
-            f"({len(tgs)} talkgroups)" if tgs else
-            f"  - Group Set: {name} (empty)",
-            f"  - IDEN Set: {iden_key[:5]} (standard {band} template)",
+            f"  - Trunk Set: {name} ({len(freqs)} frequencies)" if freqs
+            else "  - Trunk Set: none (no frequencies)",
+            f"  - Group Set: {name} ({len(tgs)} talkgroups)" if tgs
+            else "  - Group Set: none (no talkgroups)",
+            iden_line,
             f"  - WAN entry: {name}",
         ])
 
@@ -523,7 +558,11 @@ class SystemWizard(tk.Toplevel):
         text.pack(fill=tk.BOTH, expand=True)
 
     def _parse_freqs(self):
-        """Parse pasted frequency text into (tx, rx) tuples."""
+        """Parse pasted frequency text into (tx, rx) tuples.  A line is an
+        RX frequency (TX worked out) or TX and RX, separated by commas,
+        semicolons, tabs or spaces; a control channel mark (c) and MHz are
+        allowed.  Lines that are neither are kept in freq_skipped."""
+        self.freq_skipped = []
         if not self.freq_text:
             return []
         from ..iden_library import calculate_tx_freq
@@ -532,22 +571,26 @@ class SystemWizard(tk.Toplevel):
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            parts = line.replace(";", ",").split(",")
+            clean = re.sub(r"(?i)mhz|(?<=\d)c\b", " ", line)
+            tokens = [t for t in re.split(r"[\s,;]+", clean)
+                      if t and t.lower() != "c"]
             try:
-                if len(parts) >= 2:
-                    tx = float(parts[0].strip())
-                    rx = float(parts[1].strip())
-                    freqs.append((tx, rx))
-                else:
-                    rx = float(parts[0].strip())
-                    tx = calculate_tx_freq(rx)
-                    freqs.append((tx, rx))
-            except (ValueError, IndexError):
-                continue
+                values = [float(t) for t in tokens]
+            except ValueError:
+                values = []
+            if len(values) == 1:
+                freqs.append((calculate_tx_freq(values[0]), values[0]))
+            elif len(values) == 2:
+                freqs.append((values[0], values[1]))
+            else:
+                self.freq_skipped.append(line)
         return freqs
 
     def _parse_talkgroups(self):
-        """Parse pasted talkgroup text into (id, short, long) tuples."""
+        """Parse pasted talkgroup text into (id, short, long) tuples: ID,
+        short name, long name, separated by commas, semicolons or tabs.
+        Lines without a numeric ID are kept in tg_skipped."""
+        self.tg_skipped = []
         if not self.tg_text:
             return []
         tgs = []
@@ -555,14 +598,15 @@ class SystemWizard(tk.Toplevel):
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            parts = line.split(",")
+            parts = re.split(r"\s*[,;\t]\s*", line)
             try:
                 gid = int(parts[0].strip())
-                sn = parts[1].strip()[:8] if len(parts) > 1 else str(gid)
-                ln = parts[2].strip()[:16] if len(parts) > 2 else sn
-                tgs.append((gid, sn, ln))
-            except (ValueError, IndexError):
+            except ValueError:
+                self.tg_skipped.append(line)
                 continue
+            sn = parts[1].strip()[:8] if len(parts) > 1 else str(gid)
+            ln = parts[2].strip()[:16] if len(parts) > 2 else sn
+            tgs.append((gid, sn, ln))
         return tgs
 
     def _bad_talkgroup_ids(self, tgs):
@@ -577,16 +621,23 @@ class SystemWizard(tk.Toplevel):
 
         name = self.sys_name.get().strip()[:8]
         long_name = self.sys_long_name.get().strip()[:16] or name
-        try:
-            sys_id = int(self.sys_id.get().strip())
-            wacn = int(self.sys_wacn.get().strip())
-        except ValueError:
-            messagebox.showerror("Invalid Input",
-                                 "System ID and WACN must be numbers.",
-                                 parent=self)
+        sys_id = parse_hex_id(self.sys_id.get(), MAX_SYSTEM_ID)
+        wacn = parse_hex_id(self.sys_wacn.get(), MAX_WACN)
+        if sys_id is None or wacn is None:
+            messagebox.showerror(
+                "Invalid Input",
+                "System ID (0-FFF) and WACN (0-FFFFF) must be hex, as "
+                "RadioReference shows them.", parent=self)
             return
         band = self.sys_band.get()
         sys_type = self.sys_type.get()
+
+        if self.source.get() == "database" and self.selected_system:
+            warning = unverified_warning(self.selected_system)
+            if warning and not messagebox.askyesno(
+                    "Unverified IDs", warning + "\n\nAdd it anyway?",
+                    icon=messagebox.WARNING, parent=self):
+                return
 
         # Check everything before touching the personality
         freqs = self._parse_freqs()
@@ -602,7 +653,6 @@ class SystemWizard(tk.Toplevel):
 
         # Save undo state
         self.app.save_undo_snapshot("Add P25 System via Wizard")
-        before = self.app.prs.to_bytes()
 
         try:
             prs = self.app.prs
@@ -616,16 +666,12 @@ class SystemWizard(tk.Toplevel):
                 from ..record_types import P25GroupSet
                 group_set = P25GroupSet(name=name[:8], groups=groups)
 
-            # Build IDEN set from standard template
+            # The standard IDEN set for the band: shared when the
+            # personality has it, else added
             iden_key = f"{band.split('/')[0] if '/' in band else band}-" \
                        f"{'TDMA' if 'II' in sys_type else 'FDMA'}"
             template = get_template(iden_key)
-            iden_set = None
-            iden_name = iden_key[:5]
-            if template:
-                iden_set = make_iden_set(
-                    get_default_name(iden_key), template.entries)
-                iden_name = get_default_name(iden_key)
+            iden_set, iden_name = iden_set_for_template(prs, iden_key)
 
             # Determine WAN config from IDEN template
             wan_base = 851_006_250
@@ -636,6 +682,7 @@ class SystemWizard(tk.Toplevel):
                 wan_spacing = first.get('chan_spacing_hz', wan_spacing)
 
             # Build system config
+            settings = self.app.settings
             config = P25TrkSystemConfig(
                 system_name=name,
                 long_name=long_name,
@@ -644,7 +691,9 @@ class SystemWizard(tk.Toplevel):
                 wan_name=name,
                 system_id=sys_id,
                 wacn=wacn,
-                iden_set_name=iden_name if iden_set else "",
+                home_unit_id=settings.get("home_unit_id", 0),
+                sys_flags=build_sys_flags(settings),
+                iden_set_name=iden_name,
                 wan_base_freq_hz=wan_base,
                 wan_chan_spacing_hz=wan_spacing,
             )
@@ -686,10 +735,7 @@ class SystemWizard(tk.Toplevel):
         except Exception as e:
             # Put the personality back the way it was, so a failed add
             # cannot leave half a system behind
-            from ..prs_parser import parse_prs_bytes
-            self.app.prs.sections = parse_prs_bytes(
-                before, verify=False).sections
-            self.app.personality_view.refresh()
+            self.app.roll_back()
             log_error("wizard_add", str(e))
             messagebox.showerror(
                 "Error",
@@ -852,7 +898,8 @@ class SystemDatabaseDialog(tk.Toplevel):
         self.app.save_undo_snapshot("Add System from Database")
 
         try:
-            _add_system_from_database(self.app.prs, sys)
+            _add_system_from_database(self.app.prs, sys,
+                                      settings=self.app.settings)
             self.app.mark_modified()
             self.app.personality_view.refresh()
             log_action("db_add", system=sys.name)
@@ -862,8 +909,10 @@ class SystemDatabaseDialog(tk.Toplevel):
                 f"Add frequencies and talkgroups to complete setup.",
                 parent=self)
         except Exception as e:
+            self.app.roll_back()
             log_error("db_add", str(e))
-            messagebox.showerror("Error", f"Failed: {e}", parent=self)
+            messagebox.showerror("Error", f"Failed: {e}\n\nNothing was "
+                                 f"added.", parent=self)
 
     def _open_wizard(self):
         """Open the full wizard dialog."""
@@ -876,40 +925,38 @@ class SystemDatabaseDialog(tk.Toplevel):
                 wizard.source.set("database")
                 wizard.sys_name.set(sys.name[:8])
                 wizard.sys_long_name.set(sys.long_name[:16])
-                wizard.sys_id.set(str(sys.system_id))
-                wizard.sys_wacn.set(str(sys.wacn))
+                wizard.sys_id.set(f"{sys.system_id:X}")
+                wizard.sys_wacn.set(f"{sys.wacn:X}")
                 wizard.sys_band.set(sys.band)
                 wizard.sys_type.set(sys.system_type)
         wizard.wait_window()
 
 
-def _add_system_from_database(prs, sys):
+def _add_system_from_database(prs, sys, settings=None):
     """Add a P25 system from the database to a PRS file.
 
-    Creates system header, config, empty trunk set, empty group set,
-    and standard IDEN set based on the system's band/type.
+    Creates the system (with the system flags and home unit ID from the
+    GUI ``settings``), its WAN entry, and the standard IDEN set for its
+    band and type, shared when the personality already has it.  Trunk and
+    talkgroup sets are left to be added.
 
     Args:
         prs: PRSFile object
         sys: P25System from the database
+        settings: the GUI's settings dict (None: all flags off, unit 0)
     """
     name = sys.name[:8]
     long_name = sys.long_name[:16]
 
-    # Build IDEN set from standard template
     iden_key = get_iden_template_key(sys)
     template = get_template(iden_key)
-    iden_set = None
-    iden_name = get_default_iden_name(sys)
+    iden_set, iden_name = iden_set_for_template(
+        prs, iden_key, name=get_default_iden_name(sys))
     wan_base = 851_006_250
     wan_spacing = 12500
-
-    if template:
-        iden_set = make_iden_set(iden_name, template.entries)
-        if template.entries:
-            wan_base = template.entries[0].get('base_freq_hz', wan_base)
-            wan_spacing = template.entries[0].get(
-                'chan_spacing_hz', wan_spacing)
+    if template and template.entries:
+        wan_base = template.entries[0].get('base_freq_hz', wan_base)
+        wan_spacing = template.entries[0].get('chan_spacing_hz', wan_spacing)
 
     config = P25TrkSystemConfig(
         system_name=name,
@@ -919,7 +966,9 @@ def _add_system_from_database(prs, sys):
         wan_name=name,
         system_id=sys.system_id,
         wacn=sys.wacn,
-        iden_set_name=iden_name if iden_set else "",
+        home_unit_id=(settings or {}).get("home_unit_id", 0),
+        sys_flags=build_sys_flags(settings),
+        iden_set_name=iden_name,
         wan_base_freq_hz=wan_base,
         wan_chan_spacing_hz=wan_spacing,
     )

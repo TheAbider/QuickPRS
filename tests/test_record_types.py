@@ -605,11 +605,14 @@ def test_build_sys_flags_nas_monitoring():
 
 
 def test_detect_band_limits():
-    """Band limits detection from frequencies."""
+    """Band limits detection from frequencies: the radio's whole range,
+    as RPM writes for nearly every system.  An 800 MHz system's limits
+    were 767-858 MHz, leaving out its channels at 860 and 869 MHz."""
     # 800 MHz only
-    lo, hi = detect_band_limits([851.0, 860.0, 869.0])
-    assert lo == 767_000_000, f"Expected 767M, got {lo}"
-    assert hi == 858_000_000, f"Expected 858M, got {hi}"
+    freqs = [851.0, 860.0, 869.0]
+    lo, hi = detect_band_limits(freqs)
+    assert (lo, hi) == (136_000_000, 870_000_000)
+    assert all(lo <= f * 1e6 <= hi for f in freqs)
 
     # Mixed VHF + 800 MHz (wide band)
     lo, hi = detect_band_limits([151.0, 851.0])
