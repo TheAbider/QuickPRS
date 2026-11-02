@@ -1953,6 +1953,43 @@ def make_conv_set(name, channels_data):
     return ConvSet(name=name[:8], channels=channels)
 
 
+def _set_names(prs, list_name):
+    """Names of the sets in one of the document's set lists."""
+    try:
+        items = archive.document_from_prs(prs).list(list_name).items
+    except KeyError:
+        return []
+    return [_set_obj_name(o) for o in items if o is not None]
+
+
+def iden_set_for_template(prs, template_key, name=None):
+    """The IDEN set a new system on ``template_key``'s band should use, as
+    (set to add or None, its name).
+
+    A set already in ``prs`` with the template's entries is shared (None
+    to add), as the systems in RPM's files share theirs.  Otherwise it is
+    a new set from the template, under ``name`` (the template's default
+    name when not given), numbered when that name is taken by a set with
+    other entries.  (None, "") when there is no such template.
+    """
+    from .iden_library import (
+        find_matching_iden_set, get_default_name, get_template,
+    )
+    existing = find_matching_iden_set(prs, template_key)
+    if existing:
+        return None, existing
+    template = get_template(template_key)
+    if not template:
+        return None, ""
+    base = (name or get_default_name(template_key))[:8]
+    taken = set(_set_names(prs, "IDEN sets"))
+    new, n = base, 2
+    while new in taken:
+        new = base[:8 - len(str(n))] + str(n)
+        n += 1
+    return make_iden_set(new, template.entries), new
+
+
 def make_iden_set(name, entries):
     """Create an IdenDataSet from channel identifier entries.
 

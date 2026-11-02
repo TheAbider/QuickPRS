@@ -305,3 +305,186 @@ def test_wizard_clipboard_import_that_fails_part_way(app):
         assert app.prs.to_bytes() == before
     finally:
         wizard.destroy()
+
+
+# ── System Wizard and P25 System Database ────────────────────────────
+
+def trk_settings(prs):
+    """(sys_flags, home unit ID, IDEN set) of each P25 trunked system."""
+    import struct
+    doc = archive.document_from_prs(prs)
+    out = []
+    for obj in doc.list("systems").items:
+        if obj is None or obj.cls != "CP25TrkSystem":
+            continue
+        data = obj.parts[0]
+        _, pos = archive.read_cstring(data, 0)
+        pos += 1 + 2 + 42
+        _, pos = archive.read_cstring(data, pos)      # long name
+        flags = data[pos:pos + 15]
+        pos += 15
+        _, pos = archive.read_cstring(data, pos)      # trunk set
+        _, pos = archive.read_cstring(data, pos)      # talkgroup set
+        home = struct.unpack_from("<I", data, pos + 12)[0]
+        iden = archive.read_cstring(obj.parts[2], 4)[0]
+        out.append((flags, home, iden))
+    return out
+
+
+SETTINGS = {"home_unit_id": 12345, "tdma_capable": True,
+            "adaptive_filter": True}
+
+
+def test_iden_set_for_template():
+    from quickprs.injector import (
+        _safe_add_iden_set, _set_names, iden_set_for_template,
+        make_iden_set)
+    prs = create_blank_prs("t.PRS")
+    new, name = iden_set_for_template(prs, "800-TDMA")
+    assert new is not None and name == new.name
+    _safe_add_iden_set(prs, new)
+    # the same band again: shared, nothing to add
+    assert iden_set_for_template(prs, "800-TDMA") == (None, name)
+    # the default name taken by a set with other entries: numbered
+    other = create_blank_prs("u.PRS")
+    _safe_add_iden_set(other, make_iden_set(name, [
+        {"base_freq_hz": 136_000_000, "chan_spacing_hz": 12500}]))
+    again, again_name = iden_set_for_template(other, "800-TDMA")
+    assert again is not None and again_name == name[:7] + "2"
+    _safe_add_iden_set(other, again)
+    assert _set_names(other, "IDEN sets") == [name, again_name]
+    assert iden_set_for_template(other, "no-such-band") == (None, "")
+
+
+def test_database_adds_two_systems_on_one_band():
+    """PSERN then WSP (both 800 MHz Phase II): the second failed with
+    "IDEN set '8TDMA' already exists" and left a stray system."""
+    from quickprs.gui.system_wizard import _add_system_from_database
+    from quickprs.injector import _set_names
+    from quickprs.record_types import build_sys_flags
+    from quickprs.system_database import get_system_by_name
+    prs = create_blank_prs("t.PRS")
+    for name in ("PSERN", "WSP"):
+        _add_system_from_database(prs, get_system_by_name(name),
+                                  settings=SETTINGS)
+    [iden] = _set_names(prs, "IDEN sets")
+    assert trk_settings(prs) == [(build_sys_flags(SETTINGS), 12345, iden)] * 2
+
+
+def _wizard(app, freqs="", tgs="", source="manual"):
+    from quickprs.gui.system_wizard import SystemWizard
+    wizard = SystemWizard(app.root, app)
+    wizard.source.set(source)
+    wizard.sys_name.set("WIZ")
+    wizard.sys_long_name.set("WIZARD SYSTEM")
+    wizard.sys_id.set("939")
+    wizard.sys_wacn.set("781824")
+    wizard.sys_band.set("800")
+    wizard.sys_type.set("Phase II")
+    wizard.freq_text = freqs
+    wizard.tg_text = tgs
+    return wizard
+
+
+def _finish(wizard, answer=True):
+    from quickprs.gui import system_wizard
+    with mock.patch.object(system_wizard, "messagebox") as mb:
+        mb.askyesno.return_value = answer
+        wizard._finish()
+    return mb
+
+
+def test_wizard_applies_settings_and_shares_the_iden_set(app):
+    from quickprs.injector import _set_names
+    from quickprs.record_types import build_sys_flags
+    app.settings.update(SETTINGS)
+    mb = _finish(_wizard(app, tgs="100,PD,Police"))
+    mb.showerror.assert_not_called()
+    wizard = _wizard(app, tgs="200,FD,Fire")
+    wizard.sys_name.set("WIZ2")
+    mb = _finish(wizard)
+    mb.showerror.assert_not_called()
+    [iden] = _set_names(app.prs, "IDEN sets")
+    flags = build_sys_flags(app.settings)
+    assert flags != bytes(15)
+    assert trk_settings(app.prs) == [(flags, 12345, iden)] * 2
+
+
+def test_wizard_warns_about_unverified_ids(app):
+    from quickprs.system_database import get_system_by_name
+    wizard = _wizard(app, source="database")
+    wizard.selected_system = get_system_by_name("WSP")      # unverified
+    before = app.prs.to_bytes()
+    mb = _finish(wizard, answer=False)
+    assert "Add it anyway?" in mb.askyesno.call_args[0][1]
+    assert app.prs.to_bytes() == before
+    wizard.selected_system = get_system_by_name("PSERN")    # verified
+    mb = _finish(wizard)
+    mb.askyesno.assert_not_called()
+    assert len(trk_settings(app.prs)) == 1
+
+
+def test_wizard_back_keeps_the_typed_text(app):
+    wizard = _wizard(app)
+    try:
+        wizard._show_step(2)
+        wizard._freq_text_widget.insert("1.0", "851.0125")
+        wizard._prev_step()
+        assert wizard.freq_text == "851.0125"
+        wizard._show_step(2)
+        assert wizard._freq_text_widget.get("1.0", "end").strip() == (
+            "851.0125")
+        wizard._show_step(3)
+        wizard._tg_text_widget.insert("1.0", "100,PD")
+        wizard._prev_step()
+        assert wizard.tg_text == "100,PD"
+    finally:
+        wizard.destroy()
+
+
+def test_wizard_reads_control_marks_units_and_tabs(app):
+    wizard = _wizard(app, freqs="\n".join([
+        "851.0125c", "851.5125,c", "806.0125\t851.0125", "852.2625 MHz",
+        "# a comment", "Hill Top", "851.0125 852.0 853.0"]),
+        tgs="\n".join(["100\tPD DISP\tPolice Dispatch", "200; FD",
+                       "PD,100"]))
+    from quickprs.iden_library import calculate_tx_freq
+    assert wizard._parse_freqs() == [
+        (calculate_tx_freq(851.0125), 851.0125),
+        (calculate_tx_freq(851.5125), 851.5125),
+        (806.0125, 851.0125),
+        (calculate_tx_freq(852.2625), 852.2625)]
+    assert wizard.freq_skipped == ["Hill Top", "851.0125 852.0 853.0"]
+    assert wizard._parse_talkgroups() == [
+        (100, "PD DISP", "Police Dispatch"), (200, "FD", "FD")]
+    assert wizard.tg_skipped == ["PD,100"]
+    wizard.destroy()
+
+
+def test_database_dialog_and_import_wizard_apply_settings(app):
+    """Both ways of adding a system from the database: the P25 System
+    Database dialog wrote home unit ID 0 and no flags; the Import
+    Wizard's database tab wrote the flags but unit 0."""
+    from quickprs.gui import import_wizard, system_wizard
+    from quickprs.record_types import build_sys_flags
+    app.settings.update(SETTINGS)
+    dialog = system_wizard.SystemDatabaseDialog.__new__(
+        system_wizard.SystemDatabaseDialog)
+    dialog.app = app
+    dialog._tree = mock.Mock(selection=lambda: ["PSERN"])
+    with mock.patch.object(system_wizard, "messagebox") as mb:
+        mb.askyesno.return_value = True
+        dialog._add_system()
+        mb.showerror.assert_not_called()
+    wizard = import_wizard.ImportWizard(app.root, app)
+    try:
+        wizard._db_tree.selection_set("WSP")       # listed already
+        with mock.patch.object(import_wizard, "messagebox") as mb:
+            mb.askyesno.return_value = True
+            wizard._import_from_database()
+            mb.showerror.assert_not_called()
+    finally:
+        wizard.destroy()
+    flags = build_sys_flags(app.settings)
+    assert [(f, home) for f, home, _ in trk_settings(app.prs)] == [
+        (flags, 12345), (flags, 12345)]

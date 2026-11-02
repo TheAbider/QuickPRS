@@ -619,23 +619,14 @@ class ImportWizard(tk.Toplevel):
         try:
             from ..injector import (
                 add_p25_trunked_system, make_group_set, make_trunk_set,
-                make_iden_set, add_group_set, add_trunk_set, add_iden_set,
+                iden_set_for_template,
             )
             from ..record_types import P25TrkSystemConfig, build_sys_flags
-            from ..iden_library import (
-                get_template, get_default_name, find_matching_iden_set,
-            )
 
-            # Auto-select IDEN template
-            iden_key = get_iden_template_key(sys)
-            existing_iden = find_matching_iden_set(self.app.prs, iden_key)
-            iden_set = None
-            iden_name = existing_iden or ""
-            if not existing_iden:
-                template = get_template(iden_key)
-                if template:
-                    iden_name = get_default_name(iden_key)
-                    iden_set = make_iden_set(iden_name, template.entries)
+            # The standard IDEN set for the band: shared when the
+            # personality has it, else added
+            iden_set, iden_name = iden_set_for_template(
+                self.app.prs, get_iden_template_key(sys))
 
             # Create an empty P25 system with the database info
             config = P25TrkSystemConfig(
@@ -646,6 +637,7 @@ class ImportWizard(tk.Toplevel):
                 wan_name=sys.name[:8],
                 system_id=sys.system_id,
                 wacn=sys.wacn,
+                home_unit_id=self.app.settings.get("home_unit_id", 0),
                 sys_flags=build_sys_flags(self.app.settings),
                 iden_set_name=iden_name,
             )
