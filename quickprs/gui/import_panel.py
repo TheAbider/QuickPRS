@@ -1491,8 +1491,10 @@ class ImportPanel(ttk.Frame):
                          f"(TX offset: {offset:+.0f} MHz)")
             sys_type = self.paste_system.system_type or ""
             is_tdma = "Phase II" in sys_type
+            # 12.5 kHz carriers either way (two TDMA slots on one), as
+            # every IDEN entry QuickPRS writes and RPM saves has
             lines.append(f"IDEN: {'TDMA' if is_tdma else 'FDMA'} "
-                         f"({'6.25' if is_tdma else '12.5'} kHz)")
+                         f"(12.5 kHz channels)")
 
         # Conventional channels
         selected_conv = self._get_selected_conv_channels()
