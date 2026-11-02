@@ -10,7 +10,8 @@ from .bluetooth import (
     SPP_UUID, bluetooth_serial_ports, radio_ports, scan_ble,
 )
 from .capture import (
-    CaptureWriter, PC_TO_RADIO, RADIO_TO_PC, hexdump, read_capture,
+    CaptureWriter, PC_TO_RADIO, RADIO_TO_PC, create_new, hexdump,
+    read_capture,
 )
 from .link import LinkError, open_serial
 from .probe import classify, listen
@@ -362,9 +363,11 @@ def cmd_radio_replay(capture_path, port=None, log="replay.jsonl",
     return 0 if result.same == len(plan) else 1
 
 
-def cmd_radio_analyze(capture_path, extract=None, transcript=None):
+def cmd_radio_analyze(capture_path, extract=None, transcript=None,
+                      against=None):
     try:
         cap = read_capture(capture_path)
+        known = Path(against).read_bytes() if against else None
     except (OSError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -376,13 +379,27 @@ def cmd_radio_analyze(capture_path, extract=None, transcript=None):
         print("Conversation (consecutive chunks one way are one message):")
         for line in conversation(cap, limit=transcript):
             print(line)
+    if known is not None:
+        from .analyze import align, alignment_report
+        print()
+        print(f"Against {against}:")
+        for direction, where in ((RADIO_TO_PC, "the radio's answers"),
+                                 (PC_TO_RADIO, "RPM's requests")):
+            stream = cap.stream(direction)
+            al = align(stream, known)
+            if direction == RADIO_TO_PC or al.found:   # a write sends it
+                for line in alignment_report(al, stream, len(known),
+                                             where):
+                    print(line)
     if extract:
         data = extract_personality(cap.stream(RADIO_TO_PC))
         if data is None:
             print("\nNo .PRS archive the walker could follow in the radio's "
                   "replies.", file=sys.stderr)
             return 1
-        Path(extract).write_bytes(data)
-        print(f"\nWrote {len(data):,} bytes of archive to {extract} "
+        f, path = create_new(extract, binary=True)
+        with f:
+            f.write(data)
+        print(f"\nWrote {len(data):,} bytes of archive to {path} "
               f"(compare with a .PRS RPM saved before trusting it).")
     return 0

@@ -137,6 +137,7 @@ Memory Integrity off.
 quickprs radio analyze read.jsonl
 quickprs radio analyze read.jsonl --transcript 60
 quickprs radio analyze read.jsonl --extract radio.PRS
+quickprs radio analyze read.jsonl --against rpm-saved.PRS
 ```
 
 `analyze` counts bytes and messages in each direction, lists the common
@@ -146,6 +147,15 @@ finds. A message is a run of chunks going the same way with less than
 message often comes in several chunks. `--transcript N` lists the first N
 messages (40 without a number) with their time, direction, length and first
 bytes, which is where a protocol's framing usually shows first.
+`--against FILE` lines up a .PRS that RPM saved from the same radio with
+the radio's answers (and with RPM's requests, where a write carries it):
+how much of the file is in them, in order and in how many pieces, the
+piece sizes and the bytes between the pieces. When the radio sends the
+personality as RPM saves it, cut into packets, each piece is one packet's
+data and the bytes between two pieces are the end of one packet and the
+start of the next, which is the framing to decode first. Parts of the file
+not found are listed too: a byte RPM changes when it saves, or a packet
+missing from the trace.
 `--extract` writes out a personality found in the radio's replies. Protocol bytes after the personality can end up in that
 file, so treat it as something to compare with the .PRS RPM saved for the
 same session, not as a finished file.
