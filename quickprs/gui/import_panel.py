@@ -52,6 +52,15 @@ from ..logger import log_action, log_error
 from ..cache import save_system, load_system, list_cached_systems
 
 
+def _hex_id(text):
+    """A RadioReference hex ID (WACN, System ID) as a number; 0 when it
+    is missing or not hex."""
+    try:
+        return int(str(text).strip(), 16) if str(text).strip() else 0
+    except ValueError:
+        return 0
+
+
 class ImportPanel(ttk.Frame):
     """Import panel with paste and API tabs."""
 
@@ -1752,10 +1761,10 @@ class ImportPanel(ttk.Frame):
             if len(long_name) > 16:
                 long_name = long_name[:16]
 
-            # WAN name — use WACN if available, else set name
-            wan_name = self.paste_system.wacn or set_name
-            if len(wan_name) > 8:
-                wan_name = wan_name[:8]
+            # The WAN entry is named after the system and holds the WACN,
+            # as in RPM's files, where systems sharing a WACN each have one
+            wan_name = set_name
+            wacn = _hex_id(self.paste_system.wacn)
 
             # Build Enhanced CC entries from selected sites
             ecc_entries = []
@@ -1796,7 +1805,7 @@ class ImportPanel(ttk.Frame):
                     iden_count=iden_count,
                     ecc_count=ecc_count,
                     sys_name=self.paste_system.name or "",
-                    wacn=wan_name,
+                    wacn=self.paste_system.wacn or "",
                     sysid=self.paste_system.sysid or "",
                     nac=nac_display,
                     tg_samples=tg_samples,
@@ -1825,9 +1834,10 @@ class ImportPanel(ttk.Frame):
             config = P25TrkSystemConfig(
                 system_name=set_name,
                 long_name=long_name.upper(),
-                trunk_set_name=set_name,
-                group_set_name=set_name,
+                trunk_set_name=set_name if new_tset else "",
+                group_set_name=set_name if new_gset else "",
                 wan_name=wan_name,
+                wacn=wacn,
                 home_unit_id=home_id,
                 system_id=sys_id,
                 sys_flags=sys_flags,
@@ -1915,8 +1925,8 @@ class ImportPanel(ttk.Frame):
                         msg_lines.append(f"  {iden_count} IDEN entries")
                 if ecc_count:
                     msg_lines.append(f"  {ecc_count} Enhanced CC entries")
-                if wan_name:
-                    msg_lines.append(f"  WAN: {wan_name}")
+                if wacn:
+                    msg_lines.append(f"  WAN: {wan_name} (WACN {wacn:X})")
             if conv_count:
                 msg_lines.append(f"  Conv System: {set_name}")
                 msg_lines.append(f"  {conv_count} conventional channels")
@@ -2327,8 +2337,10 @@ class ImportPanel(ttk.Frame):
                 if var.get()}
 
     def _get_selected_tags(self):
+        """The checked service tags, and "" for talkgroups with no tag:
+        they have no box to uncheck, and the count includes them."""
         return {tag for tag, var in self.tag_vars.items()
-                if var.get()}
+                if var.get()} | {""}
 
     def _select_all_cats(self):
         for var in self.category_vars.values():
@@ -2522,9 +2534,7 @@ class ImportPanel(ttk.Frame):
 
             # Build full P25 trunked system (not just orphan sets)
             rx_freqs = [f for _, f in data['frequencies']] if data['frequencies'] else []
-            wan_name = data.get('wacn', '') or set_name
-            if len(wan_name) > 8:
-                wan_name = wan_name[:8]
+            wacn = _hex_id(data.get('wacn', ''))
 
             long_name = (data.get('full_name', '') or set_name)[:16]
             sys_id = 0
@@ -2541,9 +2551,10 @@ class ImportPanel(ttk.Frame):
             config = P25TrkSystemConfig(
                 system_name=set_name,
                 long_name=long_name.upper(),
-                trunk_set_name=set_name,
-                group_set_name=set_name,
-                wan_name=wan_name,
+                trunk_set_name=set_name if new_tset else "",
+                group_set_name=set_name if new_gset else "",
+                wan_name=set_name,
+                wacn=wacn,
                 home_unit_id=s.get("home_unit_id", 0),
                 system_id=sys_id,
                 sys_flags=sys_flags,
