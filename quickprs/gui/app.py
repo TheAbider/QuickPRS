@@ -43,7 +43,7 @@ except ImportError:
     HAS_WINDND = False
 
 from .. import __version__
-from ..prs_parser import parse_prs
+from ..prs_parser import parse_prs, parse_prs_bytes
 from ..prs_writer import write_prs
 from ..validation import validate_prs, validate_prs_detailed, ERROR, WARNING
 from ..logger import log_action, log_error
@@ -945,6 +945,19 @@ class QuickPRSApp:
             pending = getattr(self, "_pending_undo", None)
             if pending is None or pending[0] == current:
                 self._pending_undo = (current, description)
+
+    def roll_back(self):
+        """Put the personality back as it was at save_undo_snapshot(), after
+        an operation that failed part way: half a change must not stay in
+        the window unmarked, where Save would write it.  True when there
+        was something to put back."""
+        pending = getattr(self, "_pending_undo", None)
+        if not pending or not self.prs or self.prs.to_bytes() == pending[0]:
+            return False
+        self.prs.sections = parse_prs_bytes(pending[0],
+                                            verify=False).sections
+        self.personality_view.refresh()
+        return True
 
     def _commit_undo(self):
         """Make the pending snapshot an undo step if the personality has

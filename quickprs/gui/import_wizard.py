@@ -310,7 +310,10 @@ class ImportWizard(tk.Toplevel):
             self._file_status.config(text="Imported successfully!")
             self._status_label.config(text=f"Imported into set '{set_name}'")
         except Exception as e:
-            messagebox.showerror("Import Error", str(e), parent=self)
+            self.app.roll_back()
+            messagebox.showerror("Import Error",
+                                 f"{e}\n\nNothing was imported.",
+                                 parent=self)
 
     # ─── From Template tab ────────────────────────────────────────────
 
@@ -663,7 +666,9 @@ class ImportWizard(tk.Toplevel):
             self._db_detail.config(text=f"Added {sys.name} to personality!")
             self._status_label.config(text=f"System '{sys.name}' added successfully.")
         except Exception as e:
-            messagebox.showerror("Import Error", str(e), parent=self)
+            self.app.roll_back()
+            messagebox.showerror("Import Error",
+                                 f"{e}\n\nNothing was added.", parent=self)
 
     # ─── From Clipboard tab ──────────────────────────────────────────
 
@@ -890,7 +895,10 @@ class ImportWizard(tk.Toplevel):
             self._status_label.config(text=f"Clipboard data imported into '{set_name}'")
 
         except Exception as e:
-            messagebox.showerror("Import Error", str(e), parent=self)
+            self.app.roll_back()
+            messagebox.showerror("Import Error",
+                                 f"{e}\n\nNothing was imported.",
+                                 parent=self)
 
     # ─── Shared injection helpers ────────────────────────────────────
 

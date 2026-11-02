@@ -1932,8 +1932,10 @@ class ImportPanel(ttk.Frame):
                 self.app.validate()
 
         except Exception as e:
+            self.app.roll_back()
             log_error("inject_system", str(e))
-            messagebox.showerror("Injection Error", str(e))
+            messagebox.showerror("Injection Error",
+                                 f"{e}\n\nNothing was added.")
 
     # =================================================================
     # API TAB
@@ -2598,5 +2600,7 @@ class ImportPanel(ttk.Frame):
                 self.app.validate()
 
         except Exception as e:
+            self.app.roll_back()
             log_error("inject_api", str(e))
-            messagebox.showerror("Injection Error", str(e))
+            messagebox.showerror("Injection Error",
+                                 f"{e}\n\nNothing was added.")

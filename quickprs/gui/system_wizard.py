@@ -602,7 +602,6 @@ class SystemWizard(tk.Toplevel):
 
         # Save undo state
         self.app.save_undo_snapshot("Add P25 System via Wizard")
-        before = self.app.prs.to_bytes()
 
         try:
             prs = self.app.prs
@@ -686,10 +685,7 @@ class SystemWizard(tk.Toplevel):
         except Exception as e:
             # Put the personality back the way it was, so a failed add
             # cannot leave half a system behind
-            from ..prs_parser import parse_prs_bytes
-            self.app.prs.sections = parse_prs_bytes(
-                before, verify=False).sections
-            self.app.personality_view.refresh()
+            self.app.roll_back()
             log_error("wizard_add", str(e))
             messagebox.showerror(
                 "Error",
@@ -862,8 +858,10 @@ class SystemDatabaseDialog(tk.Toplevel):
                 f"Add frequencies and talkgroups to complete setup.",
                 parent=self)
         except Exception as e:
+            self.app.roll_back()
             log_error("db_add", str(e))
-            messagebox.showerror("Error", f"Failed: {e}", parent=self)
+            messagebox.showerror("Error", f"Failed: {e}\n\nNothing was "
+                                 f"added.", parent=self)
 
     def _open_wizard(self):
         """Open the full wizard dialog."""

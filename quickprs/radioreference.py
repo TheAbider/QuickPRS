@@ -1493,23 +1493,24 @@ def add_rr_conv_channels(prs, set_name, long_name, channels):
     channels whose mode neither can carry.
     """
     from .injector import (add_conv_system, add_p25_conv_set,
-                           add_p25_conv_system, make_conv_set,
-                           make_p25_conv_set)
+                           add_p25_conv_system, all_or_nothing,
+                           make_conv_set, make_p25_conv_set)
     from .record_types import ConvSystemConfig, P25ConvSystemConfig
     analog = conv_channels_to_set_data(channels)
     p25 = p25_conv_channels_to_set_data(channels)
     skipped = [ch for ch in channels if conv_channel_kind(ch) is None]
     set_name = set_name[:8]
     long_name = long_name[:16].upper()
-    if analog:
-        add_conv_system(prs, ConvSystemConfig(
-            system_name=set_name, long_name=long_name,
-            conv_set_name=set_name),
-            conv_set=make_conv_set(set_name, analog))
-    if p25:
-        p25_name = f"{set_name[:5]}P25"
-        add_p25_conv_set(prs, make_p25_conv_set(p25_name, p25))
-        add_p25_conv_system(prs, P25ConvSystemConfig(
-            system_name=p25_name, long_name=long_name,
-            conv_set_name=p25_name))
+    with all_or_nothing(prs):          # both systems, or neither
+        if analog:
+            add_conv_system(prs, ConvSystemConfig(
+                system_name=set_name, long_name=long_name,
+                conv_set_name=set_name),
+                conv_set=make_conv_set(set_name, analog))
+        if p25:
+            p25_name = f"{set_name[:5]}P25"
+            add_p25_conv_set(prs, make_p25_conv_set(p25_name, p25))
+            add_p25_conv_system(prs, P25ConvSystemConfig(
+                system_name=p25_name, long_name=long_name,
+                conv_set_name=p25_name))
     return len(analog), len(p25), skipped

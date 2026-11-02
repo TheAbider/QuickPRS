@@ -89,6 +89,50 @@ def test_failed_save_stops_close(app, tmp_path):
         mb.showerror.assert_called()
 
 
+def test_roll_back_puts_a_failed_change_back(app, tmp_path):
+    from quickprs.builder import create_blank_prs
+    from quickprs.injector import _safe_add_group_set, make_group_set
+    app._set_document(create_blank_prs("x.PRS"), tmp_path / "x.PRS")
+    before = app.prs.to_bytes()
+    assert app.roll_back() is False                # nothing pending
+    app.save_undo_snapshot("an import")
+    _safe_add_group_set(app.prs, make_group_set("HALF", [(1, "A", "A")]))
+    assert app.roll_back() is True
+    assert app.prs.to_bytes() == before
+    assert app.roll_back() is False                # already back
+    assert app.modified is False and not app._undo_stack.can_undo()
+
+
+def test_failed_db_add_leaves_nothing(app, tmp_path):
+    """The P25 System Database dialog: a system whose IDEN set cannot be
+    added (here: the add fails after the system went in) is taken out
+    again."""
+    from quickprs.builder import create_blank_prs
+    from quickprs.gui import system_wizard
+    from quickprs.system_database import get_system_by_name
+    app._set_document(create_blank_prs("x.PRS"), tmp_path / "x.PRS")
+    before = app.prs.to_bytes()
+    dialog = system_wizard.SystemDatabaseDialog.__new__(
+        system_wizard.SystemDatabaseDialog)
+    dialog.app = app
+    dialog._tree = mock.Mock(selection=lambda: ["PSERN"])
+
+    def fails_after_the_system(prs, sys):
+        from quickprs.injector import _safe_add_group_set, make_group_set
+        _safe_add_group_set(prs, make_group_set("HALF", [(1, "A", "A")]))
+        raise ValueError("IDEN set '8TDMA' already exists")
+
+    with mock.patch.object(system_wizard, "_add_system_from_database",
+                           fails_after_the_system), \
+            mock.patch.object(system_wizard, "messagebox") as mb:
+        mb.askyesno.return_value = True
+        dialog._add_system()
+        assert "Nothing was added" in mb.showerror.call_args[0][1]
+    assert app.prs.to_bytes() == before
+    assert app.modified is False
+    assert get_system_by_name("PSERN") is not None
+
+
 def test_keys_ignored_in_text_fields(app):
     calls = []
     handler = app._unless_typing(lambda: calls.append(1))
