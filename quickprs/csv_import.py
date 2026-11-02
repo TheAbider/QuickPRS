@@ -207,7 +207,10 @@ def import_conv_csv(filepath):
     """Import CONV_SET.csv → list of ConvSet.
 
     Expected columns (flexible matching):
-      Set, ShortName, TxFreq, RxFreq, TxTone, RxTone, LongName
+      Set, ShortName, TxFreq, RxFreq, TxTone, RxTone, LongName,
+      TX, RX, Scan, Narrowband (Y/N; when missing, Y, Y, Y, N)
+    In a file with no TxFreq or RxFreq column, TX and RX are the
+    frequencies, not the flags.
     """
     filepath = Path(filepath)
     rows = _read_csv(filepath)
@@ -224,6 +227,15 @@ def import_conv_csv(filepath):
         'rx_tone': ['rxtone', 'rx_tone'],
         'long_name': ['longname', 'long_name', 'long', 'description'],
     })
+    flags = _map_columns(header, {
+        'tx': ['tx', 'transmit'],
+        'rx': ['rx', 'receive'],
+        'scan': ['scan'],
+        'narrowband': ['narrowband', 'nb'],
+    })
+    for flag, freq in (('tx', 'tx_freq'), ('rx', 'rx_freq')):
+        if flags[flag] == col_map[freq]:
+            flags[flag] = -1
 
     sets_dict = {}
     default_set = filepath.stem[:8].upper()
@@ -257,6 +269,11 @@ def import_conv_csv(filepath):
         sets_dict[set_name].append(ConvChannel(
             short_name=short, tx_freq=tx, rx_freq=rx,
             tx_tone=tx_tone, rx_tone=rx_tone, long_name=long_name,
+            tx=_parse_bool(_get_field(row, flags, 'tx', 'Y')),
+            rx=_parse_bool(_get_field(row, flags, 'rx', 'Y')),
+            scan=_parse_bool(_get_field(row, flags, 'scan', 'Y')),
+            narrowband=_parse_bool(_get_field(row, flags, 'narrowband',
+                                              'N')),
         ))
 
     return [ConvSet(name=name, channels=channels)

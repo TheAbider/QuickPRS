@@ -24,6 +24,7 @@ All notable changes to QuickPRS will be documented in this file.
 - GUI: Save always kept a backup whatever the auto backup setting said; sixteen settings nothing read (a default NAC, a scan limit, an export folder and thirteen P25 system options QuickPRS cannot write) are gone
 - GUI: editors that change only the open personality say Apply, not Save; a failure writing the recent files list no longer fails a save
 - Shell completions listed 33 of the 63 commands and stale flags; they are now read from the CLI's parser
+- CONV_SET.csv (`export-csv`, `import-csv`, the GUI's Import Wizard) did not carry a channel's TX, RX, scan or narrowband flag, so a receive-only channel came back transmitting and a narrowband one wide; the file now has TX, RX, Scan and Narrowband columns (Y/N) after the old ones, and files without them import as before
 - `radio analyze --extract FILE` wrote over FILE when it existed, which could be the .PRS RPM saved for the same session; it now takes the next free name
 - `radio probe`, `relay` and `sniff` wrote over an existing capture file (`sniff` and `relay` default to `session.jsonl`, so a second session replaced the first); a capture is now never written over, and the next free name is used
 

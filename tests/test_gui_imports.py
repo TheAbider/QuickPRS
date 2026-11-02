@@ -488,3 +488,177 @@ def test_database_dialog_and_import_wizard_apply_settings(app):
     flags = build_sys_flags(app.settings)
     assert [(f, home) for f, home, _ in trk_settings(app.prs)] == [
         (flags, 12345), (flags, 12345)]
+
+
+# ── Import Wizard ─────────────────────────────────────────────────────
+
+def conv_sets(prs):
+    from quickprs.record_types import (
+        parse_conv_channel_section, parse_sets_from_sections)
+    return parse_sets_from_sections(
+        prs.get_section_by_class("CConvSet").raw,
+        prs.get_section_by_class("CConvChannel").raw,
+        parse_conv_channel_section)
+
+
+def group_sets(prs):
+    from quickprs.record_types import (
+        parse_group_section, parse_sets_from_sections)
+    return parse_sets_from_sections(
+        prs.get_section_by_class("CP25GroupSet").raw,
+        prs.get_section_by_class("CP25Group").raw, parse_group_section)
+
+
+@pytest.fixture
+def wizard(app):
+    from quickprs.gui.import_wizard import ImportWizard
+    w = ImportWizard(app.root, app)
+    yield w
+    w.destroy()
+
+
+def test_templates_keep_their_flags(app, wizard):
+    """NOAA went in with TX on, FRS and MURS wideband: the wizard copied
+    the names, frequencies and tones but not the flags."""
+    from quickprs.gui import import_wizard
+    from quickprs.templates import get_template_channels
+    for name in ("noaa", "frs", "murs", "gmrs"):
+        wizard._template_vars[name].set(True)
+    with mock.patch.object(import_wizard, "messagebox"):
+        wizard._import_templates()
+    sets = {cs.name: cs.channels for cs in conv_sets(app.prs)}
+    for name in ("noaa", "frs", "murs", "gmrs"):
+        want = get_template_channels(name)
+        got = sets[name.upper()]
+        assert [c.tx for c in got] == [w.get("tx", True) for w in want]
+        assert [c.narrowband for c in got] == [
+            w.get("narrowband", False) for w in want]
+    assert not any(c.tx for c in sets["NOAA"])
+    assert all(c.narrowband for c in sets["FRS"])
+
+
+def test_quickprs_csv_sets_go_in_as_they_are(app, wizard, tmp_path):
+    """A talkgroup CSV's sets were merged into one, with TX off and scan
+    on for every talkgroup."""
+    from quickprs.csv_export import export_group_sets
+    from quickprs.gui import import_wizard
+    from quickprs.injector import make_group_set
+    police = make_group_set("POLICE", [(100, "PD", "Police")])
+    police.groups[0].tx = True
+    fire = make_group_set("FIRE", [(200, "FD", "Fire")])
+    fire.groups[0].scan = False
+    path = tmp_path / "groups.csv"
+    export_group_sets(str(path), [police, fire])
+    wizard._file_path_var.set(str(path))
+    wizard._file_format_var.set("quickprs")
+    with mock.patch.object(import_wizard, "messagebox") as mb,             mock.patch.object(import_wizard, "_ask_set_name",
+                              return_value="MERGED") as ask:
+        mb.askyesno.return_value = True
+        wizard._import_file()
+        mb.showerror.assert_not_called()
+        ask.assert_not_called()             # two sets: their own names
+    sets = {g.name: g.groups for g in group_sets(app.prs)}
+    assert [(g.group_id, g.tx, g.scan) for g in sets["POLICE"]] == [
+        (100, True, True)]
+    assert [(g.group_id, g.tx, g.scan) for g in sets["FIRE"]] == [
+        (200, False, False)]
+
+
+def test_quickprs_csv_lone_set_takes_a_name(app, wizard, tmp_path):
+    from quickprs.csv_export import export_conv_sets
+    from quickprs.gui import import_wizard
+    from quickprs.injector import make_conv_set
+    path = tmp_path / "conv.csv"
+    export_conv_sets(str(path), [make_conv_set("MURS", [
+        {"short_name": "MURS 1", "tx_freq": 151.82, "narrowband": True}])])
+    wizard._file_path_var.set(str(path))
+    wizard._file_format_var.set("quickprs")
+    with mock.patch.object(import_wizard, "messagebox") as mb, \
+            mock.patch.object(import_wizard, "_ask_set_name",
+                              return_value="MYMURS"):
+        wizard._import_file()
+        mb.showerror.assert_not_called()
+    [cs] = [c for c in conv_sets(app.prs) if c.name == "MYMURS"]
+    assert [(c.short_name, c.narrowband) for c in cs.channels] == [
+        ("MURS 1", True)]
+    from quickprs.injector import systems_using_set
+    assert systems_using_set(app.prs, "conv", "MYMURS") == ["MYMURS"]
+
+
+def test_a_file_after_a_quickprs_csv(app, wizard, tmp_path):
+    """The next file's import must not bring the CSV's sets back."""
+    from quickprs.csv_export import export_group_sets
+    from quickprs.gui import import_wizard
+    from quickprs.injector import make_group_set
+    csv_path = tmp_path / "groups.csv"
+    export_group_sets(str(csv_path), [
+        make_group_set("POLICE", [(100, "PD", "Police")])])
+    freqs = tmp_path / "freqs.txt"
+    freqs.write_text("155760000\n")              # a DSD+ list, in Hz
+    with mock.patch.object(import_wizard, "messagebox") as mb, \
+            mock.patch.object(import_wizard, "_ask_set_name",
+                              side_effect=["POLICE", "FREQS"]):
+        for path, fmt in ((csv_path, "quickprs"), (freqs, "dsd+")):
+            wizard._file_path_var.set(str(path))
+            wizard._file_format_var.set(fmt)
+            wizard._import_file()
+        mb.showerror.assert_not_called()
+    [freq_set] = [c for c in conv_sets(app.prs) if c.name == "FREQS"]
+    assert [c.rx_freq for c in freq_set.channels] == [155.76]
+
+
+def test_quickprs_csv_trunk_sets(app, wizard, tmp_path):
+    """Trunk CSVs (and P25 conventional ones) were "No importable data"."""
+    from quickprs.csv_export import export_trunk_sets
+    from quickprs.gui import import_wizard
+    from quickprs.injector import _set_names, make_trunk_set
+    path = tmp_path / "trunk.csv"
+    export_trunk_sets(str(path), [make_trunk_set("TRK", [
+        (806.0125, 851.0125)])])
+    wizard._file_path_var.set(str(path))
+    wizard._file_format_var.set("quickprs")
+    with mock.patch.object(import_wizard, "messagebox") as mb, \
+            mock.patch.object(import_wizard, "_ask_set_name",
+                              return_value="TRK"):
+        wizard._import_file()
+        mb.showerror.assert_not_called()
+        mb.showinfo.assert_not_called()
+    assert _set_names(app.prs, "trunk sets") == ["TRK"]
+
+
+def test_quickprs_csv_set_name_taken_imports_nothing(app, wizard,
+                                                     tmp_path):
+    from quickprs.csv_export import export_group_sets
+    from quickprs.gui import import_wizard
+    from quickprs.injector import _safe_add_group_set, make_group_set
+    _safe_add_group_set(app.prs, make_group_set("FIRE", [(9, "X", "X")]))
+    before = app.prs.to_bytes()
+    path = tmp_path / "groups.csv"
+    export_group_sets(str(path), [
+        make_group_set("POLICE", [(100, "PD", "Police")]),
+        make_group_set("FIRE", [(200, "FD", "Fire")])])
+    wizard._file_path_var.set(str(path))
+    wizard._file_format_var.set("quickprs")
+    with mock.patch.object(import_wizard, "messagebox") as mb,             mock.patch.object(import_wizard, "_ask_set_name",
+                              return_value="MERGED"):
+        mb.askyesno.return_value = True
+        wizard._import_file()
+        assert "Nothing was imported" in mb.showerror.call_args[0][1]
+    assert app.prs.to_bytes() == before
+
+
+def test_clipboard_import_takes_what_is_in_the_box(app, wizard):
+    """Preview one paste, replace it, press Import: the first was
+    imported."""
+    from quickprs.gui import import_wizard
+    header = "DEC\tHEX\tMode\tAlpha Tag\tDescription\tTag\n"
+    wizard._clip_text.insert("1.0", header + "7001\t1b59\tT\tA\tA\tLaw\n")
+    wizard._preview_clipboard()
+    wizard._clip_text.delete("1.0", "end")
+    wizard._clip_text.insert("1.0", header + "8001\t1f41\tT\tB\tB\tLaw\n")
+    with mock.patch.object(import_wizard, "_ask_set_name",
+                           return_value="CLIP"), \
+            mock.patch.object(import_wizard, "messagebox"):
+        wizard._import_clipboard()
+    [clip] = [g for g in group_sets(app.prs) if g.name == "CLIP"]
+    assert [g.group_id for g in clip.groups] == [8001]

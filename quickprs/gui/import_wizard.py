@@ -36,6 +36,7 @@ class ImportWizard(tk.Toplevel):
         # Preview data (set by each tab's preview action)
         self._preview_data = None
         self._preview_type = None  # 'channels', 'talkgroups', 'templates'
+        self._csv_sets = None      # a QuickPRS CSV's sets (_load_file)
 
         self._build_ui()
 
@@ -215,6 +216,7 @@ class ImportWizard(tk.Toplevel):
 
         channels = []
         talkgroups = []
+        self._csv_sets = None
 
         if fmt == 'auto':
             fmt = detect_scanner_format(path)
@@ -225,6 +227,10 @@ class ImportWizard(tk.Toplevel):
             channels = import_dsd_freqs(path)
         elif fmt == 'quickprs':
             data_type, objects = import_qprs_csv(path)
+            # The sets go in as they are, each under its own name and with
+            # every flag (_import_csv_sets); these lists are the preview
+            if objects and data_type != 'unknown':
+                self._csv_sets = (data_type, objects)
             if data_type == 'groups':
                 for gs in objects:
                     for g in gs.groups:
@@ -233,17 +239,17 @@ class ImportWizard(tk.Toplevel):
                             'short_name': g.group_name,
                             'long_name': g.long_name,
                         })
-            elif data_type == 'conv':
+            elif data_type in ('conv', 'p25conv', 'trunk'):
                 for cs in objects:
                     for ch in cs.channels:
                         channels.append({
-                            'short_name': ch.short_name,
+                            'short_name': getattr(ch, 'short_name', ''),
                             'tx_freq': ch.tx_freq,
                             'rx_freq': ch.rx_freq,
-                            'tx_tone': ch.tx_tone,
-                            'rx_tone': ch.rx_tone,
-                            'long_name': ch.long_name,
-                            'system_name': '',
+                            'tx_tone': getattr(ch, 'tx_tone', ''),
+                            'rx_tone': getattr(ch, 'rx_tone', ''),
+                            'long_name': getattr(ch, 'long_name', ''),
+                            'system_name': cs.name,
                         })
         elif fmt == 'freq_list':
             channels = import_dsd_freqs(path)
@@ -290,6 +296,9 @@ class ImportWizard(tk.Toplevel):
         if not channels and not talkgroups:
             messagebox.showinfo("No Data", "No importable data found in file.", parent=self)
             return
+        if self._csv_sets:
+            self._import_csv_sets(*self._csv_sets)
+            return
 
         # Ask for set name
         from pathlib import Path as P
@@ -314,6 +323,58 @@ class ImportWizard(tk.Toplevel):
             messagebox.showerror("Import Error",
                                  f"{e}\n\nNothing was imported.",
                                  parent=self)
+
+    def _import_csv_sets(self, data_type, sets):
+        """Add the sets of a QuickPRS CSV as they are: each under its own
+        name, with every flag and channel setting.  A lone set can take
+        another name.  Conventional sets get a conventional system, as the
+        other imports here give them; trunk and talkgroup sets are added
+        for a system to use.  When one cannot go in, none do."""
+        if len(sets) == 1:
+            name = _ask_set_name(self, sets[0].name[:8])
+            if not name:
+                return
+            sets[0].name = name
+        elif not messagebox.askyesno(
+                "Import Sets",
+                f"Import the file's {len(sets)} sets, each under its own "
+                f"name: {', '.join(s.name for s in sets)}?", parent=self):
+            return
+        self.app.save_undo_snapshot(f"Import {len(sets)} set(s)")
+        try:
+            for s in sets:
+                self._add_csv_set(data_type, s)
+            self.app.personality_view.refresh()
+            self.app.mark_modified()
+            names = ", ".join(s.name for s in sets)
+            self._file_status.config(text="Imported successfully!")
+            self._status_label.config(text=f"Imported {names}")
+        except Exception as e:
+            self.app.roll_back()
+            messagebox.showerror("Import Error",
+                                 f"{e}\n\nNothing was imported.",
+                                 parent=self)
+
+    def _add_csv_set(self, data_type, s):
+        from ..injector import (
+            _safe_add_group_set, _safe_add_trunk_set, add_conv_system,
+            add_p25_conv_set, add_p25_conv_system,
+        )
+        from ..record_types import ConvSystemConfig, P25ConvSystemConfig
+        prs = self.app.prs
+        if data_type == 'groups':
+            _safe_add_group_set(prs, s)
+        elif data_type == 'trunk':
+            _safe_add_trunk_set(prs, s)
+        elif data_type == 'conv':
+            add_conv_system(prs, ConvSystemConfig(
+                system_name=s.name[:8], long_name=s.name[:16],
+                conv_set_name=s.name[:8]), conv_set=s)
+        elif data_type == 'p25conv':
+            add_p25_conv_set(prs, s)
+            add_p25_conv_system(prs, P25ConvSystemConfig(
+                system_name=s.name[:8], long_name=s.name[:16],
+                conv_set_name=s.name[:8]))
 
     # ─── From Template tab ────────────────────────────────────────────
 
@@ -466,16 +527,15 @@ class ImportWizard(tk.Toplevel):
             channels = get_template_channels(name)
             set_name = name[:8].upper()
 
+            # Every field the template gives, its TX, scan and narrowband
+            # flags among them (NOAA receive only, FRS and MURS narrow)
             channels_data = []
             for ch in channels:
-                channels_data.append({
-                    'short_name': ch.get('short_name', '')[:8],
-                    'tx_freq': ch.get('tx_freq', 0),
-                    'rx_freq': ch.get('rx_freq', ch.get('tx_freq', 0)),
-                    'tx_tone': ch.get('tx_tone', ''),
-                    'rx_tone': ch.get('rx_tone', ''),
-                    'long_name': ch.get('long_name', '')[:16],
-                })
+                data = dict(ch)
+                data['short_name'] = ch.get('short_name', '')[:8]
+                data['long_name'] = ch.get('long_name', '')[:16]
+                data.setdefault('rx_freq', ch.get('tx_freq', 0))
+                channels_data.append(data)
 
             try:
                 self._inject_channels(set_name, channels_data)
@@ -813,7 +873,7 @@ class ImportWizard(tk.Toplevel):
             lines.append("")
             lines.append("Supported formats:")
             lines.append("  - RadioReference talkgroup tables (copy from website)")
-            lines.append("  - Frequency lists (one per line, in MHz or Hz)")
+            lines.append("  - Frequency lists (one per line, in MHz)")
             lines.append("  - Tab-separated channel data")
 
         self._clip_preview.config(state=tk.NORMAL)
@@ -831,12 +891,12 @@ class ImportWizard(tk.Toplevel):
             messagebox.showwarning("No File", "Load a PRS file first.", parent=self)
             return
 
+        # What is in the box now, which may not be what was previewed
+        self._preview_clipboard()
         if not self._clip_data:
-            self._preview_clipboard()
-            if not self._clip_data:
-                messagebox.showinfo("No Data",
-                                    "Click 'Detect & Preview' first.", parent=self)
-                return
+            messagebox.showinfo("No Data", "No talkgroups, frequencies or "
+                                "channels found in the text.", parent=self)
+            return
 
         set_name = _ask_set_name(self, "IMPORT")
         if not set_name:
