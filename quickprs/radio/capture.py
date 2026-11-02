@@ -51,13 +51,16 @@ class Capture:
                    if direction is None or c.direction == direction)
 
 
-def _create(path):
+def create_new(path, binary=False):
     """A new file at ``path``, or at the next free numbered name when that
-    is taken, and the path used."""
+    is taken (``read-2.jsonl``, ``read-3.jsonl`` ...), and the path used:
+    nothing is ever written over."""
     first = Path(path)
     p, n = first, 1
     while True:
         try:
+            if binary:
+                return open(p, "xb"), p
             return open(p, "x", encoding="utf-8", newline="\n"), p
         except FileExistsError:
             n += 1
@@ -73,7 +76,7 @@ class CaptureWriter:
     """
 
     def __init__(self, path, note=""):
-        self._f, self.path = _create(path)
+        self._f, self.path = create_new(path)
         self._t0 = time.monotonic()
         self._lock = threading.Lock()
         header = {"capture": "quickprs", "version": 1,

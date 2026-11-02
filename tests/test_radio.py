@@ -194,6 +194,169 @@ def test_extract_personality_from_framed_replies():
     assert analyze.extract_personality(b"\x00" * 64) is None
 
 
+def _patrol_bytes():
+    """A personality with systems, channels and talkgroups (from the
+    example INI), a few kilobytes long."""
+    from pathlib import Path
+    from quickprs.config_builder import build_from_config
+    ini = Path(__file__).parent / "testdata" / "example_patrol.ini"
+    return build_from_config(str(ini)).to_bytes()
+
+
+def _framed(data, size=200):
+    """``data`` sent in packets: STX, a sequence number and the length
+    before each piece, a sum and ETX after it."""
+    out = b""
+    for seq, i in enumerate(range(0, len(data), size)):
+        chunk = data[i:i + size]
+        out += (bytes([0x02, seq & 0xFF]) + len(chunk).to_bytes(2, "little")
+                + chunk + bytes([sum(chunk) & 0xFF, 0x03]))
+    return out
+
+
+def test_align_finds_the_framing():
+    prs = _patrol_bytes()
+    stream = b"\x06XG-100P" + _framed(prs)
+    al = analyze.align(stream, prs)
+    assert al.found == len(prs) and not al.missing
+    packets = -(-len(prs) // 200)
+    assert len(al.pieces) == packets
+    # the sum, ETX, STX, sequence and length between two packets' data
+    gaps = [len(g) for _, g in al.gaps]
+    assert len(gaps) == packets - 1 and set(gaps) == {6}
+    assert al.gaps[0][1] == bytes([sum(prs[:200]) & 0xFF, 0x03, 0x02, 0x01,
+                                   0xC8, 0x00])
+    text = "\n".join(analyze.alignment_report(al, stream, len(prs)))
+    assert f"{len(prs):,} of its {len(prs):,} bytes (100.0%)" in text
+    assert f"in {packets} pieces" in text
+    assert "piece sizes: 200 B x" in text
+    assert f"6 B x{packets - 1}" in text
+    assert ("  before the first piece (stream offset 0xc): 06 58 47 2d 31 "
+            "30 30 50 02 00 c8 00") in text.splitlines()
+
+
+def test_align_notes_what_is_missing():
+    prs = _patrol_bytes()
+    packets = _framed(prs)
+    each = 4 + 200 + 2
+    dropped = packets[:3 * each] + packets[4 * each:]   # the fourth packet
+    al = analyze.align(dropped, prs)
+    assert al.found == len(prs) - 200
+    assert al.missing == [(600, 200)]
+    # RPM's saved copy differs in one byte
+    changed = bytearray(prs)
+    changed[1000] ^= 0xFF
+    al = analyze.align(_framed(prs), bytes(changed))
+    assert al.missing == [(1000, 1)]
+    assert al.found == len(prs) - 1
+    text = "\n".join(analyze.alignment_report(al, _framed(prs), len(prs)))
+    assert "not found: 1 bytes in 1 places, the first at file offset " \
+           "0x3e8" in text
+
+
+def test_align_far_ahead_and_not_at_all():
+    prs = _patrol_bytes()
+    stream = _framed(prs[:400]) + b"\x00" * 9000 + _framed(prs[400:])
+    al = analyze.align(stream, prs)
+    assert al.found == len(prs) and not al.missing
+    assert max(len(g) for _, g in al.gaps) > 9000
+    al = analyze.align(bytes(range(256)) * 20, prs)
+    assert al.pieces == [] and al.found == 0
+    assert al.missing == [(0, len(prs))]
+    text = "\n".join(analyze.alignment_report(al, b"", len(prs)))
+    assert "None of it is in the radio's answers as RPM saves it" in text
+
+
+def _varied(seed, n):
+    """``n`` bytes of 1-255 (no zeros), the same for the same seed."""
+    import random
+    rnd = random.Random(seed)
+    return bytes(rnd.randrange(1, 256) for _ in range(n))
+
+
+SEP = b"\x02\x01\x03\x04"
+
+
+def _scenarios():
+    A, M, B, C, D, E = (_varied(i, 200) for i in range(1, 7))
+    Z = bytes(200)
+    out = {}
+    # zeros next in the file, a short run of zeros further on: not a place
+    # to go on from
+    known = A + Z + B + C[:100] + bytes(40) + D[:100]
+    out["zeros far on"] = (known, A + SEP + B + SEP + C[:100] + bytes(40)
+                           + D[:100], [(200, 200)])
+    # the file's next bytes repeat a little further on, for a short run
+    b = B[:100] + M[:20] + B[120:]
+    out["short repeat far on"] = (A + M + b, A + SEP + b, [(200, 200)])
+    # after a missing packet, the next bytes also appear earlier in the
+    # missing part, for a shorter run
+    m = M[:50] + B[:40] + M[90:]
+    out["longest candidate"] = (A + m + B, A + SEP + B, [(200, 200)])
+    # a few bytes of the file in other traffic before it goes on
+    out["short run in traffic"] = (A + M + B + E, A + SEP + E[50:65] + SEP
+                                   + B + SEP + E, [(200, 200)])
+    # the packet after a missing one starts with zeros
+    b = bytes(20) + B[20:]
+    out["back over zeros"] = (A + M + b, A + SEP + b, [(200, 200)])
+    # zeros in other traffic, while the file has zeros further on
+    out["zeros in traffic"] = (A + M + bytes(100) + B, A + SEP + bytes(50)
+                               + SEP + B, [(200, 300)])
+    # a packet missing, and the whole file again further on: go on in the
+    # first copy
+    big = b"".join(_varied(10 + i, 200) for i in range(20))
+    out["second copy"] = (A + M + big, A + SEP + big + SEP + A + M + big,
+                          [(200, 200)])
+    return out
+
+
+@pytest.mark.parametrize("name", list(_scenarios()))
+def test_align_scenarios(name):
+    known, stream, missing = _scenarios()[name]
+    al = analyze.align(stream, known)
+    assert al.missing == missing
+    assert al.found == len(known) - sum(n for _, n in missing)
+    # pieces go forward through both the stream and the file
+    for (j1, k1, n1), (j2, k2, n2) in zip(al.pieces, al.pieces[1:]):
+        assert j2 >= j1 + n1 and k2 >= k1 + n1
+
+
+def test_resync_never_goes_back_in_the_file():
+    A, B = _varied(1, 200), _varied(2, 200)
+    known = A + B
+    grams = analyze._grams(known)
+    assert analyze._resync(A, known, 0, 0, grams) == (0, 0, 200)
+    assert analyze._resync(A, known, 0, 200, grams) is None
+
+
+def test_cli_analyze_against(tmp_path, capsys):
+    from quickprs.cli import run_cli
+    prs = _patrol_bytes()
+    path = tmp_path / "a.jsonl"
+    with capture.CaptureWriter(path) as w:
+        w.add(PC_TO_RADIO, b"\x02READ")
+        w.add(RADIO_TO_PC, _framed(prs))
+    saved = tmp_path / "rpm.PRS"
+    saved.write_bytes(prs)
+    assert run_cli(["radio", "analyze", str(path), "--against",
+                    str(saved)]) == 0
+    out = capsys.readouterr().out
+    assert f"Against {saved}:" in out
+    assert "(100.0%) are in the radio's answers" in out
+    assert "RPM's requests" not in out          # none of it there
+    assert run_cli(["radio", "analyze", str(path), "--against",
+                    str(tmp_path / "none.PRS")]) == 1
+    # a write: RPM sends it, and the radio answers with a little
+    with capture.CaptureWriter(tmp_path / "w.jsonl") as w:
+        w.add(PC_TO_RADIO, _framed(prs))
+        w.add(RADIO_TO_PC, b"\x06")
+    assert run_cli(["radio", "analyze", str(w.path), "--against",
+                    str(saved)]) == 0
+    out = capsys.readouterr().out
+    assert "(0.0%) are in the radio's answers" in out
+    assert "(100.0%) are in RPM's requests" in out
+
+
 def test_report_mentions_archive_and_text(tmp_path):
     prs = _blank_bytes()
     path = tmp_path / "a.jsonl"
@@ -369,6 +532,43 @@ def test_capture_lines(tmp_path):
     assert replay.capture_lines(_conversation(tmp_path)) is None
 
 
+def test_capture_lines_in_force_at_the_first_request(tmp_path):
+    """A port opened to check the trace, then RPM setting its lines and
+    clearing them at the end: the lines that count are the last ones set
+    before RPM's first request."""
+    with capture.CaptureWriter(tmp_path / "lines.jsonl") as w:
+        w.event("pc dtr=0 rts=0", t=0.0)       # the check's port
+        w.event("pc dtr=1 rts=1", t=0.05)      # RPM's
+        w.add(PC_TO_RADIO, b"\x02HELLO", t=0.1)
+        w.event("pc dtr=0 rts=0", t=0.5)       # RPM closing its port
+    assert replay.capture_lines(capture.read_capture(w.path)) == (True,
+                                                                  True)
+    # set only after the first request: still the best guess there is
+    with capture.CaptureWriter(tmp_path / "late.jsonl") as w:
+        w.add(PC_TO_RADIO, b"\x02HELLO", t=0.1)
+        w.event("pc dtr=1 rts=0", t=0.2)
+        w.event("pc dtr=0 rts=0", t=0.3)
+    assert replay.capture_lines(capture.read_capture(w.path)) == (True,
+                                                                  False)
+
+
+def test_session_kind(tmp_path):
+    cap, prs = _read_session(tmp_path)
+    assert analyze.session_kind(cap).startswith("Looks like a read")
+    assert "Looks like a read" in "\n".join(analyze.report(cap))
+    with capture.CaptureWriter(tmp_path / "w.jsonl") as w:
+        w.add(PC_TO_RADIO, b"\x02WRITE" + prs)
+        w.add(RADIO_TO_PC, b"\x06" + prs)     # read back to verify
+    assert analyze.session_kind(capture.read_capture(w.path)).startswith(
+        "Looks like a write")
+    text = analyze.session_kind(_conversation(tmp_path))
+    assert "Neither side" in text and "Full Packet Logging" in text
+    with capture.CaptureWriter(tmp_path / "e.jsonl") as w:
+        w.event("pc dtr=1 rts=0", t=0.0)
+    assert analyze.session_kind(capture.read_capture(w.path)) == (
+        "Nothing crossed the link.")
+
+
 def test_replay_gets_the_same_answers(tmp_path):
     cap, prs = _read_session(tmp_path)
     radio = FakeRadio(_answers(prs))
@@ -521,3 +721,11 @@ def test_cli_analyze_extracts(tmp_path, capsys):
     assert run_cli(["radio", "analyze", str(path), "--extract",
                     str(out_prs)]) == 0
     assert out_prs.read_bytes() == prs
+    # a file already there (the .PRS RPM saved, say) is never written over
+    out_prs.write_bytes(b"RPM's own copy")
+    capsys.readouterr()
+    assert run_cli(["radio", "analyze", str(path), "--extract",
+                    str(out_prs)]) == 0
+    assert out_prs.read_bytes() == b"RPM's own copy"
+    assert (tmp_path / "radio-2.PRS").read_bytes() == prs
+    assert "radio-2.PRS" in capsys.readouterr().out

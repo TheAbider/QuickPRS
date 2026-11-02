@@ -10,6 +10,7 @@ import io
 import socket
 import struct
 import threading
+import time
 
 import pytest
 
@@ -163,6 +164,28 @@ def test_only_the_radios_link_with_an_address():
     assert ("pc>radio", b"headset") in chunks(records)
 
 
+def test_report_names_links_to_other_devices():
+    """When every data packet went to another device, the report says
+    which, so a wrong radio address shows."""
+    records = [
+        (1.0, RECV, conn_complete(H2, OTHER)),
+        (1.1, SENT, acl(H2, conn_req(2, 0x0044))),
+        (1.2, RECV, acl(H2, conn_rsp(2, 0x0045, 0x0044))),
+    ]
+    stats = hci.TraceStats()
+    assert chunks(records, address=RADIO, stats=stats) == []
+    assert stats.other_links == {OTHER: 2}
+    text = "\n".join(hci.describe(stats, RADIO))
+    assert f"{OTHER} (2)" in text and "--address" in text
+    assert "Full Packet Logging" not in text
+    # data on the radio's own link without RFCOMM frames as well
+    records.append((1.3, SENT, acl(H, l2cap(0x0050, b"\x01\x02\x03"))))
+    stats = hci.TraceStats()
+    chunks(records, address=RADIO, stats=stats)
+    text = "\n".join(hci.describe(stats, RADIO))
+    assert "--address" in text and "Full Packet Logging" in text
+
+
 def test_trace_started_mid_session():
     """Without the connection setup, a valid RFCOMM frame names the
     channel."""
@@ -209,7 +232,9 @@ def test_sniff_command_from_a_file(tmp_path, capsys):
     cap = read_capture(log)
     assert cap.stream("pc>radio") == b"hello"
     assert cap.stream("radio>pc") == reply
-    assert "radio to RPM: 300 bytes" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "radio to RPM: 300 bytes" in out
+    assert "Neither side sent a .PRS personality" in out
 
 
 def test_sniff_never_writes_over_a_capture(tmp_path, capsys):
@@ -245,6 +270,159 @@ def test_sniff_command_live(tmp_path):
     log = tmp_path / "live.jsonl"
     assert cmd_radio_sniff(port=port, log=str(log), address=RADIO) == 0
     assert read_capture(log).stream("radio>pc") == reply
+
+
+# ── checking the trace before RPM runs ───────────────────────────────
+
+class _Port:
+    """The radio's COM port: the check opens and closes it, never
+    writes."""
+
+    def __init__(self):
+        self.closed = False
+
+    def write(self, data):
+        raise AssertionError("the check sent bytes to the radio")
+
+    def close(self):
+        self.closed = True
+
+
+def _check(records, address=RADIO, error=None, before=()):
+    """check_trace on a port whose opening puts ``records`` into the
+    trace (``before`` is there already).  Returns (passed, text, port,
+    seconds waited)."""
+    from quickprs.radio import commands
+    from quickprs.radio.link import LinkError
+    stats = hci.TraceStats()
+    decoder = hci.SerialFromHci(address, stats)
+
+    def play(recs):
+        for _t, sent, h4 in recs:
+            stats.packets += 1
+            decoder.feed(hci.SENT if sent else hci.RECEIVED, h4)
+
+    play(before)
+    port = _Port()
+
+    def opener(name):
+        assert name == "COM6"
+        if error:
+            raise LinkError(error)
+        play(records)
+        return port
+
+    now = [0.0]
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    passed, lines = commands.check_trace("COM6", stats, address=address,
+                                         opener=opener,
+                                         clock=lambda: now[0], sleep=sleep)
+    return passed, " ".join(lines), port, now[0]
+
+
+def test_check_passes_when_the_trace_shows_the_channel_opening():
+    _, records = session()
+    passed, text, port, waited = _check(records[:5])
+    assert passed and "Check passed" in text
+    assert "Full Packet Logging" in text      # it cannot see that
+    assert port.closed and waited < 0.5
+
+
+@pytest.mark.parametrize("records, words", [
+    ([], "passed on nothing"),
+    ([(1.0, RECV, conn_complete(H2, OTHER)),
+      (1.1, SENT, acl(H2, conn_req(2, 0x0044))),
+      (1.2, SENT, acl(H2, l2cap(0x0045, rfcomm(0, hci.RFCOMM_SABM,
+                                                pf=True))))],
+     f"went to {OTHER}, not to the radio ({RADIO})"),
+    ([(1.0, RECV, conn_complete(H, RADIO)),
+      (1.1, SENT, acl(H, l2cap(0x0050, b"\x01\x02\x03\x04\x05")))],
+     "click Full Packet Logging"),
+    ([(1.0, RECV, conn_complete(H, RADIO))], "click Full Packet Logging"),
+])
+def test_check_fails_and_says_why(records, words):
+    passed, text, port, waited = _check(records)
+    assert not passed
+    assert words in text
+    assert port.closed and waited >= 5.0
+
+
+def test_check_counts_only_what_came_after_the_port_opened():
+    """Frames from before the check do not pass it."""
+    _, records = session()
+    passed, text, _, _ = _check([], before=records[:5])
+    assert not passed and "passed on nothing" in text
+
+
+def test_check_when_the_port_will_not_open():
+    passed, text, port, _ = _check([], error="could not open COM6: "
+                                             "semaphore timeout")
+    assert not passed
+    assert text == "Check failed: could not open COM6: semaphore timeout"
+    assert not port.closed
+
+
+def test_sniff_checks_the_trace_first(tmp_path, capsys, monkeypatch):
+    """--check opens the radio's port once the trace is running; the
+    trace shows the channel open, and RPM's session follows."""
+    from quickprs.radio import commands
+    reply, records = session()
+    monkeypatch.setattr(commands, "CHECK_DELAY", 0)
+    opened, closed = threading.Event(), threading.Event()
+    port = _Port()
+
+    def open_port(name, **kw):
+        assert name == "COM6"
+        opened.set()
+        return port
+
+    monkeypatch.setattr(commands, "open_serial", open_port)
+    _orig_close = port.close
+
+    def close():
+        _orig_close()
+        closed.set()
+        time.sleep(0.3)     # the verdict comes after the trace ends
+
+    port.close = close
+    data = pcap(records)
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+
+    def serve():
+        conn, _ = server.accept()
+        conn.sendall(data[:24])              # the pcap header
+        opened.wait(5)
+        conn.sendall(data[24:])              # the channel opens, and so on
+        closed.wait(5)
+        conn.close()
+        server.close()
+
+    threading.Thread(target=serve, daemon=True).start()
+    log = tmp_path / "live.jsonl"
+    assert commands.cmd_radio_sniff(port=server.getsockname()[1],
+                                    log=str(log), address=RADIO,
+                                    check="COM6") == 0
+    out = capsys.readouterr().out
+    assert "opening COM6 for a moment" in out
+    assert "Check passed" in out
+    assert out.index("Check passed") < out.index("RPM to radio:")
+    assert port.closed
+    assert read_capture(log).stream("radio>pc") == reply
+
+
+def test_sniff_check_needs_the_live_trace(tmp_path, capsys):
+    from quickprs.cli import run_cli
+    trace = tmp_path / "trace.pcap"
+    trace.write_bytes(pcap(session()[1]))
+    assert run_cli(["radio", "sniff", "--pcap", str(trace), "--check",
+                    "COM6", "--log", str(tmp_path / "x.jsonl")]) == 1
+    assert "live trace" in capsys.readouterr().err
+    assert not (tmp_path / "x.jsonl").exists()
 
 
 # ── traces without directions, and the trace report ──────────────────
