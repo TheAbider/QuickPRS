@@ -46,6 +46,7 @@ from .. import __version__
 from ..prs_parser import parse_prs, parse_prs_bytes
 from ..prs_writer import write_prs
 from ..validation import validate_prs, validate_prs_detailed, ERROR, WARNING
+from .. import rpm
 from ..logger import log_action, log_error
 from ..undo import UndoStack
 
@@ -145,6 +146,7 @@ class QuickPRSApp:
                               accelerator="Ctrl+S")
         file_menu.add_command(label="Save As...", command=self.save_as,
                               accelerator="Ctrl+Shift+S")
+        file_menu.add_command(label="Open in RPM", command=self.open_in_rpm)
         file_menu.add_separator()
 
         file_menu.add_command(label="New Blank Personality...",
@@ -864,6 +866,46 @@ class QuickPRSApp:
 
         # Update saved bytes snapshot
         self._last_saved_bytes = saved
+        return True
+
+    def open_in_rpm(self):
+        """Hand the personality to Harris RPM, which writes it to the
+        radio.  RPM reads the file on disk, so changes are saved first,
+        and a file that fails validation is not handed over unasked."""
+        if not self.prs:
+            messagebox.showwarning("Warning", "No file loaded.")
+            return False
+        exe = rpm.find_rpm()
+        if not exe:
+            messagebox.showerror(
+                "RPM Not Found",
+                "Harris RPM (RadPersMgr.exe) is not installed on this PC, "
+                "or not where it installs itself.")
+            return False
+        if self.modified or not self.prs_path:
+            if not messagebox.askokcancel(
+                    "Open in RPM",
+                    "RPM opens the saved file. Save your changes and open "
+                    "it in RPM?"):
+                return False
+            if not self.save_file():
+                return False
+        errors = [m for sev, m in validate_prs(self.prs) if sev == ERROR]
+        if errors and not messagebox.askyesno(
+                "Validation Errors",
+                f"Validation found {len(errors)} error(s), such as:\n\n"
+                f"{errors[0]}\n\nA radio may not work with this "
+                f"personality. Open it in RPM anyway?",
+                icon="warning"):
+            return False
+        try:
+            rpm.open_in_rpm(self.prs_path, exe)
+        except OSError as e:
+            log_error("open_in_rpm", str(e), path=str(self.prs_path))
+            messagebox.showerror("Error", f"Could not start RPM:\n{e}")
+            return False
+        self.status_set(f"Opened {self.prs_path.name} in RPM")
+        log_action("open_in_rpm", path=str(self.prs_path))
         return True
 
     def _offer_change_report(self):

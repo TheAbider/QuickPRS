@@ -133,6 +133,119 @@ def test_failed_db_add_leaves_nothing(app, tmp_path):
     assert get_system_by_name("PSERN") is not None
 
 
+class _RPM:
+    """Stand-ins for finding and starting RPM."""
+
+    def __init__(self, exe="C:/RPM/RadPersMgr.exe"):
+        self.exe = exe
+        self.opened = []
+
+    def find(self):
+        return self.exe
+
+    def open(self, path, exe):
+        self.opened.append((Path(path), exe))
+
+
+@pytest.fixture
+def fake_rpm(monkeypatch):
+    from quickprs import rpm as rpm_module
+    stand_in = _RPM()
+    monkeypatch.setattr(rpm_module, "find_rpm", stand_in.find)
+    monkeypatch.setattr(rpm_module, "open_in_rpm", stand_in.open)
+    return stand_in
+
+
+def test_open_in_rpm_saved_file(app, tmp_path, fake_rpm):
+    from quickprs.builder import create_blank_prs
+    path = tmp_path / "x.PRS"
+    app._set_document(create_blank_prs("x.PRS"), path)
+    with mock.patch("quickprs.gui.app.messagebox") as mb, \
+            mock.patch("quickprs.gui.app.write_prs") as write:
+        assert app.open_in_rpm() is True
+        mb.askokcancel.assert_not_called()        # nothing to save
+        write.assert_not_called()
+    assert fake_rpm.opened == [(path, fake_rpm.exe)]
+
+
+def test_open_in_rpm_saves_changes_first(app, tmp_path, fake_rpm):
+    from quickprs.builder import create_blank_prs
+    path = tmp_path / "x.PRS"
+    app._set_document(create_blank_prs("x.PRS"), path)
+    _change(app, "an edit")
+    with mock.patch("quickprs.gui.app.messagebox") as mb:
+        mb.askokcancel.return_value = False       # not now
+        assert app.open_in_rpm() is False
+        assert fake_rpm.opened == [] and not path.exists()
+        mb.askokcancel.return_value = True
+        mb.askyesno.return_value = False          # no change report
+        assert app.open_in_rpm() is True
+    assert path.exists() and app.modified is False
+    assert fake_rpm.opened == [(path, fake_rpm.exe)]
+
+
+def test_open_in_rpm_failed_save_opens_nothing(app, tmp_path, fake_rpm):
+    from quickprs.builder import create_blank_prs
+    app._set_document(create_blank_prs("x.PRS"), tmp_path / "x.PRS")
+    _change(app, "an edit")
+    with mock.patch("quickprs.gui.app.messagebox") as mb, \
+            mock.patch("quickprs.gui.app.write_prs",
+                       side_effect=PermissionError("locked")):
+        mb.askokcancel.return_value = True
+        assert app.open_in_rpm() is False
+    assert fake_rpm.opened == []
+
+
+def test_open_in_rpm_asks_about_validation_errors(app, tmp_path, fake_rpm):
+    from quickprs.builder import create_blank_prs
+    from quickprs.validation import ERROR, WARNING
+    app._set_document(create_blank_prs("x.PRS"), tmp_path / "x.PRS")
+    found = [(WARNING, "a warning"), (ERROR, "Set A: 300 channels")]
+    with mock.patch("quickprs.gui.app.messagebox") as mb, \
+            mock.patch("quickprs.gui.app.validate_prs",
+                       return_value=found):
+        mb.askyesno.return_value = False
+        assert app.open_in_rpm() is False
+        assert "Set A: 300 channels" in mb.askyesno.call_args[0][1]
+        assert fake_rpm.opened == []
+        mb.askyesno.return_value = True           # open it anyway
+        assert app.open_in_rpm() is True
+    assert len(fake_rpm.opened) == 1
+    # warnings alone never ask
+    with mock.patch("quickprs.gui.app.messagebox") as mb, \
+            mock.patch("quickprs.gui.app.validate_prs",
+                       return_value=found[:1]):
+        assert app.open_in_rpm() is True
+        mb.askyesno.assert_not_called()
+
+
+def test_open_in_rpm_without_rpm(app, tmp_path, fake_rpm):
+    from quickprs.builder import create_blank_prs
+    fake_rpm.exe = None
+    app._set_document(create_blank_prs("x.PRS"), tmp_path / "x.PRS")
+    _change(app, "an edit")
+    with mock.patch("quickprs.gui.app.messagebox") as mb:
+        assert app.open_in_rpm() is False
+        mb.showerror.assert_called()
+        mb.askokcancel.assert_not_called()        # nothing saved for it
+    assert fake_rpm.opened == [] and app.modified is True
+
+
+def test_open_in_rpm_when_rpm_will_not_start(app, tmp_path, fake_rpm,
+                                             monkeypatch):
+    from quickprs import rpm as rpm_module
+    from quickprs.builder import create_blank_prs
+
+    def broken(path, exe):
+        raise OSError("access denied")
+
+    monkeypatch.setattr(rpm_module, "open_in_rpm", broken)
+    app._set_document(create_blank_prs("x.PRS"), tmp_path / "x.PRS")
+    with mock.patch("quickprs.gui.app.messagebox") as mb:
+        assert app.open_in_rpm() is False
+        assert "access denied" in mb.showerror.call_args[0][1]
+
+
 def test_keys_ignored_in_text_fields(app):
     calls = []
     handler = app._unless_typing(lambda: calls.append(1))
