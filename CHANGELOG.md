@@ -9,6 +9,8 @@ All notable changes to QuickPRS will be documented in this file.
 - `quickprs radio analyze --transcript`: the conversation in a capture, message by message (chunks going the same way within 50 ms are one message), and the common message sizes and first bytes in each direction
 - `quickprs radio replay`: send RPM's requests from a captured read to the radio again and compare each answer with the one RPM got, the first test of reading a radio without RPM. It stops at the first answer that differs (`--keep-going` carries on) or when the radio does not answer, keeps RPM's pauses and modem lines, and refuses any capture that is not a read (the radio's answers must hold a personality and RPM's requests must not)
 - `radio sniff` records each side's modem lines (RFCOMM modem status) as events
+- `radio sniff --check`: before RPM runs, open the radio's port for a moment (nothing is sent) and check that the trace shows its serial channel; when it does not, say why (the sniffer passed on nothing, Full Packet Logging is off, or the data went to another device)
+- `radio sniff`, `relay` and `analyze` say what a session looks like: a read (the radio sent a personality), a write (RPM sent one) or neither; the trace report names links to other devices it left out
 - `--skip-encrypted` for `import-rr`, `auto-setup` and `import-paste`: leave out talkgroups RadioReference lists as fully encrypted
 
 ### Fixed

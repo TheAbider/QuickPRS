@@ -4425,7 +4425,7 @@ def build_parser():
                "  quickprs radio scan\n"
                "  quickprs radio probe --port COM6 --seconds 15 "
                "--log first.jsonl\n"
-               "  quickprs radio sniff --log read.jsonl\n"
+               "  quickprs radio sniff --check --log read.jsonl\n"
                "  quickprs radio relay --pc-port COM21 --radio-port COM6 "
                "--log read.jsonl\n"
                "  quickprs radio analyze read.jsonl --transcript 60\n"
@@ -4478,6 +4478,11 @@ def build_parser():
     p_rsniff.add_argument("--log", default="session.jsonl")
     p_rsniff.add_argument("--note", default="",
                           help="What this session is, e.g. 'RPM extract'")
+    p_rsniff.add_argument("--check", nargs="?", const="", default=None,
+                          metavar="COMPORT",
+                          help="First open the radio's port for a moment "
+                               "(nothing is sent) to check the trace shows "
+                               "its link (default: the one paired radio)")
     p_ranalyze = radio_sub.add_parser(
         "analyze", help="Summarise a capture file")
     p_ranalyze.add_argument("capture", help="Capture (.jsonl) file")
@@ -5793,7 +5798,8 @@ def run_cli(args=None):
                 return radio_commands.cmd_radio_sniff(
                     host=parsed.host, port=parsed.port, log=parsed.log,
                     pcap=parsed.pcap, address=parsed.address,
-                    all_links=parsed.all_links, note=parsed.note)
+                    all_links=parsed.all_links, note=parsed.note,
+                    check=parsed.check)
             if parsed.radio_cmd == "analyze":
                 return radio_commands.cmd_radio_analyze(
                     parsed.capture, extract=parsed.extract,

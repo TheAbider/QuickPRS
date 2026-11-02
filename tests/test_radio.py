@@ -369,6 +369,43 @@ def test_capture_lines(tmp_path):
     assert replay.capture_lines(_conversation(tmp_path)) is None
 
 
+def test_capture_lines_in_force_at_the_first_request(tmp_path):
+    """A port opened to check the trace, then RPM setting its lines and
+    clearing them at the end: the lines that count are the last ones set
+    before RPM's first request."""
+    with capture.CaptureWriter(tmp_path / "lines.jsonl") as w:
+        w.event("pc dtr=0 rts=0", t=0.0)       # the check's port
+        w.event("pc dtr=1 rts=1", t=0.05)      # RPM's
+        w.add(PC_TO_RADIO, b"\x02HELLO", t=0.1)
+        w.event("pc dtr=0 rts=0", t=0.5)       # RPM closing its port
+    assert replay.capture_lines(capture.read_capture(w.path)) == (True,
+                                                                  True)
+    # set only after the first request: still the best guess there is
+    with capture.CaptureWriter(tmp_path / "late.jsonl") as w:
+        w.add(PC_TO_RADIO, b"\x02HELLO", t=0.1)
+        w.event("pc dtr=1 rts=0", t=0.2)
+        w.event("pc dtr=0 rts=0", t=0.3)
+    assert replay.capture_lines(capture.read_capture(w.path)) == (True,
+                                                                  False)
+
+
+def test_session_kind(tmp_path):
+    cap, prs = _read_session(tmp_path)
+    assert analyze.session_kind(cap).startswith("Looks like a read")
+    assert "Looks like a read" in "\n".join(analyze.report(cap))
+    with capture.CaptureWriter(tmp_path / "w.jsonl") as w:
+        w.add(PC_TO_RADIO, b"\x02WRITE" + prs)
+        w.add(RADIO_TO_PC, b"\x06" + prs)     # read back to verify
+    assert analyze.session_kind(capture.read_capture(w.path)).startswith(
+        "Looks like a write")
+    text = analyze.session_kind(_conversation(tmp_path))
+    assert "Neither side" in text and "Full Packet Logging" in text
+    with capture.CaptureWriter(tmp_path / "e.jsonl") as w:
+        w.event("pc dtr=1 rts=0", t=0.0)
+    assert analyze.session_kind(capture.read_capture(w.path)) == (
+        "Nothing crossed the link.")
+
+
 def test_replay_gets_the_same_answers(tmp_path):
     cap, prs = _read_session(tmp_path)
     radio = FakeRadio(_answers(prs))

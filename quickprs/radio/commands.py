@@ -1,13 +1,17 @@
 """`quickprs radio ...` commands (see quickprs.radio for the background)."""
 
 import sys
+import threading
+import time
 from pathlib import Path
 
-from .analyze import extract_personality, report
+from .analyze import extract_personality, report, session_kind
 from .bluetooth import (
     SPP_UUID, bluetooth_serial_ports, radio_ports, scan_ble,
 )
-from .capture import CaptureWriter, RADIO_TO_PC, hexdump, read_capture
+from .capture import (
+    CaptureWriter, PC_TO_RADIO, RADIO_TO_PC, hexdump, read_capture,
+)
 from .link import LinkError, open_serial
 from .probe import classify, listen
 
@@ -142,6 +146,8 @@ def cmd_radio_relay(pc_port, radio_port=None, log="session.jsonl",
           f"RPM: {counts['radio>pc']:,} bytes.")
     for direction, e in errors:
         print(f"  {direction} ended: {e}", file=sys.stderr)
+    if counts[PC_TO_RADIO] or counts[RADIO_TO_PC]:
+        print(session_kind(read_capture(writer.path)))
     print(f"Analyze with: quickprs radio analyze {writer.path}")
     return 0
 
@@ -152,18 +158,81 @@ def _radio_address():
     return radios[0].address if len(radios) == 1 else None
 
 
+CHECK_DELAY = 1.0     # seconds of trace before --check opens the port
+
+
+def check_trace(port, stats, address=None, opener=None, wait=5.0,
+                clock=time.monotonic, sleep=time.sleep):
+    """Open the radio's ``port`` for a moment and see whether the trace
+    shows it.  Opening a Bluetooth serial port makes Windows open an
+    RFCOMM channel to the radio, so ``stats`` (which the trace reader fills
+    in as packets come) should count new RFCOMM frames.  Nothing is sent.
+    Returns (passed, lines to print)."""
+    def frames():
+        return sum(stats.rfcomm_frames.values())
+
+    def left_out():
+        return sum(stats.other_links.values())
+
+    packets0, acl0, frames0, others0 = (stats.packets, stats.acl_packets,
+                                        frames(), left_out())
+    try:
+        link = (opener or open_serial)(port)
+    except LinkError as e:
+        return False, [f"Check failed: {e}"]
+    try:
+        end = clock() + wait
+        while frames() - frames0 < 2 and clock() < end:
+            sleep(0.1)
+    finally:
+        link.close()
+    if frames() > frames0:
+        return True, [
+            f"Check passed: the trace shows {port}'s serial channel to the "
+            f"radio opening.",
+            "It cannot show whether Full Packet Logging is on (only large "
+            "packets need it), so make sure you clicked it."]
+    acl = stats.acl_packets - acl0
+    if stats.packets == packets0:
+        why = (f"the sniffer passed on nothing while {port} was open; look "
+               f"for an error in its window")
+    elif acl and left_out() - others0 == acl:
+        why = (f"the Bluetooth data went to "
+               f"{', '.join(sorted(stats.other_links))}, not to the radio"
+               + (f" ({address})" if address else "")
+               + "; if one of those is the radio, start again with "
+               "--address")
+    else:
+        why = (f"the trace shows no serial channel opening while {port} "
+               f"was open; click Full Packet Logging in the sniffer's "
+               f"window")
+    return False, [f"Check failed: {why}."]
+
+
 def cmd_radio_sniff(host="127.0.0.1", port=24352, log="session.jsonl",
-                    pcap=None, address=None, all_links=False, note=""):
+                    pcap=None, address=None, all_links=False, note="",
+                    check=None):
     """Write the serial data in a Bluetooth HCI trace to a capture file.
 
     Live: connect to Microsoft's Bluetooth Virtual Sniffer (btvs.exe
     -Mode Wireshark), which serves the trace on TCP.  Or read a pcap or
     pcapng file saved from it.  Only the serial (RFCOMM) bytes are kept.
+    ``check``, a COM port ("" for the one paired radio), first opens the
+    radio's port for a moment to check that the trace shows its link.
     """
     import socket
     from .hci import (read_packets, serial_chunks, PcapError, TraceStats,
                       describe)
 
+    check_port = None
+    if check is not None:
+        if pcap:
+            print("Error: --check works on the live trace, not a saved one",
+                  file=sys.stderr)
+            return 1
+        check_port = _pick_port(check or None)
+        if check_port is None:
+            return 1
     if not all_links and address is None:
         address = _radio_address()
     counts = {"pc>radio": 0, "radio>pc": 0}
@@ -188,11 +257,31 @@ def cmd_radio_sniff(host="127.0.0.1", port=24352, log="session.jsonl",
         stream = sock.makefile("rb")
         print(f"Reading the Bluetooth trace from {host}:{port}"
               + (f", link to {address}" if address else "")
-              + f". Run the operation in RPM, then press Ctrl+C here.")
+              + (f". First a check: opening {check_port} for a moment "
+                 f"(nothing is sent)." if check_port else
+                 ". Run the operation in RPM, then press Ctrl+C here."))
 
     stats = TraceStats()
+    checker = None
+    if check_port:
+        def run_check():
+            time.sleep(CHECK_DELAY)
+            try:
+                passed, lines = check_trace(check_port, stats,
+                                            address=address)
+            except Exception as e:      # a thread must not die silently
+                passed, lines = False, [f"Check failed: {e}"]
+            for line in lines:
+                print(line)
+            print("Now run the operation in RPM, then press Ctrl+C here."
+                  if passed else "The recording goes on: press Ctrl+C, "
+                  "put that right and start again.")
+        checker = threading.Thread(target=run_check, daemon=True)
+
     with CaptureWriter(log, note=note) as writer:
         print(f"Writing the serial data to {writer.path}")
+        if checker is not None:
+            checker.start()
         try:
             for t, direction, data in serial_chunks(read_packets(stream),
                                                     address=address,
@@ -208,10 +297,14 @@ def cmd_radio_sniff(host="127.0.0.1", port=24352, log="session.jsonl",
             print(f"Error: {e}", file=sys.stderr)
         finally:
             stream.close()
+    if checker is not None:
+        checker.join(timeout=1.0)       # its verdict before the summary
     for line in describe(stats, address):
         print(line)
     print(f"RPM to radio: {counts['pc>radio']:,} bytes; radio to RPM: "
           f"{counts['radio>pc']:,} bytes.")
+    if counts[PC_TO_RADIO] or counts[RADIO_TO_PC]:
+        print(session_kind(read_capture(writer.path)))
     print(f"Analyze with: quickprs radio analyze {writer.path}")
     return 0
 

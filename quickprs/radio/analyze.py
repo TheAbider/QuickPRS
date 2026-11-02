@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 import re
 import struct
 
-from .capture import DIRECTIONS
+from .capture import DIRECTIONS, PC_TO_RADIO, RADIO_TO_PC
 
 _CLASS_NAME = re.compile(rb"C[A-Za-z0-9_]{2,47}")
 
@@ -50,6 +50,30 @@ def find_class_headers(data):
                 hits.append(ClassHeader(pos, schema, name.decode("ascii")))
         pos = data.find(b"\xff\xff", pos + 1)
     return hits
+
+
+def has_personality(data):
+    """True when ``data`` holds a CPersonality class header: a .PRS
+    personality starts there."""
+    return any(h.name == "CPersonality" for h in find_class_headers(data))
+
+
+def session_kind(capture):
+    """A sentence on what the capture's session looks like: a read (the
+    radio sent a personality), a write (RPM sent one), or neither."""
+    sent = capture.stream(PC_TO_RADIO)
+    answers = capture.stream(RADIO_TO_PC)
+    if not sent and not answers:
+        return "Nothing crossed the link."
+    if has_personality(sent):
+        return "Looks like a write: RPM sent a personality."
+    if has_personality(answers):
+        return ("Looks like a read: the radio sent a personality and RPM "
+                "did not.")
+    return ("Neither side sent a .PRS personality. If RPM read or wrote "
+            "the radio in this session, either large packets were left "
+            "out of the trace (the sniffer's Full Packet Logging was off) "
+            "or the personality crosses the link in another form.")
 
 
 def printable_strings(data, min_len=6):
@@ -152,6 +176,7 @@ def report(capture, top=8):
         span = capture.chunks[-1].t - capture.chunks[0].t
         lines.append(f"{len(capture.chunks)} chunks over {span:.1f} s, "
                      f"{len(capture.events)} line events")
+    lines.append(session_kind(capture))
     msgs = messages(capture)
     for direction, s in summarize(capture).items():
         lines.append("")

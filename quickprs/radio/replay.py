@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 import re
 import time
 
-from .analyze import find_class_headers, messages
+from .analyze import has_personality, messages
 from .capture import PC_TO_RADIO, RADIO_TO_PC
 
 
@@ -50,10 +50,6 @@ def steps(capture, gap=0.05):
     return out
 
 
-def _has_personality(data):
-    return any(h.name == "CPersonality" for h in find_class_headers(data))
-
-
 def why_refused(capture):
     """None when ``capture`` is a session that read a personality, else
     why it is not replayed."""
@@ -61,9 +57,9 @@ def why_refused(capture):
     answers = capture.stream(RADIO_TO_PC)
     if not sent:
         return "RPM sent nothing in it"
-    if _has_personality(sent):
+    if has_personality(sent):
         return "RPM sent a personality in it: it is a write"
-    if not _has_personality(answers):
+    if not has_personality(answers):
         return ("the radio's answers hold no personality, so it is not a "
                 "read QuickPRS can recognise (a write, activate or remove "
                 "changes the radio, and is never replayed)")
@@ -74,13 +70,23 @@ def why_refused(capture):
 
 
 def capture_lines(capture):
-    """RPM's (DTR, RTS) from the capture's first 'pc dtr=.. rts=..' event,
-    or None when it recorded none."""
-    for _, text in capture.events:
+    """RPM's (DTR, RTS) as it sent its first request: the last 'pc dtr=..
+    rts=..' event before that request (the first event when they all come
+    later), or None when the capture recorded none.  The lines can change
+    before a session starts (a port opened to check the trace, RPM setting
+    them after opening its port), so the first event is not always the
+    one in force."""
+    first = next((c.t for c in capture.chunks
+                  if c.direction == PC_TO_RADIO), None)
+    lines = []
+    for t, text in sorted(capture.events, key=lambda e: e[0]):
         m = re.match(r"pc dtr=([01]) rts=([01])", text)
         if m:
-            return m.group(1) == "1", m.group(2) == "1"
-    return None
+            lines.append((t, (m.group(1) == "1", m.group(2) == "1")))
+    if not lines:
+        return None
+    before = [state for t, state in lines if first is None or t <= first]
+    return before[-1] if before else lines[0][1]
 
 
 @dataclass

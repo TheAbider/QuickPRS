@@ -75,26 +75,27 @@ flowchart LR
    Click **Full Packet Logging** in its window: without it, large data
    packets are left out of the trace. Wireshark does not need to be
    installed.
-3. Start recording:
+3. Turn the radio on and start recording:
    ```bash
-   quickprs radio sniff --log read.jsonl --note "RPM extract"
+   quickprs radio sniff --check --log read.jsonl --note "RPM extract"
    ```
-4. Turn the radio on, and in RPM extract it over its Bluetooth COM port.
+   `--check` first opens the radio's port for a moment (nothing is sent)
+   and looks for its serial channel opening in the trace. When it is not
+   there, it says why: the sniffer passed on nothing, the trace held data
+   packets but no channel (Full Packet Logging is off), or the data went to
+   another device. It cannot show whether Full Packet Logging is on, since
+   only large packets need it. `--check COM6` names the port when more
+   than one radio is paired.
+4. Once the check has passed, extract the radio in RPM over its Bluetooth
+   COM port.
 5. Press Ctrl+C in QuickPRS, then close BTVS.
 
 When it stops, `sniff` reports what the trace held (packets, Bluetooth
-data packets, RFCOMM frames and serial channels) and, if it found no serial
-data, the likely reason.
-
-To check the setup before a real session, run steps 2 and 3, then with the
-radio on open its port for a few seconds from another console:
-
-```bash
-quickprs radio probe --port COM6 --seconds 10
-```
-
-After Ctrl+C the report should list RFCOMM frames (the channel opening and
-closing) even though nothing was sent.
+data packets, RFCOMM frames and serial channels, links to other devices
+it left out) and, if it found no serial data, the likely reason. Then it
+says what the session looks like: a read (the radio sent a personality), a
+write (RPM sent one) or neither, which can mean large packets were left out
+of the trace.
 
 A full trace holds more than the serial data (Bluetooth link keys among
 it); QuickPRS writes only the serial bytes and each side's modem lines (the
@@ -175,8 +176,8 @@ radio. A write, an activate or a remove changes the radio, so a capture of
 one is refused before the port is opened.
 
 Where RPM got no answer to a request, `replay` keeps RPM's pause before the
-next one (up to 5 seconds), and it sets DTR and RTS as RPM did when the
-capture recorded them. The replay is saved as a capture too
+next one (up to 5 seconds), and it sets DTR and RTS as RPM had them when it
+sent its first request, when the capture recorded them. The replay is saved as a capture too
 (`replay.jsonl` by default), so `analyze` and `--extract` work on it.
 
 ## Next steps

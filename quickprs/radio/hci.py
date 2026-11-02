@@ -246,6 +246,8 @@ class TraceStats:
     dlcis: set = field(default_factory=set)            # data channels seen
     serial_bytes: dict = field(
         default_factory=lambda: {SENT: 0, RECEIVED: 0})
+    other_links: dict = field(default_factory=dict)    # address -> data
+                                                       # packets left out
 
 
 @dataclass
@@ -303,6 +305,8 @@ class SerialFromHci:
         data = packet[5:5 + length]
         link = self._link(handle)
         if self.address and link.address and link.address != self.address:
+            self.stats.other_links[link.address] = (
+                self.stats.other_links.get(link.address, 0) + 1)
             return []
         if pb == 0b01:                     # continuing fragment
             if direction not in link.partial:
@@ -466,9 +470,18 @@ def describe(stats, address=None):
         lines.append("No Bluetooth data packets: did anything talk to the "
                      "radio while this ran?")
     else:
-        lines.append("No RFCOMM frames"
-                     + (f" on the link to {address}" if address else "")
-                     + ": was Full Packet Logging on in the sniffer, and "
-                     "did RPM (or quickprs radio probe) connect to the "
-                     "radio while this ran?")
+        others = sum(stats.other_links.values())
+        if others:
+            shown = ", ".join(f"{a} ({n:,})" for a, n in
+                              sorted(stats.other_links.items()))
+            lines.append(f"Data packets on links to other devices were "
+                         f"left out: {shown}. If one of them is the radio, "
+                         f"run again with --address (or --all-links).")
+        if stats.acl_packets > others:
+            lines.append("No RFCOMM frames"
+                         + (f" on the link to {address}" if address
+                            else "")
+                         + ": was Full Packet Logging on in the sniffer, "
+                         "and did RPM (or quickprs radio probe) connect to "
+                         "the radio while this ran?")
     return lines
