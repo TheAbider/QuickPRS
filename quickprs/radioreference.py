@@ -757,8 +757,11 @@ def parse_full_page(text):
                 site_id=0, name="All Sites",
                 freqs=[RRSiteFreq(freq=f) for f, _ in freqs])]
 
-    # Also try parsing conventional channels (works alongside trunked data)
-    system.conv_channels = parse_pasted_conv_channels(text)
+    # Conventional channels: on a RadioReference page they are in tables
+    # under a "Frequency  License  Type  Tone ..." header.  A bare
+    # frequency here is a trunk frequency (above), and a talkgroup row is
+    # not a channel.
+    system.conv_channels = parse_pasted_conv_channels(text, tables_only=True)
 
     return system
 
@@ -1244,7 +1247,10 @@ def parse_rr_tone(text):
     return None, ''
 
 
-def parse_pasted_conv_channels(text):
+_FREQ_TOKEN = re.compile(r"\d{2,4}\.\d{1,6}")
+
+
+def parse_pasted_conv_channels(text, tables_only=False):
     """Parse conventional channels from pasted RadioReference data.
 
     Handles multiple formats:
@@ -1258,12 +1264,17 @@ def parse_pasted_conv_channels(text):
 
     3. Tab-separated or multi-space-separated data
 
+    A frequency needs its decimal point, so the rows of a talkgroup or
+    site table are never channels (a talkgroup ID of 800 is not 800
+    MHz).  With ``tables_only``, only rows under a conventional table
+    header count, as on a pasted RadioReference page.
+
     Returns:
         list of ConvChannelData objects
     """
     channels = []
     lines = text.strip().splitlines()
-    col_map = None
+    col_map = None          # set by a conventional table header
     seen_freqs = set()
 
     for i, line in enumerate(lines):
@@ -1282,6 +1293,8 @@ def parse_pasted_conv_channels(text):
 
         # Skip non-data lines
         if lower.startswith('rfss') or lower.startswith('system'):
+            continue
+        if tables_only and col_map is None:
             continue
 
         # Try to parse as a conventional channel
@@ -1348,10 +1361,9 @@ def _parse_conv_line(line, col_map):
                 break
             val = parts[j].strip()
             if col == 'freq':
-                try:
-                    ch.freq = round(float(val), 5)
-                except ValueError:
+                if not _FREQ_TOKEN.fullmatch(val):
                     return None
+                ch.freq = round(float(val), 5)
             elif col == 'alpha':
                 ch.name = val
             elif col == 'description':
@@ -1374,11 +1386,11 @@ def _parse_conv_line(line, col_map):
             return None
         return ch
 
-    # Fallback: first part should be a frequency
-    try:
-        freq = round(float(parts[0]), 5)
-    except ValueError:
+    # Fallback: first part should be a frequency (with its decimal point:
+    # a bare number is an ID or a count)
+    if not _FREQ_TOKEN.fullmatch(parts[0]):
         return None
+    freq = round(float(parts[0]), 5)
 
     if freq <= 25 or freq > 1300:
         return None

@@ -934,6 +934,64 @@ Frequency    License    Type    Tone    Alpha Tag    Description    Mode    Tag
     print("  PASS: Full page parse with conv channels")
 
 
+# A trunked system page whose talkgroup IDs read like frequencies (in the
+# radio's 800 MHz band, even), with a site table and a conventional table
+TG_IDS_LIKE_FREQS = """System Name:    Test Regional System (TESTRS)
+System Type:    Project 25 Phase II
+System ID:    Sysid: 3AB WACN: 5A1B2
+
+RFSS    Site    Name    County    Freqs
+1 (1)    001 (1)    Hill Top    King    851.0125c    852.2625
+
+Test Agency
+DEC     HEX     Mode     Alpha Tag    Description    Tag
+800    320    T    TE    Test    Law Dispatch
+801    321    T    TE 2    Test 2    Law Tac
+1001    3e9    T    PD    Police    Law Dispatch
+
+Frequency    License    Type    Tone    Alpha Tag    Description    Mode    Tag
+155.76000    KQD949    BM    136.5 PL    LE D1    Law Dispatch    FMN    Law Dispatch
+"""
+
+
+def test_talkgroup_rows_are_not_conventional_channels():
+    """Talkgroups 800, 801 and 1001 became channels at 800, 801 and 1001
+    MHz (800 and 801 even inside the radio's bands)."""
+    system = parse_full_page(TG_IDS_LIKE_FREQS)
+    assert [t.dec_id for t in system.talkgroups] == [800, 801, 1001]
+    assert [ch.freq for ch in system.conv_channels] == [155.76]
+    assert [ch.freq for ch in parse_pasted_conv_channels(
+        TG_IDS_LIKE_FREQS)] == [155.76]
+
+
+def test_talkgroup_table_after_a_conventional_table():
+    text = """Frequency    License    Type    Tone    Alpha Tag    Description    Mode    Tag
+155.76000    KQD949    BM    136.5 PL    LE D1    Law Dispatch    FMN    Law Dispatch
+DEC     HEX     Mode     Alpha Tag    Description    Tag
+800    320    T    TE    Test    Law Dispatch
+"""
+    assert [ch.freq for ch in parse_pasted_conv_channels(text)] == [155.76]
+
+
+def test_bare_numbers_are_not_frequencies():
+    assert parse_pasted_conv_channels("800\n801\n1001\n") == []
+    assert [ch.freq for ch in parse_pasted_conv_channels(
+        "155.76\n800\n453.1\n")] == [155.76, 453.1]
+
+
+def test_bare_frequencies_on_a_trunked_page_are_trunk_frequencies():
+    """They went in as trunk frequencies and as conventional channels."""
+    text = """System Name:    Test System
+System ID:    Sysid: ABC WACN: DEF00
+
+851.0125
+851.2750
+"""
+    system = parse_full_page(text)
+    assert [f.freq for f in system.sites[0].freqs] == [851.0125, 851.275]
+    assert system.conv_channels == []
+
+
 def test_conv_only_page_parse():
     """Full page parse with only conventional data (no P25 trunked info)."""
     text = """Frequency    License    Type    Tone    Alpha Tag    Description    Mode    Tag
