@@ -377,8 +377,8 @@ def _wizard(app, freqs="", tgs="", source="manual"):
     wizard.source.set(source)
     wizard.sys_name.set("WIZ")
     wizard.sys_long_name.set("WIZARD SYSTEM")
-    wizard.sys_id.set("939")
-    wizard.sys_wacn.set("781824")
+    wizard.sys_id.set("3AB")
+    wizard.sys_wacn.set("BEE00")
     wizard.sys_band.set("800")
     wizard.sys_type.set("Phase II")
     wizard.freq_text = freqs
@@ -662,3 +662,47 @@ def test_clipboard_import_takes_what_is_in_the_box(app, wizard):
         wizard._import_clipboard()
     [clip] = [g for g in group_sets(app.prs) if g.name == "CLIP"]
     assert [g.group_id for g in clip.groups] == [8001]
+
+
+def test_wizard_ids_are_hex(app):
+    """RadioReference shows "Sysid: 3AB WACN: BEE00"; the wizard read the
+    boxes as decimal, refusing 3AB and turning 892 (hex) into 892."""
+    from quickprs.gui.system_wizard import parse_hex_id
+    assert parse_hex_id("3AB", 0xFFF) == 0x3AB
+    assert parse_hex_id(" 0x892 ", 0xFFF) == 0x892
+    assert parse_hex_id("1000", 0xFFF) is None          # 13 bits
+    assert parse_hex_id("XYZ", 0xFFF) is None
+    wizard = _wizard(app)
+    wizard.sys_id.set("892")
+    wizard.sys_wacn.set("5A1B2")
+    mb = _finish(wizard)
+    mb.showerror.assert_not_called()
+    [(_, wacn, sysid)] = wan_entries(app.prs)
+    assert (wacn, sysid) == (0x5A1B2, 0x892)
+    before = app.prs.to_bytes()
+    wizard = _wizard(app)
+    wizard.sys_name.set("BAD")
+    wizard.sys_id.set("3AG")
+    mb = _finish(wizard)
+    assert "must be hex" in mb.showerror.call_args[0][1]
+    assert app.prs.to_bytes() == before
+
+
+def test_wizard_shows_database_ids_in_hex(app):
+    from quickprs.gui import system_wizard
+    from quickprs.system_database import get_system_by_name
+    wizard = _wizard(app, source="database")
+    try:
+        wizard.selected_system = get_system_by_name("PSERN")
+        wizard.current_step = 0
+        with mock.patch.object(system_wizard, "messagebox"):
+            wizard._next_step()
+        assert (wizard.sys_id.get(), wizard.sys_wacn.get()) == ("3AB",
+                                                                "BEE00")
+        wizard.sys_id.set("1000")                 # more than 12 bits
+        with mock.patch.object(system_wizard, "messagebox") as mb:
+            wizard._next_step()
+            assert "0-FFF" in mb.showwarning.call_args[0][1]
+        assert wizard.current_step == 1
+    finally:
+        wizard.destroy()

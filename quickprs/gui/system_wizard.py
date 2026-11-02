@@ -29,6 +29,26 @@ from ..validation import validate_prs, ERROR
 from ..logger import log_action, log_error
 
 
+MAX_SYSTEM_ID = 0xFFF        # P25 System IDs are 12 bits
+MAX_WACN = 0xFFFFF           # and WACNs 20
+
+
+def parse_hex_id(text, maximum):
+    """A P25 ID typed in hex (as RadioReference, RPM and radios show it,
+    "3AB" or "0x3AB"), or None when it is not hex or above ``maximum``."""
+    try:
+        value = int(str(text).strip(), 16)
+    except ValueError:
+        return None
+    return value if 0 <= value <= maximum else None
+
+
+def _hex_and_decimal(text, maximum):
+    value = parse_hex_id(text, maximum)
+    return (f"{value:X} ({value})" if value is not None
+            else f"{str(text).strip()} (not valid hex)")
+
+
 STEP_TITLES = [
     "Choose Source",
     "Configure System",
@@ -159,8 +179,8 @@ class SystemWizard(tk.Toplevel):
                 sys = self.selected_system
                 self.sys_name.set(sys.name[:8])
                 self.sys_long_name.set(sys.long_name[:16])
-                self.sys_id.set(str(sys.system_id))
-                self.sys_wacn.set(str(sys.wacn))
+                self.sys_id.set(f"{sys.system_id:X}")
+                self.sys_wacn.set(f"{sys.wacn:X}")
                 self.sys_band.set(sys.band.replace("/", "/"))
                 self.sys_type.set(sys.system_type)
             elif self.source.get() == "database" and not self.selected_system:
@@ -180,24 +200,18 @@ class SystemWizard(tk.Toplevel):
                     "System name is required.",
                     parent=self)
                 return
-            try:
-                sid = int(self.sys_id.get().strip())
-                if sid < 0 or sid > 65535:
-                    raise ValueError("out of range")
-            except ValueError:
+            if parse_hex_id(self.sys_id.get(), MAX_SYSTEM_ID) is None:
                 messagebox.showwarning(
                     "Invalid System ID",
-                    "System ID must be a number 0-65535.",
+                    "System ID must be hex, 0-FFF, as RadioReference "
+                    "shows it (Sysid: 3AB).",
                     parent=self)
                 return
-            try:
-                wacn = int(self.sys_wacn.get().strip())
-                if wacn < 0:
-                    raise ValueError("negative")
-            except ValueError:
+            if parse_hex_id(self.sys_wacn.get(), MAX_WACN) is None:
                 messagebox.showwarning(
                     "Invalid WACN",
-                    "WACN must be a non-negative number.",
+                    "WACN must be hex, 0-FFFFF, as RadioReference shows "
+                    "it (WACN: BEE00).",
                     parent=self)
                 return
 
@@ -328,8 +342,8 @@ class SystemWizard(tk.Toplevel):
         fields = [
             ("System Name (8 chars):", self.sys_name),
             ("Long Name (16 chars):", self.sys_long_name),
-            ("System ID:", self.sys_id),
-            ("WACN:", self.sys_wacn),
+            ("System ID (hex):", self.sys_id),
+            ("WACN (hex):", self.sys_wacn),
         ]
 
         for i, (label, var) in enumerate(fields):
@@ -480,8 +494,8 @@ class SystemWizard(tk.Toplevel):
 
         name = self.sys_name.get().strip()[:8]
         long_name = self.sys_long_name.get().strip()[:16] or name
-        sys_id = self.sys_id.get().strip()
-        wacn = self.sys_wacn.get().strip()
+        sys_id = _hex_and_decimal(self.sys_id.get(), MAX_SYSTEM_ID)
+        wacn = _hex_and_decimal(self.sys_wacn.get(), MAX_WACN)
         band = self.sys_band.get()
         sys_type = self.sys_type.get()
 
@@ -607,13 +621,13 @@ class SystemWizard(tk.Toplevel):
 
         name = self.sys_name.get().strip()[:8]
         long_name = self.sys_long_name.get().strip()[:16] or name
-        try:
-            sys_id = int(self.sys_id.get().strip())
-            wacn = int(self.sys_wacn.get().strip())
-        except ValueError:
-            messagebox.showerror("Invalid Input",
-                                 "System ID and WACN must be numbers.",
-                                 parent=self)
+        sys_id = parse_hex_id(self.sys_id.get(), MAX_SYSTEM_ID)
+        wacn = parse_hex_id(self.sys_wacn.get(), MAX_WACN)
+        if sys_id is None or wacn is None:
+            messagebox.showerror(
+                "Invalid Input",
+                "System ID (0-FFF) and WACN (0-FFFFF) must be hex, as "
+                "RadioReference shows them.", parent=self)
             return
         band = self.sys_band.get()
         sys_type = self.sys_type.get()
@@ -911,8 +925,8 @@ class SystemDatabaseDialog(tk.Toplevel):
                 wizard.source.set("database")
                 wizard.sys_name.set(sys.name[:8])
                 wizard.sys_long_name.set(sys.long_name[:16])
-                wizard.sys_id.set(str(sys.system_id))
-                wizard.sys_wacn.set(str(sys.wacn))
+                wizard.sys_id.set(f"{sys.system_id:X}")
+                wizard.sys_wacn.set(f"{sys.wacn:X}")
                 wizard.sys_band.set(sys.band)
                 wizard.sys_type.set(sys.system_type)
         wizard.wait_window()
